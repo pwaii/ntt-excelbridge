@@ -2,7 +2,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.domain.schemas import AuditMeta, ToolResult, Tool1Output
+from app.domain.schemas import AuditMeta, Tool1Output, ToolResult
 
 
 def _meta() -> AuditMeta:

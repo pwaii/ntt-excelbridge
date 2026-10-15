@@ -3,7 +3,6 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -28,6 +27,7 @@ class Settings(BaseSettings):
     dynamo_table: str = "xlsx-workflow"
     state_machine_arn: str = ""
     job_ttl_days: int = 14
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     cognito_user_pool_id: str = ""
     cognito_app_client_id: str = ""

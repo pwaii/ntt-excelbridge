@@ -49,6 +49,8 @@ class FakeTable:
         return {"Item": self.item} if self.item else {}
 
     def update_item(self, **kwargs):
+        assert ":expected_revision" not in kwargs["ExpressionAttributeValues"]
+        assert kwargs["ConditionExpression"] is not None
         self.item = {
             **self.item,
             "status": kwargs["ExpressionAttributeValues"].get(

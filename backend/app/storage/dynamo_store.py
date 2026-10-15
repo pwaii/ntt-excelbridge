@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from collections.abc import Mapping
+from datetime import UTC, datetime
 from time import time
-from typing import Any, Mapping
+from typing import Any
 
-from boto3.dynamodb.conditions import Attr
+from boto3.dynamodb.conditions import Attr, Key
 
 from app.settings import settings
 from app.storage.aws_session import get_dynamodb_resource
@@ -40,6 +41,7 @@ class DynamoStore:
         config: Mapping[str, Any],
         input_hash: str | None = None,
         main_hash: str | None = None,
+        files: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Create an idempotent job metadata record."""
 
@@ -55,11 +57,17 @@ class DynamoStore:
             "created_at": timestamp,
             "updated_at": timestamp,
             "expires_at": int(time()) + settings.job_ttl_days * 86400,
+            "GSI1PK": f"OWNER#{owner_id}",
+            "GSI1SK": f"{timestamp}#{job_id}",
+            "GSI2PK": "STATUS#DRAFT",
+            "GSI2SK": f"{timestamp}#{job_id}",
         }
         if input_hash:
             item["input_hash"] = input_hash
         if main_hash:
             item["main_hash"] = main_hash
+        if files:
+            item["files"] = dict(files)
 
         try:
             self.table.put_item(
@@ -89,7 +97,6 @@ class DynamoStore:
             raise ValueError("updates must contain at least one field")
         names = {"#revision": "revision", "#updated_at": "updated_at"}
         values: dict[str, Any] = {
-            ":expected_revision": expected_revision,
             ":one": 1,
             ":updated": utc_now(),
         }
@@ -106,6 +113,17 @@ class DynamoStore:
             values[placeholder] = value
             assignments.append(f"{name} = {placeholder}")
 
+        if "status" in updates:
+            status_value = getattr(updates["status"], "value", updates["status"])
+            values[":gsi2pk"] = f"STATUS#{status_value}"
+            values[":gsi2sk"] = f"{values[':updated']}#{job_id}"
+            assignments.extend([
+                "#gsi2pk = :gsi2pk",
+                "#gsi2sk = :gsi2sk",
+            ])
+            names["#gsi2pk"] = "GSI2PK"
+            names["#gsi2sk"] = "GSI2SK"
+
         try:
             response = self.table.update_item(
                 Key=self.job_key(job_id),
@@ -121,6 +139,17 @@ class DynamoStore:
             ) from error
         return response["Attributes"]
 
+    def list_jobs_for_owner(self, owner_id: str, limit: int = 50) -> list[dict[str, Any]]:
+        """List jobs through the owner GSI, newest first."""
+
+        response = self.table.query(
+            IndexName="GSI1",
+            KeyConditionExpression=Key("GSI1PK").eq(f"OWNER#{owner_id}"),
+            Limit=max(1, min(limit, 100)),
+            ScanIndexForward=False,
+        )
+        return response.get("Items", [])
+
     def put_child(self, job_id: str, sort_key: str, item: Mapping[str, Any]) -> dict[str, Any]:
         """Write an issue/proposal/review/event under a job partition."""
 
@@ -129,6 +158,7 @@ class DynamoStore:
         child = {
             "PK": f"JOB#{job_id}",
             "SK": sort_key,
+            "expires_at": int(time()) + settings.job_ttl_days * 86400,
             **dict(item),
         }
         self.table.put_item(Item=child)
@@ -136,4 +166,4 @@ class DynamoStore:
 
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()

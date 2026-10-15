@@ -2,6 +2,8 @@
 outputs. Tool outputs are the trust boundary — every AI response is parsed through
 these and rejected if it doesn't fit (§10). Keep in sync with prompts/ and frontend/src/types.
 """
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from app.domain.enums import MatchType, OutputPolicy, ReviewDecision
@@ -9,7 +11,7 @@ from app.domain.enums import MatchType, OutputPolicy, ReviewDecision
 
 # --- Job configuration (§5.1) ---
 class JobConfig(BaseModel):
-    comment_name: str
+    comment_name: str = Field(min_length=1, max_length=200)
     output_header: str | None = None  # derived from comment_name if empty (§3.1)
     standardize: bool = False
     update: bool = False
@@ -39,8 +41,19 @@ class ReviewItemDecision(BaseModel):
 
 class ReviewRequest(BaseModel):
     expected_revision: int
-    decisions: dict[str, ReviewItemDecision]  # keyed by issue/proposal id
-    approved_by: str  # authenticated Cognito subject
+    decisions: dict[str, ReviewItemDecision] = Field(min_length=1)  # keyed by issue/proposal id
+    approved_by: str | None = None  # populated from authenticated Cognito subject
+
+
+class CreateJobRequest(BaseModel):
+    config: JobConfig
+    input_filename: str = Field(min_length=1, max_length=255)
+    main_filename: str | None = Field(default=None, max_length=255)
+
+
+class UploadCompleteRequest(BaseModel):
+    slot: Literal["input", "main"]
+    sha256: str | None = Field(default=None, min_length=64, max_length=64)
 
 
 # --- Tool #1: semantic verification (§10.2) ---
