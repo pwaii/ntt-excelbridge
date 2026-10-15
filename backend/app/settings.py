@@ -8,7 +8,8 @@ class Settings(BaseSettings):
     aws_region: str = "us-east-1"
     environment: str = "demo"
 
-    bedrock_model_id: str = ""
+    bedrock_model_id: str = "amazon.nova-lite-v1:0"        # most tools
+    bedrock_model_id_heavy: str = "amazon.nova-pro-v1:0"   # tools #3/#4 reasoning
     bedrock_max_tokens: int = 2048
     bedrock_temperature: float = 0.0
 
