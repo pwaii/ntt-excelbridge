@@ -2,7 +2,7 @@
 outputs. Tool outputs are the trust boundary — every AI response is parsed through
 these and rejected if it doesn't fit (§10). Keep in sync with prompts/ and frontend/src/types.
 """
-from typing import Optional
+from typing import Generic, Optional, TypeVar
 from pydantic import BaseModel, Field
 
 from app.domain.enums import MatchType, OutputPolicy, ReviewDecision
@@ -116,3 +116,24 @@ class Tool5Match(BaseModel):
 
 class Tool5Output(BaseModel):
     matches: list[Tool5Match]
+
+
+# --- Response envelope (§10.1, §14.3) ---
+# payload is the untrusted model output; meta is Python-computed and trustworthy.
+T = TypeVar("T", bound=BaseModel)
+
+
+class AuditMeta(BaseModel):
+    tool: str
+    model_id: str
+    prompt_version: str
+    input_hash: str
+    output_hash: str
+    latency_ms: int
+    input_tokens: int
+    output_tokens: int
+
+
+class ToolResult(BaseModel, Generic[T]):
+    meta: AuditMeta
+    payload: T
