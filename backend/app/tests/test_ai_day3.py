@@ -23,3 +23,120 @@ def test_estimate_cost_usd_uses_price_constants(monkeypatch):
 def test_safe_log_keeps_estimated_usd_drops_raw_values():
     out = safe_log({"estimated_usd": 0.01, "original": "SECRET", "tool": "tool2_types"})
     assert out == {"estimated_usd": 0.01, "tool": "tool2_types"}
+
+
+# A well-formed Tool #2 response: one safe high-confidence date + one reject.
+GOOD_TOOL2 = (
+    "```json\n"
+    '{"column_id": "OrderDate", "target_type": "date", "proposals": ['
+    '{"row_id": "r2", "original": "01/02/2024", "normalized": "2024-01-02", '
+    '"confidence": 0.95, "status": "safe", "reason": "us date"},'
+    '{"row_id": "r3", "original": "bogus", "normalized": "", '
+    '"confidence": 0.2, "status": "reject", "reason": "unparseable"}]}\n```'
+)
+
+FIXTURE = {
+    "column_id": "OrderDate",
+    "target_type": "date",
+    "samples": [{"row_id": "r2", "value": "01/02/2024"}, {"row_id": "r3", "value": "bogus"}],
+    "type_distribution": {"date": 1, "string": 1},
+    "constraints": "preserve source day/month order",
+}
+
+
+class FakeBedrock:
+    """Stands in for a boto3 bedrock-runtime client. Records the converse() kwargs."""
+
+    def __init__(self, text: str, usage: dict | None = None):
+        self._text = text
+        self._usage = usage or {"inputTokens": 10, "outputTokens": 5}
+        self.calls: list[dict] = []
+
+    def converse(self, **kwargs):
+        self.calls.append(kwargs)
+        return {
+            "output": {"message": {"content": [{"text": self._text}]}},
+            "usage": self._usage,
+        }
+
+
+def _client(text: str, usage: dict | None = None) -> BedrockClient:
+    return BedrockClient(client=FakeBedrock(text, usage))
+
+
+def test_run_tool2_renders_prompt_and_wraps_meta():
+    client = _client(GOOD_TOOL2)
+    result = run_tool2(FIXTURE, client=client)
+
+    assert isinstance(result, ToolResult)
+    assert isinstance(result.payload, Tool2Output)
+    assert result.payload.target_type == "date"
+    assert len(result.payload.proposals) == 2
+    assert result.meta.tool == "tool2_types"
+    assert result.meta.prompt_version == "v1"
+    assert len(result.meta.input_hash) == 64 and len(result.meta.output_hash) == 64
+    assert result.meta.input_tokens == 10 and result.meta.output_tokens == 5
+
+    sent = client._client.calls[0]
+    text = sent["messages"][0]["content"][0]["text"]
+    assert "{column_id}" not in text      # fully rendered
+    assert "OrderDate" in text            # structured input serialized
+
+
+def test_run_tool2_rejects_malformed_payload():
+    # confidence 5 > 1 -> Pydantic rejects before the extra checks
+    bad = (
+        '{"column_id": "OrderDate", "target_type": "date", "proposals": ['
+        '{"row_id": "r2", "original": "a", "normalized": "b", '
+        '"confidence": 5, "status": "safe", "reason": "r"}]}'
+    )
+    with pytest.raises(ValidationError):
+        run_tool2(FIXTURE, client=_client(bad))
+
+
+def test_run_tool2_rejects_unknown_row_id():
+    resp = (
+        '{"column_id": "OrderDate", "target_type": "date", "proposals": ['
+        '{"row_id": "r999", "original": "x", "normalized": "y", '
+        '"confidence": 0.9, "status": "safe", "reason": "r"}]}'
+    )
+    with pytest.raises(ValueError, match="unknown row_ids"):
+        run_tool2(FIXTURE, client=_client(resp))
+
+
+def test_run_tool2_rejects_bad_target_type():
+    resp = '{"column_id": "OrderDate", "target_type": "timestamp", "proposals": []}'
+    with pytest.raises(ValueError, match="target_type"):
+        run_tool2(FIXTURE, client=_client(resp))
+
+
+def test_safe_below_floor_demoted_to_ambiguous():
+    resp = (
+        '{"column_id": "OrderDate", "target_type": "date", "proposals": ['
+        '{"row_id": "r2", "original": "a", "normalized": "b", '
+        '"confidence": 0.5, "status": "safe", "reason": "r"}]}'
+    )
+    result = run_tool2(FIXTURE, client=_client(resp))
+    assert result.payload.proposals[0].status == "ambiguous"
+
+
+def test_safe_above_floor_and_reject_untouched():
+    result = run_tool2(FIXTURE, client=_client(GOOD_TOOL2))
+    assert result.payload.proposals[0].status == "safe"    # confidence 0.95
+    assert result.payload.proposals[1].status == "reject"  # left as the model set it
+
+
+def test_run_tool2_emits_cost_log(caplog):
+    with caplog.at_level("INFO", logger="app.ai.tool2_types"):
+        run_tool2(
+            FIXTURE,
+            client=_client(GOOD_TOOL2, usage={"inputTokens": 100, "outputTokens": 40}),
+        )
+    lines = [r.getMessage() for r in caplog.records if "estimated_usd" in r.getMessage()]
+    assert lines, "no cost log emitted"
+    record = json.loads(lines[0])
+    assert record["row_count"] == 2
+    assert record["input_tokens"] == 100 and record["output_tokens"] == 40
+    assert "estimated_usd" in record
+    # no raw cell values ever reach the log
+    assert "original" not in lines[0] and "normalized" not in lines[0]
