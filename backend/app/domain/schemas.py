@@ -2,7 +2,6 @@
 outputs. Tool outputs are the trust boundary — every AI response is parsed through
 these and rejected if it doesn't fit (§10). Keep in sync with prompts/ and frontend/src/types.
 """
-from typing import Generic, Optional, TypeVar
 from pydantic import BaseModel, Field
 
 from app.domain.enums import MatchType, OutputPolicy, ReviewDecision
@@ -11,12 +10,12 @@ from app.domain.enums import MatchType, OutputPolicy, ReviewDecision
 # --- Job configuration (§5.1) ---
 class JobConfig(BaseModel):
     comment_name: str
-    output_header: Optional[str] = None  # derived from comment_name if empty (§3.1)
+    output_header: str | None = None  # derived from comment_name if empty (§3.1)
     standardize: bool = False
     update: bool = False
-    input_sheet: Optional[str] = None
-    main_sheet: Optional[str] = None
-    key_column: Optional[str] = None  # business key for matching (§3.2)
+    input_sheet: str | None = None
+    main_sheet: str | None = None
+    key_column: str | None = None  # business key for matching (§3.2)
 
     def output_policy(self) -> OutputPolicy:
         if self.standardize and self.update:
@@ -34,8 +33,8 @@ class JobConfig(BaseModel):
 # --- Review submission (§11) ---
 class ReviewItemDecision(BaseModel):
     decision: ReviewDecision
-    edited_value: Optional[str] = None
-    reason: Optional[str] = None
+    edited_value: str | None = None
+    reason: str | None = None
 
 
 class ReviewRequest(BaseModel):
@@ -107,7 +106,7 @@ class Tool4Output(BaseModel):
 class Tool5Match(BaseModel):
     current_row_id: str
     candidate_main_row_ids: list[str]
-    selected_main_row_id: Optional[str] = None
+    selected_main_row_id: str | None = None
     match_type: MatchType
     confidence: float = Field(ge=0, le=1)
     reason: str
@@ -120,9 +119,6 @@ class Tool5Output(BaseModel):
 
 # --- Response envelope (§10.1, §14.3) ---
 # payload is the untrusted model output; meta is Python-computed and trustworthy.
-T = TypeVar("T", bound=BaseModel)
-
-
 class AuditMeta(BaseModel):
     tool: str
     model_id: str
@@ -134,6 +130,6 @@ class AuditMeta(BaseModel):
     output_tokens: int
 
 
-class ToolResult(BaseModel, Generic[T]):
+class ToolResult[T: BaseModel](BaseModel):
     meta: AuditMeta
     payload: T
