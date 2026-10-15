@@ -1,0 +1,5 @@
+{
+  "Version": "2012-10-17",
+  "Comment": "TODO: least-privilege worker policy (sec 14.1).",
+  "Statement": []
+}

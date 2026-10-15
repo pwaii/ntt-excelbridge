@@ -1,0 +1,67 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: XLSX data-quality / standardization / update workflow (demo). See docs/backend-plan.md (§7).
+
+# SKELETON — resources are placeholders. BE Day 1 fills these in (§17).
+
+Parameters:
+  Environment:
+    Type: String
+    Default: demo
+  BedrockModelId:
+    Type: String
+    Description: Resolved + verified non-Marketplace model id (preflight, §10.1).
+
+Globals:
+  Function:
+    Runtime: python3.12
+    MemorySize: 1024
+    Timeout: 60
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        DYNAMO_TABLE: !Ref MetadataTable
+        APP_DATA_BUCKET: !Ref DataBucket
+        BEDROCK_MODEL_ID: !Ref BedrockModelId
+
+Resources:
+  DataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      VersioningConfiguration: { Status: Enabled }
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-demo-jobs
+            Status: Enabled
+            ExpirationInDays: 14
+
+  MetadataTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "xlsx-workflow-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: PK, AttributeType: S }
+        - { AttributeName: SK, AttributeType: S }
+      KeySchema:
+        - { AttributeName: PK, KeyType: HASH }
+        - { AttributeName: SK, KeyType: RANGE }
+      TimeToLiveSpecification: { AttributeName: expires_at, Enabled: true }
+      # TODO(BE): GSI1 (OWNER#), GSI2 (STATUS#) per §7.6
+
+  # TODO(BE): ApiFunction (FastAPI+Mangum), worker functions, StateMachine,
+  # Cognito UserPool, HttpApi with JWT authorizer. See docs/backend-plan.md.
+
+Outputs:
+  DataBucketName:
+    Value: !Ref DataBucket
+  MetadataTableName:
+    Value: !Ref MetadataTable

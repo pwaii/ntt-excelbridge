@@ -1,0 +1,39 @@
+{
+  "Comment": "SKELETON — XLSX workflow (§6). Human gates use .waitForTaskToken. BE fleshes out Day 3/5.",
+  "StartAt": "Inspect",
+  "States": {
+    "Inspect": {
+      "Type": "Task",
+      "Resource": "${InspectWorkerArn}",
+      "Comment": "INSPECTING -> DETECTED",
+      "Next": "SemanticVerify"
+    },
+    "SemanticVerify": {
+      "Type": "Task",
+      "Resource": "${BedrockWorkerArn}",
+      "Comment": "Tool #1 -> SEMANTIC_REVIEW_PENDING",
+      "Next": "QualityReviewGate"
+    },
+    "QualityReviewGate": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+      "Comment": "Human gate #1 — resumes only on valid review revision (§6)",
+      "Parameters": { "FunctionName": "${GatePublisherArn}", "Payload": { "taskToken.$": "$$.Task.Token", "gate": "quality" } },
+      "Next": "Transform"
+    },
+    "Transform": {
+      "Type": "Pass",
+      "Comment": "TODO: Tool #2/#3/#4/#5 branches (optional per config), then human gate #2",
+      "Next": "TransformationReviewGate"
+    },
+    "TransformationReviewGate": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+      "Comment": "Human gate #2",
+      "Parameters": { "FunctionName": "${GatePublisherArn}", "Payload": { "taskToken.$": "$$.Task.Token", "gate": "transformation" } },
+      "Next": "Apply"
+    },
+    "Apply": { "Type": "Task", "Resource": "${ApplyWorkerArn}", "Next": "Validate" },
+    "Validate": { "Type": "Task", "Resource": "${ValidateWorkerArn}", "End": true }
+  }
+}
