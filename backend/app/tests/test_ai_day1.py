@@ -53,3 +53,18 @@ def test_redact_sample_preserves_shape_not_content():
     assert policy.redact_sample("John99") == "xxxx##"
     assert policy.redact_sample("a@b.com") == "x@x.xxx"
     assert policy.redact_sample("") == ""
+
+
+from app.ai.prompts import TOOLS, get_prompt
+
+
+def test_get_prompt_loads_every_tool_v1():
+    for tool in TOOLS:
+        text = get_prompt(tool)
+        assert text.strip(), f"{tool} prompt is empty"
+        assert "do not invent" in text.lower()  # the core trust rule must be stated
+
+
+def test_get_prompt_unknown_tool_raises():
+    with pytest.raises(FileNotFoundError):
+        get_prompt("tool9_nonexistent")
