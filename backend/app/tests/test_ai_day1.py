@@ -29,3 +29,27 @@ def test_tool_result_wraps_meta_and_payload():
 def test_tool_result_rejects_payload_not_matching_type():
     with pytest.raises(ValidationError):
         ToolResult[Tool1Output](meta=_meta(), payload={"not": "a tool1 output"})
+
+
+from app.ai import policy
+
+
+def test_caps_sourced_from_settings():
+    assert policy.MAX_ROWS == 50_000
+    assert policy.MAX_OUTPUT_TOKENS == 2048
+    assert policy.MAX_SAMPLES_PER_COLUMN == 20
+    assert policy.MAX_CANDIDATE_MATCHES == 25
+
+
+def test_safe_log_keeps_only_allowlisted_fields():
+    dirty = {"tool": "tool1_semantics", "input_tokens": 5,
+             "raw_value": "john@example.com", "cell": "Smith, 99 High St"}
+    clean = policy.safe_log(dirty)
+    assert clean == {"tool": "tool1_semantics", "input_tokens": 5}
+    assert "raw_value" not in clean and "cell" not in clean
+
+
+def test_redact_sample_preserves_shape_not_content():
+    assert policy.redact_sample("John99") == "xxxx##"
+    assert policy.redact_sample("a@b.com") == "x@x.xxx"
+    assert policy.redact_sample("") == ""
