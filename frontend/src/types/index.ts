@@ -15,10 +15,46 @@ export type MatchType = "exact" | "normalized" | "ambiguous" | "duplicate" | "co
 
 export interface Job {
   job_id: string;
+  owner_id: string;
   status: JobStatus;
-  output_policy: OutputPolicy;
+  config: {
+    comment_name: string;
+    output_header?: string | null;
+    standardize: boolean;
+    update: boolean;
+    input_sheet?: string | null;
+    main_sheet?: string | null;
+    key_column?: string | null;
+  };
+  files: Record<string, {
+    filename: string;
+    key: string;
+    content_type?: string | null;
+    size_bytes?: number | null;
+    etag?: string | null;
+    uploaded: boolean;
+  }>;
   revision: number;
   created_at: string;
+  updated_at: string;
+  output_hash?: string | null;
+}
+
+export interface PresignedUpload {
+  slot: "input" | "main";
+  filename: string;
+  key: string;
+  url: string;
+  expires_in: number;
+}
+
+export interface JobResponse {
+  job: Job;
+  request_id: string;
+}
+
+export interface CreateJobResponse extends JobResponse {
+  uploads: PresignedUpload[];
 }
 
 export interface Issue {

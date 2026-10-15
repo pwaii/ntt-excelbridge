@@ -11,6 +11,10 @@ Parameters:
   BedrockModelId:
     Type: String
     Description: Resolved + verified non-Marketplace model id (preflight, §10.1).
+  FrontendOrigin:
+    Type: String
+    Default: http://localhost:5173
+    Description: Browser origin allowed to upload workbooks directly to S3.
 
 Globals:
   Function:
@@ -37,6 +41,14 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
       VersioningConfiguration: { Status: Enabled }
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins:
+              - !Ref FrontendOrigin
+              - http://127.0.0.1:5173
+            AllowedMethods: [GET, PUT, HEAD]
+            AllowedHeaders: ["*"]
+            ExposedHeaders: [ETag]
       LifecycleConfiguration:
         Rules:
           - Id: expire-demo-jobs
