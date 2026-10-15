@@ -1,6 +1,5 @@
-"""Day-3 AI: Tool #2 normalization adapter + cost helper, tested with a fake Bedrock
-client (no real boto calls). Proves the trust boundary: render -> call -> schema-validate
--> known-id/target-type validate -> demote-only guardrail -> cost log (§10.3)."""
+"""Day-3 AI (revised by ADR D4): Tool #2 normalization adapter + cost helper, tested with a
+fake Bedrock client. Tool #2 now returns one rule per value-pattern, not one per cell."""
 import json
 
 import pytest
@@ -8,7 +7,7 @@ from pydantic import ValidationError
 
 from app.ai import policy
 from app.ai.bedrock_client import BedrockClient
-from app.ai.policy import estimate_cost_usd, safe_log
+from app.ai.policy import safe_log
 from app.ai.tool2_types import run_tool2
 from app.domain.schemas import Tool2Output, ToolResult
 
@@ -21,17 +20,19 @@ def test_estimate_cost_usd_uses_price_constants(monkeypatch):
 
 
 def test_safe_log_keeps_estimated_usd_drops_raw_values():
-    out = safe_log({"estimated_usd": 0.01, "original": "SECRET", "tool": "tool2_types"})
+    out = safe_log(
+        {"estimated_usd": 0.01, "example_original": "SECRET", "tool": "tool2_types"}
+    )
     assert out == {"estimated_usd": 0.01, "tool": "tool2_types"}
 
 
-# A well-formed Tool #2 response: one safe high-confidence date + one reject.
+# One safe high-confidence date-pattern rule + one reject rule.
 GOOD_TOOL2 = (
     "```json\n"
-    '{"column_id": "OrderDate", "target_type": "date", "proposals": ['
-    '{"row_id": "r2", "original": "01/02/2024", "normalized": "2024-01-02", '
+    '{"column_id": "OrderDate", "target_type": "date", "rules": ['
+    '{"pattern": "DD/MM/YYYY", "example_original": "01/02/2024", "normalized_form": "ISO date", '
     '"confidence": 0.95, "status": "safe", "reason": "us date"},'
-    '{"row_id": "r3", "original": "bogus", "normalized": "", '
+    '{"pattern": "free text", "example_original": "bogus", "normalized_form": "", '
     '"confidence": 0.2, "status": "reject", "reason": "unparseable"}]}\n```'
 )
 
@@ -71,7 +72,7 @@ def test_run_tool2_renders_prompt_and_wraps_meta():
     assert isinstance(result, ToolResult)
     assert isinstance(result.payload, Tool2Output)
     assert result.payload.target_type == "date"
-    assert len(result.payload.proposals) == 2
+    assert len(result.payload.rules) == 2
     assert result.meta.tool == "tool2_types"
     assert result.meta.prompt_version == "v1"
     assert len(result.meta.input_hash) == 64 and len(result.meta.output_hash) == 64
@@ -86,44 +87,34 @@ def test_run_tool2_renders_prompt_and_wraps_meta():
 def test_run_tool2_rejects_malformed_payload():
     # confidence 5 > 1 -> Pydantic rejects before the extra checks
     bad = (
-        '{"column_id": "OrderDate", "target_type": "date", "proposals": ['
-        '{"row_id": "r2", "original": "a", "normalized": "b", '
+        '{"column_id": "OrderDate", "target_type": "date", "rules": ['
+        '{"pattern": "p", "example_original": "a", "normalized_form": "b", '
         '"confidence": 5, "status": "safe", "reason": "r"}]}'
     )
     with pytest.raises(ValidationError):
         run_tool2(FIXTURE, client=_client(bad))
 
 
-def test_run_tool2_rejects_unknown_row_id():
-    resp = (
-        '{"column_id": "OrderDate", "target_type": "date", "proposals": ['
-        '{"row_id": "r999", "original": "x", "normalized": "y", '
-        '"confidence": 0.9, "status": "safe", "reason": "r"}]}'
-    )
-    with pytest.raises(ValueError, match="unknown row_ids"):
-        run_tool2(FIXTURE, client=_client(resp))
-
-
 def test_run_tool2_rejects_bad_target_type():
-    resp = '{"column_id": "OrderDate", "target_type": "timestamp", "proposals": []}'
+    resp = '{"column_id": "OrderDate", "target_type": "timestamp", "rules": []}'
     with pytest.raises(ValueError, match="target_type"):
         run_tool2(FIXTURE, client=_client(resp))
 
 
 def test_safe_below_floor_demoted_to_ambiguous():
     resp = (
-        '{"column_id": "OrderDate", "target_type": "date", "proposals": ['
-        '{"row_id": "r2", "original": "a", "normalized": "b", '
+        '{"column_id": "OrderDate", "target_type": "date", "rules": ['
+        '{"pattern": "p", "example_original": "a", "normalized_form": "b", '
         '"confidence": 0.5, "status": "safe", "reason": "r"}]}'
     )
     result = run_tool2(FIXTURE, client=_client(resp))
-    assert result.payload.proposals[0].status == "ambiguous"
+    assert result.payload.rules[0].status == "ambiguous"
 
 
 def test_safe_above_floor_and_reject_untouched():
     result = run_tool2(FIXTURE, client=_client(GOOD_TOOL2))
-    assert result.payload.proposals[0].status == "safe"    # confidence 0.95
-    assert result.payload.proposals[1].status == "reject"  # left as the model set it
+    assert result.payload.rules[0].status == "safe"    # confidence 0.95
+    assert result.payload.rules[1].status == "reject"  # left as the model set it
 
 
 def test_run_tool2_emits_cost_log(caplog):
@@ -135,8 +126,8 @@ def test_run_tool2_emits_cost_log(caplog):
     lines = [r.getMessage() for r in caplog.records if "estimated_usd" in r.getMessage()]
     assert lines, "no cost log emitted"
     record = json.loads(lines[0])
-    assert record["row_count"] == 2
+    assert record["rule_count"] == 2
     assert record["input_tokens"] == 100 and record["output_tokens"] == 40
     assert "estimated_usd" in record
     # no raw cell values ever reach the log
-    assert "original" not in lines[0] and "normalized" not in lines[0]
+    assert "example_original" not in lines[0] and "normalized_form" not in lines[0]
