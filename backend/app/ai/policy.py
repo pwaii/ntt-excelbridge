@@ -24,9 +24,11 @@ def estimate_cost_usd(input_tokens: int, output_tokens: int) -> float:
 
 
 # Only these keys may ever be logged (§14 / §16): hashes, IDs, counts — never cell values.
+CONFIDENCE_FLOOR = 0.80  # PLACEHOLDER — not in surviving extract, confirm with team
+
 SAFE_LOG_FIELDS = {
     "tool", "model_id", "prompt_version", "input_hash", "output_hash",
-    "latency_ms", "input_tokens", "output_tokens", "row_count", "estimated_usd",
+    "latency_ms", "input_tokens", "output_tokens", "row_count", "rule_count", "estimated_usd",
 }
 
 
