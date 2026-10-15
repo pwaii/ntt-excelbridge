@@ -8,7 +8,8 @@ class Settings(BaseSettings):
     aws_region: str = "us-east-1"
     environment: str = "demo"
 
-    bedrock_model_id: str = ""
+    bedrock_model_id: str = "amazon.nova-lite-v1:0"        # most tools
+    bedrock_model_id_heavy: str = "amazon.nova-pro-v1:0"   # tools #3/#4 reasoning
     bedrock_max_tokens: int = 2048
     bedrock_temperature: float = 0.0
 
@@ -24,6 +25,8 @@ class Settings(BaseSettings):
     max_data_rows: int = 50_000
     max_jobs_per_day: int = 50
     presigned_url_ttl_seconds: int = 300
+    max_samples_per_column: int = 20    # §15 cap — placeholder, confirm with team
+    max_candidate_matches: int = 25     # §15 cap — placeholder, confirm with team
 
 
 settings = Settings()
