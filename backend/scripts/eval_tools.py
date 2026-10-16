@@ -1,7 +1,7 @@
 """Day-6 eval harness (§Day-6): run Tools #1-#5 against real Bedrock with small capped
 fixtures, record tokens+latency, run LIGHT invariant checks on the real output (schema
 parsed, enums valid, demote applied, no off-candidate id), compute per-tool cost, and
-write a measurement report. Caches by input hash so reruns are free. Runs preflight first.
+print a measurement report. Caches by input hash so reruns are free. Runs preflight first.
 
 Run:
     AWS_PROFILE=ChallengerAccess-453995432289 AWS_REGION=us-east-1 python -m scripts.eval_tools
@@ -9,7 +9,6 @@ Run:
 Scope (brainstorming): run + measure + light checks. Adversarial reject-whole paths stay in
 the pytest unit tests; accuracy scoring + threshold tuning are Day 7.
 """
-import json
 import sys
 from pathlib import Path
 
@@ -30,8 +29,6 @@ from app.domain.schemas import (
 )
 from app.settings import settings
 from scripts.preflight import main as preflight_main
-
-DOCS = Path(__file__).resolve().parents[2] / "docs"
 
 # AWS Nova on-demand, USD per 1k tokens (input, output). Verify against current pricing.
 NOVA_PRICING = {
@@ -148,11 +145,9 @@ def run_case(tool, run_fn, inputs, checks, client) -> dict:
     }
 
 
-def write_report(rows, failures=None):
-    DOCS.mkdir(exist_ok=True)
-    (DOCS / "ai-eval-day6.json").write_text(
-        json.dumps({"rows": rows, "failures": failures or []}, indent=2), encoding="utf-8"
-    )
+def format_report(rows, failures=None) -> str:
+    """Render the measurement table as markdown for stdout. The committed record of a run
+    lives in SESSION_AI.md, not a separate docs file."""
     models = sorted({r["model_id"] for r in rows})
     md = [
         "# AI Day 6 — eval measurements", "",
@@ -170,7 +165,7 @@ def write_report(rows, failures=None):
         md += ["", "## Model output findings (Day-6)", ""]
         for f in failures:
             md.append(f"- **{f['tool']}** ({f['kind']}): `{f['detail']}`")
-    (DOCS / "ai-eval-day6.md").write_text("\n".join(md) + "\n", encoding="utf-8")
+    return "\n".join(md) + "\n"
 
 
 def main() -> int:
@@ -209,8 +204,8 @@ def main() -> int:
               f"{row['latency_ms']}ms ${row['est_usd']:.6f}")
 
     if rows:
-        write_report(rows, failures)
-        print(f"report -> docs/ai-eval-day6.md ({len(rows)} tools, {len(failures)} findings)")
+        print()
+        print(format_report(rows, failures))
     return 0 if ok and rows else 1
 
 

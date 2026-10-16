@@ -42,9 +42,16 @@ Spec: `docs/superpowers/specs/2026-10-16-ai-day5-design.md` · Plan: `docs/super
 Spec: `docs/superpowers/specs/2026-10-16-ai-day6-design.md` · Plan: `docs/superpowers/plans/2026-10-16-ai-day6.md`
 - **`CachingBedrockClient` (`cache.py`):** drop-in wrapper over `converse_json`, disk-memoized by `sha256(model_id+prompt)` under `backend/.cache/bedrock/` (gitignored). Repeat eval/demo runs are free. Safe — a human reviews every result (ADR residual note). Offline hit/miss unit test.
 - **`scripts/preflight.py`:** one minimal real `converse` per allowlisted model — proves invocable + entitled + non-Marketplace + SCP-clear. `list-foundation-models` is NOT authoritative in this account. This is the §7.1/§19 preflight BE needs for IAM scoping.
-- **`scripts/eval_tools.py`:** runs all 5 tools against capped fixtures with the caching client; light invariant checks on real output (schema parsed, enums valid, demote applied, no off-candidate id); per-tool tokens/latency + Nova on-demand cost → `docs/ai-eval-day6.{json,md}`.
-- **Results (3/5 tools clean):** tool1_semantics (nova-lite, 347/173 tok, 1533ms, $0.000062), tool3_formulas (nova-pro, 243/245 tok, 2073ms, $0.000978), tool4_standardize (nova-pro, 255/379 tok, 2026ms, $0.001417) all 3 checks each. Total: $0.0025.
-- **Findings:** tool2_types SCHEMA FAIL (`rules[1].normalized_form` returned `null`; schema requires `str`); tool5_update PARSE FAIL (model emitted malformed JSON). Both captured in `docs/ai-eval-day6.md` findings section — not code bugs, Day-7 prompt-tuning targets.
+- **`scripts/eval_tools.py`:** runs all 5 tools against capped fixtures with the caching client; light invariant checks on real output (schema parsed, enums valid, demote applied, no off-candidate id); per-tool tokens/latency + Nova on-demand cost, **printed as a markdown table** (this log is the record — no separate docs file).
+- **Measurements** (us-east-1, 1 case/tool, tool5 = 3 rows; total $0.0025, cached reruns free):
+
+  | tool | model | in tok | out tok | latency ms | est $ | checks |
+  |---|---|---:|---:|---:|---:|---|
+  | tool1_semantics | nova-lite | 347 | 173 | 1533 | 0.000062 | 3 ✅ |
+  | tool3_formulas | nova-pro | 243 | 245 | 2073 | 0.000978 | 3 ✅ |
+  | tool4_standardize | nova-pro | 255 | 379 | 2026 | 0.001417 | 3 ✅ |
+
+- **Findings (3/5 clean):** `tool2_types` SCHEMA FAIL (`rules[1].normalized_form` returned `null`; schema requires `str`); `tool5_update` PARSE FAIL (model emitted malformed JSON). Both are the guardrails working — bad output rejected at the trust boundary, never passed downstream. Not code bugs; Day-7 prompt-tuning targets.
 - **Environment finding:** the Day-1 model config (bare `amazon.nova-lite-v1:0` / `-pro-v1:0`, us-east-1) is correct and unchanged. Cross-region inference-profile ids (`us.`/`apac.`) are poison here — they fan out to an SCP-denied region (`us-west-2`/`ap-southeast-2`). Run via `AWS_PROFILE=ChallengerAccess-453995432289 AWS_REGION=us-east-1`. Legacy `claude-3-*` are Marketplace-gated (forbidden). See `memory/bedrock-access-us-east-1-bare-ids.md`.
 - **Still open for Day 7:** adversarial/accuracy scoring + `CONFIDENCE_FLOOR` tuning; fix tool2/tool5 prompts for the null-field and malformed-JSON findings; folding per-model cost into `estimate_cost_usd`. **BE:** no worker calls `run_toolN` yet — integration is BE Day 6.
 
@@ -57,7 +64,7 @@ Spec: `docs/superpowers/specs/2026-10-16-ai-day6-design.md` · Plan: `docs/super
 - **Not done here:** ADR D1 (size caps for ~2,000-row working set) — a `settings`/`policy` value change, BE-owned.
 
 ## Verification completed
-Full backend suite `python -m pytest` → **59 passed** at the Day-5 commit (`7d7e0ec`), including 8 new Tool #5 tests. No real boto calls in any test. Spec, plan, and implementation each committed separately on branch `ai`.
+Full backend suite `python -m pytest` → **61 passed** (2 new offline cache tests). No real boto calls in any pytest. The live eval (`scripts/eval_tools.py`) ran real Bedrock in us-east-1 for $0.0025. Spec, plan, and implementation each committed separately on branch `ai`.
 
-## Next — Day 6
-Full fixture evaluation against **real** Bedrock with capped samples (exact/fuzzy/ambiguous/duplicate/no-match); measure avg tokens + latency per tool; cache responses by input hash; confirm the model is non-Marketplace. Requires live AWS Bedrock access (creds + model enabled in-region).
+## Next — Day 7
+Fix the tool2/tool5 prompts for the Day-6 findings (force `normalized_form` string; JSON-only framing + one-shot retry); adversarial tests (invented row IDs, unsupported formulas, empty responses, contradictory mappings); accuracy scoring + `CONFIDENCE_FLOOR` tuning; short model-quality report with known limitations.
