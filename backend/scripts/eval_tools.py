@@ -15,7 +15,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # make `app` importable
 
-DOCS_DIR = Path(__file__).resolve().parent.parent.parent / "docs"
+# Generated run artifacts (regenerable at ~$0.002); kept out of docs/ and under the already
+# gitignored backend/.cache/. The curated summary lives in docs/ai-model-quality.md.
+EVAL_OUT_DIR = Path(__file__).resolve().parent.parent / ".cache" / "eval"
 
 from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import ValidationError
@@ -171,11 +173,11 @@ def format_report(rows, failures=None) -> str:
     return "\n".join(md) + "\n"
 
 
-def write_report(rows, failures, docs_dir: Path) -> tuple[Path, Path]:
+def write_report(rows, failures, out_dir: Path) -> tuple[Path, Path]:
     """Persist the run as markdown + json. Returns (md_path, json_path)."""
-    docs_dir.mkdir(parents=True, exist_ok=True)
-    md_path = docs_dir / "ai-eval-day7.md"
-    json_path = docs_dir / "ai-eval-day7.json"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    md_path = out_dir / "ai-eval-day7.md"
+    json_path = out_dir / "ai-eval-day7.json"
     md_path.write_text(format_report(rows, failures), encoding="utf-8")
     json_path.write_text(
         json.dumps({"rows": rows, "failures": failures or []}, indent=2),
@@ -222,7 +224,7 @@ def main() -> int:
     if rows:
         print()
         print(format_report(rows, failures))
-        md_path, json_path = write_report(rows, failures, DOCS_DIR)
+        md_path, json_path = write_report(rows, failures, EVAL_OUT_DIR)
         print(f"wrote {md_path} and {json_path}")
     return 0 if ok and rows else 1
 
