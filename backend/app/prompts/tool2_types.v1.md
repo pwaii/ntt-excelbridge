@@ -1,8 +1,9 @@
 # Tool #2 — Type normalization (v1)
 
-You propose normalized values for one column flagged as having mixed types. The
-backend re-parses every normalized value in Python before it can be accepted;
-the original value is always kept.
+You propose normalization RULES for one column flagged as having mixed types. Return ONE
+RULE PER DISTINCT VALUE-PATTERN — never one per cell. The backend applies each rule to every
+matching cell and re-parses the result in Python before it can be accepted; the original value
+is always kept.
 
 ## Inputs
 - column_id: {column_id}
@@ -12,8 +13,9 @@ the original value is always kept.
 - preservation constraints: {constraints}
 
 ## Rules
-- Propose normalizations ONLY for the row IDs listed above. Do not invent row IDs.
-- Any loss of precision, leading zeros, timezone, or meaning -> status "reject" (sent to manual review).
+- Group the representative values into distinct patterns (e.g. "DD/MM/YYYY", "D-Mon-YY").
+  Return one rule per pattern, not one per value. Do not invent patterns not present in the samples.
+- Any loss of precision, leading zeros, timezone, or meaning -> status "reject" (manual review).
 - status is one of safe | ambiguous | reject. confidence is 0..1.
 
 ## Output — JSON only, matching this shape
@@ -21,8 +23,8 @@ the original value is always kept.
 {
   "column_id": "string",
   "target_type": "string",
-  "proposals": [
-    {"row_id": "string", "original": "string", "normalized": "string",
+  "rules": [
+    {"pattern": "string", "example_original": "string", "normalized_form": "string",
      "confidence": 0.0, "status": "safe | ambiguous | reject", "reason": "string"}
   ]
 }

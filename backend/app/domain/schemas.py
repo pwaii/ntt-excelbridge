@@ -73,20 +73,20 @@ class Tool1Output(BaseModel):
     questions_for_human: list[str] = []
 
 
-# --- Tool #2: type normalization (§10.3) ---
-class Tool2CellProposal(BaseModel):
-    row_id: str
-    original: str
-    normalized: str
+# --- Tool #2: type normalization (§10.3, ADR D4: one rule per value-pattern) ---
+class Tool2Rule(BaseModel):
+    pattern: str            # e.g. "DD/MM/YYYY"
+    example_original: str   # a representative raw value (redacted sample)
+    normalized_form: str    # e.g. "ISO date YYYY-MM-DD"
     confidence: float = Field(ge=0, le=1)
-    status: str  # safe | ambiguous | reject
+    status: str             # safe | ambiguous | reject
     reason: str
 
 
 class Tool2Output(BaseModel):
     column_id: str
     target_type: str
-    proposals: list[Tool2CellProposal]
+    rules: list[Tool2Rule]
 
 
 # --- Tool #3: formula generation (§10.4) ---
