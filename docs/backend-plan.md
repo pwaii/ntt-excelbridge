@@ -1,6 +1,8 @@
 # Backend Engineer — Plan
 
-> Role-specific extract of `xlsx-data-workflow-demo-plan.md`. That file is the source of truth; section numbers below (§) point into it. Stack: **FastAPI on Lambda, OpenPyXL, Step Functions Standard, S3, DynamoDB, SAM**.
+> Role-specific extract of `design.md`. That file is the source of truth; section numbers below (§) point into it. Stack: **FastAPI on Lambda, OpenPyXL, Step Functions Standard, S3, DynamoDB, SAM**.
+>
+> **ADR 0001** (`docs/decisions/0001-design-grilling-decisions.md`): lines marked **⚠️ FIX — Dx** below are superseded. The original is kept so anyone who already built it can see what changed; the corrected version follows the marker.
 
 ## Responsibilities
 
@@ -15,6 +17,7 @@
 Durable state machine walking a job through: `DRAFT → UPLOADING → UPLOADED → INSPECTING → DETECTED → SEMANTIC_REVIEW_PENDING → QUALITY_REVIEW_PENDING → NORMALIZATION_PENDING → FORMULA_REVIEW_PENDING → STANDARDIZATION_PENDING → UPDATE_PENDING → TRANSFORMATION_REVIEW_PENDING → APPLYING → VALIDATING_OUTPUT → COMPLETED | FAILED`.
 
 - Human gates (#1 quality, #2 transformation) pause via **task tokens**; resume only on a valid review revision.
+  > **⚠️ FIX — D3:** Don't use task tokens. Gates are **execution boundaries**, not pauses: a segment runs to its gate and **ends** (job status in DynamoDB = `…_PENDING`); the review-submit API call **starts the next segment** (~2–3 short executions/job). No `waitForTaskToken`, no paused executions, no token timeout. *Already built with tokens?* Drop the `waitForTaskToken` state + `SendTaskSuccess`; instead let the segment end at the gate and have the review endpoint call `StartExecution` for the next segment.
 - State holds **S3 pointers, hashes, IDs, counts, small review metadata only** — never row arrays, workbook bytes, or prompts. Those go to S3; pass an object key + short manifest.
 - Failed jobs expose a safe error code, human-readable explanation, retry (where idempotent), and correlation ID. Never leak raw workbook contents or prompts in errors (§6 State 14).
 
@@ -30,6 +33,7 @@ All endpoints require Cognito JWT (API Gateway authorizer validates); every resp
 - **Never** process workbooks synchronously in an HTTP request.
 
 **Review submission (§11):** includes `job_id`, expected `revision`, decisions keyed by proposal/issue ID, optional edits, `approved_by` from authenticated subject, optional reason. Use a **conditional DynamoDB update on `revision`** → stale browser gets `409 REVIEW_REVISION_CONFLICT`.
+> **⚠️ FIX — D8:** The **winning** conditional write must be the only thing that starts the next workflow segment, so a double-clicked / retried Approve can't start it twice.
 
 ## Rule-based quality engine (§9) — you own this
 
@@ -62,6 +66,8 @@ Source of truth for structural errors; runs **before any LLM call**. Report stor
 ## Apply + validate (§6 States 12–13)
 
 Output policy drives the apply: **standardize only** (current workbook + canonical mappings + output column), **update only** (main workbook + merged input values), **both** (standardize current first, then update main using approved standardized keys), **neither** (reviewed copy + accepted quality fixes + approved column). Policy displayed before apply and stored in job config.
+> **⚠️ FIX — D2/D7:** Output is **always a new S3 object** — uploaded source and main are never mutated in place (update = a new *version* of main, not an edit of the upload). The download's base file differs by mode (current-derived for standardize/neither, main-derived for update/both) — name it on the output-policy screen. **Unmatched current rows are skipped** for the demo (insert = future work).
+> **⚠️ ADD — D5:** Tag every written cell **formula vs data** in the apply/audit model; the formula-injection escaper runs on **data** cells only — approved Tool #3 formula cells are written live (`=…`) and never escaped.
 
 Validation reopens the generated workbook and checks: opens OK; expected sheets exist; expected headers exist exactly once; row + mutation counts reconcile; **no source workbook modified**; formulas present in expected cells; no forbidden external links; output hash recorded.
 
@@ -73,6 +79,7 @@ When Tool #3 proposes a formula, the backend verifies: begins with `=`; function
 
 - **Region (§7.1):** one region per environment; default `us-east-1`; `ap-southeast-1`/`ap-southeast-7` via deploy param (not all three at once). Run a **preflight** verifying S3/DynamoDB/Lambda/API Gateway/Step Functions/Cognito/CloudWatch availability, Bedrock model availability + non-Marketplace + invoke permission. (AI supplies exact model ID.)
 - **Compute (§7.4):** FastAPI + workers on Lambda; direct S3 upload (API Gateway payload limits make binary upload inappropriate). Reject oversize workbooks rather than time out. **No NAT Gateway** (budget).
+  > **⚠️ FIX — D1:** Design the pipeline/UI/budget for **~2,000 rows**; keep 25 MB / 50k rows as the hard **reject** wall only.
 - **S3 layout (§7.5):** `jobs/<job_id>/{input,manifests,inspection,quality,proposals,reviews,output}/...`. Controls: block public access; SSE (S3-managed, or CMK if required); versioning on; 14-day lifecycle expiration; object tags `job_id`/`environment`/`data_classification`; presigned URLs scoped by method/key/content-type + short expiry; no raw cell values in logs.
 - **DynamoDB (§7.6):** one on-demand single-table `xlsx-workflow`. `PK=JOB#<job_id>`; `SK ∈ {META, ISSUE#, PROPOSAL#, REVIEW#<revision>, EVENT#<ts>#<uuid>}`; attrs `entity_type`, `status`, `owner_id`, `input_hash`, `main_hash`, `revision`, `expires_at` (TTL). GSI1 `OWNER#<id>`/`<created_at>#<job_id>` for listing; GSI2 `STATUS#<status>`/`<updated_at>#<job_id>` for ops. **Every state transition is a conditional update on `revision`.**
 
@@ -92,14 +99,17 @@ AWS Budget alerts at $175 / $280 / $330; S3 lifecycle; DynamoDB TTL; short log r
 - **Day 1** — Python project + FastAPI skeleton; domain enums, job-config schema, state transitions, error codes; SAM template (S3, DynamoDB, Lambda, API Gateway, Step Functions, Cognito placeholders); S3 prefix + DynamoDB key design; region preflight script + deploy README.
 - **Day 2** — Authenticated job-create + presigned-upload routes; upload-complete verification (hash, size/type checks) + DynamoDB job records; OpenPyXL inspection worker + manifest; duplicate/blank/type-distribution rules; S3 + DynamoDB unit tests.
 - **Day 3** — Step Functions through `QUALITY_REVIEW_PENDING`; task-token mechanism for gate #1; review-revision endpoint with optimistic concurrency; persist issues/proposals as paginated DynamoDB/S3 artifacts; retry/timeout/cancel/failure states.
+  > **⚠️ FIX — D3/D8:** No task token. Segment #1 **ends** at `QUALITY_REVIEW_PENDING`; the review endpoint starts segment #2 on the winning conditional write.
 - **Day 4** — Formula allowlist + verifier; OpenPyXL copy-and-apply for accepted quality/type changes; canonical main-file loader + deterministic exact matching; wire Tool #3 + Tool #4 states.
 - **Day 5** — Tool #5 candidate generation + update apply; duplicate-main-row protection + conflict policies; second approval gate; output artifact generation + presigned download links; audit event per decision.
+  > **⚠️ FIX — D6:** Candidate generation = plain-Python **key-blocking + fuzzy rank, cap ~5, recall-biased** before the AI; the model picks from those ~5 or returns none (it never sees the whole main sheet).
 - **Day 6** — Deploy to selected region; API throttling, S3 lifecycle, DynamoDB TTL, CloudWatch alarms, log retention; verify IAM least privilege + private S3; output reopen/reconciliation; AWS Budgets + cost guardrails.
 - **Day 7** — Failure/retry/cancel/stale-review tests; verify sources unchanged across all output modes; verify cleanup + redeploy; freeze API contract + tag release.
 
 ## Testing you own (§16)
 
 Unit (§16.1): header normalization, fingerprinting, duplicate/blank detection, type inference, formula allowlist, row-key matching, mapping application, update conflict handling, DynamoDB conditional revision updates. Integration (§16.2): presigned upload + ownership, SFN start + callback gates, S3 artifact creation, OpenPyXL save/reopen, retry/failure transitions, stale review → 409, duplicate start → no second execution.
+> **⚠️ FIX — D3:** "SFN start + callback gates" → test that a **segment ends at the gate** and **review-submit starts the next segment** (no task-token callback).
 
 ## Handoffs (§18)
 

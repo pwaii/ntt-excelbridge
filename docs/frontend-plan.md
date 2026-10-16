@@ -1,6 +1,8 @@
 # Frontend Engineer — Plan
 
-> Role-specific extract of `xlsx-data-workflow-demo-plan.md`. That file is the source of truth; section numbers below (§) point into it for shared detail. Stack: **React + Vite + TypeScript**.
+> Role-specific extract of `design.md`. That file is the source of truth; section numbers below (§) point into it for shared detail. Stack: **React + Vite + TypeScript**.
+>
+> **ADR 0001** (`docs/decisions/0001-design-grilling-decisions.md`): lines marked **⚠️ FIX — Dx** below are superseded. The original is kept so anyone who already built it can see what changed; the corrected version follows the marker.
 
 ## Responsibilities
 
@@ -27,14 +29,17 @@
 - Ambiguous matches are **never** shown as auto-applied; the user must explicitly accept/reject each ambiguous group or use a clearly-labeled bulk action (§5.3).
 - Pagination + virtualized tables for issue/proposal lists.
 - Escape cell values in previews; treat strings beginning with `=`, `+`, `-`, `@` as dangerous (formula-injection) when displayed/exported (§12.2, §14.4).
+  > **⚠️ FIX — D5:** Char-based escaping is fine for **preview display only**. The final `.xlsx` escaping is **BE's**, driven by a server-side **formula-vs-data cell tag** so approved formulas stay live `=…` — FE must **not** char-escape the downloaded file.
 - Poll job status with **exponential backoff** — do not call the API continuously.
 - Server is authoritative; local review state is convenience only.
 
 ## Review screens — what each must show
 
 **Quality review (§5.2):** summary counts by issue type; affected sheet/row/column/cell coordinates; sample before/after; severity + deterministic reason; LLM proposal + confidence where applicable; Accept / Reject / Edit / Ignore-with-reason actions. Every proposed mutation must carry a review status; nothing applies until the gate is submitted.
+> **⚠️ ADD — D9:** Use `confidence` to **sort riskiest-first** and to power a **bulk-approve** of high-confidence items (that's what makes ~2,000 rows reviewable). A bulk action is still a human decision — log it as `human accepted`, never "AI accepted."
 
 **Transformation review (§5.3):** Tool #4 standardization mappings; Tool #5 update matches with **exact / normalized / ambiguous / duplicate / conflict / unmatched** badges; generated formulas + their verification status ("syntax verified", not "calculated"); counts of inserted/updated/skipped/rejected; preview of final output rows.
+> **⚠️ FIX — D7:** No **inserted** count for the demo — unmatched rows are **skipped**, not inserted (insert = future work). Show counts of updated / skipped / rejected; render unmatched rows with action "skipped."
 
 **Result (§5.4):** final `.xlsx`, change-report `.json`, review-summary `.md` downloads; status of formula syntax checks.
 
@@ -67,6 +72,7 @@ All endpoints require the Cognito JWT; every response has `request_id`. BE publi
 
 - **Day 1** — Vite + React + TS app; route shell + layout; shared types; static job-creation form (current file, comment name, output header, standardize/update toggles, main file).
 - **Day 2** — Cognito sign-in (or test-user config); wire form to `POST /v1/jobs`; presigned upload progress for both files; sheet selection after upload metadata returns.
+  > **⚠️ ADD — D10:** On that same post-upload screen, add a **header-row confirm**: show the auto-detected header guess and let the user correct it before the job starts (a wrong guess poisons every downstream column/type/prompt).
 - **Day 3** — Job-progress screen (state timeline + polling); quality-review table + filters; row/cell preview + Accept/Reject/Edit.
 - **Day 4** — Formula review panel (text, referenced columns, syntax status); standardization mapping table + decision controls; loading/error/empty states.
 - **Day 5** — Update match table (all six badges); bulk review actions with confirmation; final transformation review summary.

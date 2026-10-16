@@ -1,6 +1,8 @@
 # AI Engineer — Plan
 
-> Role-specific extract of `xlsx-data-workflow-demo-plan.md`. That file is the source of truth; section numbers below (§) point into it. Stack: **Amazon Bedrock Runtime Converse API, Pydantic**.
+> Role-specific extract of `design.md`. That file is the source of truth; section numbers below (§) point into it. Stack: **Amazon Bedrock Runtime Converse API, Pydantic**.
+>
+> **ADR 0001** (`docs/decisions/0001-design-grilling-decisions.md`): lines marked **⚠️ FIX — Dx** below are superseded. The original is kept so anyone who already built it can see what changed; the corrected version follows the marker.
 
 ## Responsibilities
 
@@ -39,7 +41,8 @@ Output: `meaning`, `existing_column_matches[]` (column_id, confidence, reason), 
 ### Tool #2 — mismatched-type normalization (§10.3)
 Input: one flagged column, representative values, inferred type distribution, requested target type, preservation constraints.
 Output: `column_id`, `target_type`, `proposals[]` each `{row_id, original, normalized, confidence, status: safe|ambiguous|reject, reason}`.
-Backend **re-parses the normalized value with Python** before it can be accepted; original value always retained in audit. Any loss of precision / leading zeros / timezone / meaning → `manual_review` (the rule engine proposes the target type; Tool #2 decides safety — §9.4).
+Backend **re-parses the normalized value with Python** before it can be accepted; original value always retained in audit.
+> **⚠️ FIX — D4:** Return **one rule per distinct value-pattern, never one per cell/row** (per-cell on a dirty column blows `maxTokens`, the $140 cap, and the review UI). Shape: `rules[]` each `{pattern, example_original, normalized_form, confidence, status, reason}`. The backend **applies each rule to every matching cell and re-parses each result** in Python. Drop `row_id`-keyed proposals. *Already built per-cell?* Collapse identical transforms into one rule before display/apply. Any loss of precision / leading zeros / timezone / meaning → `manual_review` (the rule engine proposes the target type; Tool #2 decides safety — §9.4).
 
 ### Tool #3 — formula generation (§10.4) — optional
 Only used when the user selects a formula-based new column.
@@ -56,6 +59,7 @@ Output: entries with source, target, evidence, confidence, action (one-to-one / 
 Receives only **unresolved candidate matches**, not the whole workbook. Each candidate main row has a stable `main_row_id` + bounded fields.
 Output: `matches[]` each `{current_row_id, candidate_main_row_ids[], selected_main_row_id, match_type, confidence, reason, recommended_action}`.
 Matching order (§6 State 10): exact on approved key → normalized exact → **LLM-assisted composite only for unresolved rows** → human review for duplicate/conflict/low-confidence. Apply phase **rejects any selected row ID not in the candidate list**. Duplicate current rows → same main row requires an explicit conflict policy (merge / latest wins / keep both / reject all).
+> **⚠️ ADD — D6:** The `candidate_main_row_ids` fed to the model come from BE **key-blocking + fuzzy rank (cap ~5, recall-biased)** — the model never sees the whole main sheet; it picks from those ~5 or returns none. In **both** mode, block/match on the **standardized** current value, not the raw one.
 
 ## Model preflight (§7.1, §19)
 
@@ -64,6 +68,7 @@ Deploy-time check: selected Bedrock model/inference profile is available in the 
 ## Budget — Bedrock inference ($140 cap, §15)
 
 Low-cost non-Marketplace model; bounded samples; explicit `maxTokens`; **one call per tool** where possible; **cache by input hash**; no provisioned throughput. Honor the `COST_GUARD_REACHED` stop state. Retry budgets per tool. Caps on rows, samples/column, candidate matches, and tokens.
+> **⚠️ FIX — D1:** Size the token/row caps for a **~2,000-row** working set (the designed-for tier), not 50k. Caching by input hash is safe — a human reviews every result, so a stale cached proposal can't auto-apply.
 
 ## Day-by-day
 

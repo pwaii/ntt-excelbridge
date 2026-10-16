@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Status
 
-Pre-scaffold. The repo currently contains only this file, `README.md`, and the full implementation brief in **`xlsx-data-workflow-demo-plan.md`** — that plan is the source of truth for everything below. No `backend/`, `frontend/`, or `infra/` exists yet; build/lint/test commands will come from `backend/pyproject.toml` and `frontend/package.json` once those are created per §8 of the plan. Until then, read the plan before implementing a slice.
+Pre-scaffold. The repo currently contains only this file, `README.md`, and the full implementation brief in **`design.md`** — that plan is the source of truth for everything below. No `backend/`, `frontend/`, or `infra/` exists yet; build/lint/test commands will come from `backend/pyproject.toml` and `frontend/package.json` once those are created per §8 of the plan. Until then, read the plan before implementing a slice.
 
 ## What this is
 
