@@ -16,6 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # make `app` importable
 
 from botocore.exceptions import BotoCoreError, ClientError
+from pydantic import ValidationError
 
 from app.ai.cache import CachingBedrockClient
 from app.ai.policy import CONFIDENCE_FLOOR
@@ -147,9 +148,11 @@ def run_case(tool, run_fn, inputs, checks, client) -> dict:
     }
 
 
-def write_report(rows):
+def write_report(rows, failures=None):
     DOCS.mkdir(exist_ok=True)
-    (DOCS / "ai-eval-day6.json").write_text(json.dumps(rows, indent=2), encoding="utf-8")
+    (DOCS / "ai-eval-day6.json").write_text(
+        json.dumps({"rows": rows, "failures": failures or []}, indent=2), encoding="utf-8"
+    )
     models = sorted({r["model_id"] for r in rows})
     md = [
         "# AI Day 6 — eval measurements", "",
@@ -163,6 +166,10 @@ def write_report(rows):
                   f"| {r['latency_ms']} | {r['est_usd']:.6f} | {r['checks_passed']} {status} |")
     total = sum(r["est_usd"] for r in rows)
     md += ["", f"**Total est cost this run:** ${total:.6f} (cached reruns are free)."]
+    if failures:
+        md += ["", "## Model output findings (Day-6)", ""]
+        for f in failures:
+            md.append(f"- **{f['tool']}** ({f['kind']}): `{f['detail']}`")
     (DOCS / "ai-eval-day6.md").write_text("\n".join(md) + "\n", encoding="utf-8")
 
 
@@ -174,12 +181,24 @@ def main() -> int:
 
     print("== eval ==")
     client = CachingBedrockClient()
-    rows, ok = [], True
+    rows, failures, ok = [], [], True
     for tool, run_fn, inputs, checks in CASES:
         try:
             row = run_case(tool, run_fn, inputs, checks, client)
+        except ValidationError as e:
+            detail = f"{e.error_count()} error(s): {e.errors()[0]['loc']} {e.errors()[0]['msg']}"
+            print(f"  {tool}: SCHEMA FAIL {detail}")
+            failures.append({"tool": tool, "kind": "schema", "detail": detail})
+            ok = False
+            continue
+        except ValueError as e:
+            print(f"  {tool}: PARSE FAIL {e}")
+            failures.append({"tool": tool, "kind": "parse", "detail": str(e)})
+            ok = False
+            continue
         except (ClientError, BotoCoreError) as e:
             print(f"  {tool}: TRANSPORT FAIL {e}")
+            failures.append({"tool": tool, "kind": "transport", "detail": str(e)})
             ok = False
             continue
         rows.append(row)
@@ -190,8 +209,8 @@ def main() -> int:
               f"{row['latency_ms']}ms ${row['est_usd']:.6f}")
 
     if rows:
-        write_report(rows)
-        print(f"report → docs/ai-eval-day6.md ({len(rows)} tools)")
+        write_report(rows, failures)
+        print(f"report -> docs/ai-eval-day6.md ({len(rows)} tools, {len(failures)} findings)")
     return 0 if ok and rows else 1
 
 
