@@ -1,10 +1,9 @@
-# Session log — AI Engineer (Days 1–5)
+# Session log — AI Engineer (Days 1–6)
 
 Branch: `ai`. Stack: Bedrock Runtime Converse API + Pydantic. Every tool output is an
 untrusted proposal validated at a trust boundary; the model never executes code.
 
-**Status:** Days 1–5 complete. Backend suite green (59 passed). Tools #1–#5 all implemented;
-Day 6 is the real-Bedrock fixture evaluation.
+**Status:** Days 1–6 complete. Backend suite green (61 passed). Tools #1–#5 tested against real Bedrock; cache, preflight, and eval harness in place.
 
 ## Day 1 — contracts & guardrails
 - Shared response envelope: `ToolResult[T]` + Python-computed `AuditMeta` (`schemas.py`).
@@ -38,6 +37,16 @@ Spec: `docs/superpowers/specs/2026-10-16-ai-day5-design.md` · Plan: `docs/super
 - **Demote-only:** `ambiguous`/`duplicate`/`conflict` match types, or any match below `CONFIDENCE_FLOOR` (0.80), forced to `recommended_action: human_review`. Threshold *tuning* against real confidences is Day 6.
 - **No schema/prompt/policy change:** `Tool5Match`/`Tool5Output` and `tool5_update.v1.md` existed from Day 1; `rule_count` already in `SAFE_LOG_FIELDS`.
 - **Fake-Bedrock unit tests** (`test_ai_day5.py`, 8 cases): valid match, prompt render, malformed payload, un-offered selection, unmatched-with-selection, ambiguous demote, below-floor demote, cost log (`rule_count`, no raw field values).
+
+## Day 6 — real-Bedrock eval, cache, preflight
+Spec: `docs/superpowers/specs/2026-10-16-ai-day6-design.md` · Plan: `docs/superpowers/plans/2026-10-16-ai-day6.md`
+- **`CachingBedrockClient` (`cache.py`):** drop-in wrapper over `converse_json`, disk-memoized by `sha256(model_id+prompt)` under `backend/.cache/bedrock/` (gitignored). Repeat eval/demo runs are free. Safe — a human reviews every result (ADR residual note). Offline hit/miss unit test.
+- **`scripts/preflight.py`:** one minimal real `converse` per allowlisted model — proves invocable + entitled + non-Marketplace + SCP-clear. `list-foundation-models` is NOT authoritative in this account. This is the §7.1/§19 preflight BE needs for IAM scoping.
+- **`scripts/eval_tools.py`:** runs all 5 tools against capped fixtures with the caching client; light invariant checks on real output (schema parsed, enums valid, demote applied, no off-candidate id); per-tool tokens/latency + Nova on-demand cost → `docs/ai-eval-day6.{json,md}`.
+- **Results (3/5 tools clean):** tool1_semantics (nova-lite, 347/173 tok, 1533ms, $0.000062), tool3_formulas (nova-pro, 243/245 tok, 2073ms, $0.000978), tool4_standardize (nova-pro, 255/379 tok, 2026ms, $0.001417) all 3 checks each. Total: $0.0025.
+- **Findings:** tool2_types SCHEMA FAIL (`rules[1].normalized_form` returned `null`; schema requires `str`); tool5_update PARSE FAIL (model emitted malformed JSON). Both captured in `docs/ai-eval-day6.md` findings section — not code bugs, Day-7 prompt-tuning targets.
+- **Environment finding:** the Day-1 model config (bare `amazon.nova-lite-v1:0` / `-pro-v1:0`, us-east-1) is correct and unchanged. Cross-region inference-profile ids (`us.`/`apac.`) are poison here — they fan out to an SCP-denied region (`us-west-2`/`ap-southeast-2`). Run via `AWS_PROFILE=ChallengerAccess-453995432289 AWS_REGION=us-east-1`. Legacy `claude-3-*` are Marketplace-gated (forbidden). See `memory/bedrock-access-us-east-1-bare-ids.md`.
+- **Still open for Day 7:** adversarial/accuracy scoring + `CONFIDENCE_FLOOR` tuning; fix tool2/tool5 prompts for the null-field and malformed-JSON findings; folding per-model cost into `estimate_cost_usd`. **BE:** no worker calls `run_toolN` yet — integration is BE Day 6.
 
 ## Open items / handoff to BE
 - **Log schema:** Tools #2/#4 now emit `rule_count` (not `row_count`) — confirm BE log consumers.
