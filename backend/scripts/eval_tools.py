@@ -159,13 +159,13 @@ def format_report(rows, failures=None) -> str:
         "|---|---|---:|---:|---:|---:|---|",
     ]
     for r in rows:
-        status = "✅" if not r["checks_failed"] else "❌ " + "; ".join(r["checks_failed"])
+        status = "OK" if not r["checks_failed"] else "FAIL " + "; ".join(r["checks_failed"])
         md.append(f"| {r['tool']} | {r['model_id']} | {r['in_tokens']} | {r['out_tokens']} "
                   f"| {r['latency_ms']} | {r['est_usd']:.6f} | {r['checks_passed']} {status} |")
     total = sum(r["est_usd"] for r in rows)
     md += ["", f"**Total est cost this run:** ${total:.6f} (cached reruns are free)."]
     if failures:
-        md += ["", "## Model output findings (Day-6)", ""]
+        md += ["", "## Model output findings", ""]
         for f in failures:
             md.append(f"- **{f['tool']}** ({f['kind']}): `{f['detail']}`")
     return "\n".join(md) + "\n"
