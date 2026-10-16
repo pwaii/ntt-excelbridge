@@ -9,10 +9,13 @@ Run:
 Scope (brainstorming): run + measure + light checks. Adversarial reject-whole paths stay in
 the pytest unit tests; accuracy scoring + threshold tuning are Day 7.
 """
+import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # make `app` importable
+
+DOCS_DIR = Path(__file__).resolve().parent.parent.parent / "docs"
 
 from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import ValidationError
@@ -150,7 +153,7 @@ def format_report(rows, failures=None) -> str:
     lives in SESSION_AI.md, not a separate docs file."""
     models = sorted({r["model_id"] for r in rows})
     md = [
-        "# AI Day 6 — eval measurements", "",
+        "# AI Day 7 — eval measurements", "",
         f"Region `{settings.aws_region}` · models {models} · 1 case/tool (tool5 = 3 rows).", "",
         "| tool | model | in tok | out tok | latency ms | est $ | checks |",
         "|---|---|---:|---:|---:|---:|---|",
@@ -166,6 +169,19 @@ def format_report(rows, failures=None) -> str:
         for f in failures:
             md.append(f"- **{f['tool']}** ({f['kind']}): `{f['detail']}`")
     return "\n".join(md) + "\n"
+
+
+def write_report(rows, failures, docs_dir: Path) -> tuple[Path, Path]:
+    """Persist the run as markdown + json. Returns (md_path, json_path)."""
+    docs_dir.mkdir(parents=True, exist_ok=True)
+    md_path = docs_dir / "ai-eval-day7.md"
+    json_path = docs_dir / "ai-eval-day7.json"
+    md_path.write_text(format_report(rows, failures), encoding="utf-8")
+    json_path.write_text(
+        json.dumps({"rows": rows, "failures": failures or []}, indent=2),
+        encoding="utf-8",
+    )
+    return md_path, json_path
 
 
 def main() -> int:
@@ -206,6 +222,8 @@ def main() -> int:
     if rows:
         print()
         print(format_report(rows, failures))
+        md_path, json_path = write_report(rows, failures, DOCS_DIR)
+        print(f"wrote {md_path} and {json_path}")
     return 0 if ok and rows else 1
 
 
