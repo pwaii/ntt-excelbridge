@@ -1,9 +1,9 @@
-# Session log — AI Engineer (Days 1–6)
+# Session log — AI Engineer (Days 1–7)
 
 Branch: `ai`. Stack: Bedrock Runtime Converse API + Pydantic. Every tool output is an
 untrusted proposal validated at a trust boundary; the model never executes code.
 
-**Status:** Days 1–6 complete. Backend suite green (61 passed). Tools #1–#5 tested against real Bedrock; cache, preflight, and eval harness in place.
+**Status:** Days 1–7 complete. Backend suite green (73 passed). Tools #1–#5 tested against real Bedrock and passing 5/5 on a fresh run ($0.0024); cache, preflight, eval harness, pin-guard + adversarial tests in place.
 
 ## Day 1 — contracts & guardrails
 - Shared response envelope: `ToolResult[T]` + Python-computed `AuditMeta` (`schemas.py`).
@@ -66,5 +66,38 @@ Spec: `docs/superpowers/specs/2026-10-16-ai-day6-design.md` · Plan: `docs/super
 ## Verification completed
 Full backend suite `python -m pytest` → **61 passed** (2 new offline cache tests). No real boto calls in any pytest. The live eval (`scripts/eval_tools.py`) ran real Bedrock in us-east-1 for $0.0025. Spec, plan, and implementation each committed separately on branch `ai`.
 
-## Next — Day 7
-Fix the tool2/tool5 prompts for the Day-6 findings (force `normalized_form` string; JSON-only framing + one-shot retry); adversarial tests (invented row IDs, unsupported formulas, empty responses, contradictory mappings); accuracy scoring + `CONFIDENCE_FLOOR` tuning; short model-quality report with known limitations.
+## Day 7 — wrap-up: prompt fixes, pin guard, adversarial tests, model-quality report
+Spec: `docs/superpowers/specs/2026-10-16-ai-day7-design.md` · Plan: `docs/superpowers/plans/2026-10-16-ai-day7.md`
+
+**Day-6 findings fixed (both were prompt issues, not code bugs):**
+- **tool2_types** (`normalized_form` → `null`): the prompt never said what to put when a value can't be normalized, so Nova chose `null` and the strict `str` schema rejected the whole response. Fixed with one sentence: for a reject rule, `normalized_form` must be `""` (never null).
+- **tool5_update** (malformed JSON = Python code): the prompt title "Update matching" read like a coding task to Nova Lite, which returned Python instead of JSON. Fixed by renaming the prompt to "Row matching analysis" and adding an up-front "return JSON only — no code, no prose" instruction. (So the Day-6 PARSE FAIL was the model emitting Python, caught by `_extract_json` — the guard working.)
+
+**Fresh real-Bedrock run — 5/5 clean** (us-east-1, 1 case/tool, tool5 = 3 rows; total **$0.0024**, cached reruns free):
+
+| tool | model | in tok | out tok | latency ms | est $ | checks |
+|---|---|---:|---:|---:|---:|---|
+| tool1_semantics | nova-lite | 347 | 173 | 1556 | 0.000062 | 3 OK |
+| tool2_types | nova-lite | 379 | 435 | 2322 | 0.000127 | 3 OK |
+| tool3_formulas | nova-pro | 243 | 239 | 3063 | 0.000959 | 3 OK |
+| tool4_standardize | nova-pro | 255 | 292 | 2823 | 0.001138 | 3 OK |
+| tool5_update | nova-lite | 467 | 265 | 1301 | 0.000092 | 3 OK |
+
+**Pinning + adversarial tests** (`test_ai_day7.py`, +12 cases → suite 73 passed, all offline):
+- **Pin guard** (×5 tools): `PROMPT_VERSION == "v1"`, the `prompts/<tool>.v1.md` file exists, and every `_FIELDS` name has a `{placeholder}` in the prompt (catches a field that would silently render unfilled, since `render_prompt` uses `str.replace`).
+- **Adversarial gaps:** `_extract_json` rejects a response with no JSON object; an empty `{}` per tool raises Pydantic `ValidationError`. (The spec's "invented row_id" / "contradictory mapping" cases were already covered — Tool #2 is value-pattern rules with no row_id; Tool #4 one-to-many→ambiguous is Day-4 `test_run_tool4_one_to_many_demoted_to_ambiguous`.)
+
+**Eval artifacts relocated:** `write_report` now writes `ai-eval-day7.{md,json}` to `backend/.cache/eval/` (under the already-gitignored `.cache/`), not `docs/`. This session log is the single committed, human-curated record — the standalone `docs/ai-model-quality.md` was folded in here and removed.
+
+**Confidence-band behavior (unchanged, recorded for the report):**
+- Every tool output is an untrusted proposal; nothing auto-applies. Two human review gates.
+- `ambiguous` and sub-floor `safe` proposals are demoted to human review (Tools #2/#4/#5).
+- Models may only *select* from candidate IDs/values in the prompt; invented IDs/headers/canonicals are rejected whole.
+
+**Known limitations:**
+- **Summary-row / column totals deferred** — row-wise formulas only.
+- **Update mode skips unmatched rows** — insert deferred.
+- **Formulas are syntax-verified, not calculated** — OpenPyXL does not evaluate.
+- **Region-locked access** — cross-region inference profiles (`us.*`/`apac.*`) hit an org SCP deny; only bare us-east-1 Nova ids work here.
+
+**Still open (not AI-day work):** `CONFIDENCE_FLOOR`/pricing placeholders stay until real tuning + Nova pricing land; BE integration — no worker calls `run_toolN` yet.
