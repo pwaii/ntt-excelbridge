@@ -34,3 +34,6 @@ Thumbs.db
 sample-data/*.xlsx
 !sample-data/current.xlsx
 !sample-data/main.xlsx
+
+# Bedrock response cache (Day-6 eval / demo repeat runs)
+backend/.cache/
