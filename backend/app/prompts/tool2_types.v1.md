@@ -17,6 +17,7 @@ is always kept.
   Return one rule per pattern, not one per value. Do not invent patterns not present in the samples.
 - Any loss of precision, leading zeros, timezone, or meaning -> status "reject" (manual review).
 - status is one of safe | ambiguous | reject. confidence is 0..1.
+- normalized_form is always a non-null string — for reject rules use the original value unchanged.
 
 ## Output — JSON only, matching this shape
 ```json

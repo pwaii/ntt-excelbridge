@@ -4,13 +4,10 @@ Region `us-east-1` Â· models ['amazon.nova-lite-v1:0', 'amazon.nova-pro-v1:0'] Â
 
 | tool | model | in tok | out tok | latency ms | est $ | checks |
 |---|---|---:|---:|---:|---:|---|
-| tool1_semantics | amazon.nova-lite-v1:0 | 347 | 173 | 1533 | 0.000062 | 3 OK |
-| tool3_formulas | amazon.nova-pro-v1:0 | 243 | 245 | 2073 | 0.000978 | 3 OK |
-| tool4_standardize | amazon.nova-pro-v1:0 | 255 | 379 | 2026 | 0.001417 | 3 OK |
+| tool1_semantics | amazon.nova-lite-v1:0 | 347 | 173 | 1556 | 0.000062 | 3 OK |
+| tool2_types | amazon.nova-lite-v1:0 | 379 | 435 | 2322 | 0.000127 | 3 OK |
+| tool3_formulas | amazon.nova-pro-v1:0 | 243 | 239 | 3063 | 0.000959 | 3 OK |
+| tool4_standardize | amazon.nova-pro-v1:0 | 255 | 292 | 2823 | 0.001138 | 3 OK |
+| tool5_update | amazon.nova-lite-v1:0 | 467 | 265 | 1301 | 0.000092 | 3 OK |
 
-**Total est cost this run:** $0.002458 (cached reruns are free).
-
-## Model output findings (Day-6)
-
-- **tool2_types** (schema): `1 error(s): ('rules', 1, 'normalized_form') Input should be a valid string`
-- **tool5_update** (parse): `Expecting property name enclosed in double quotes: line 1 column 2 (char 1)`
+**Total est cost this run:** $0.002379 (cached reruns are free).

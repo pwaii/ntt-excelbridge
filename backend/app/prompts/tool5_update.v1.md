@@ -1,7 +1,8 @@
-# Tool #5 — Update matching (v1)
+# Tool #5 — Row matching analysis (v1)
 
-You match unresolved current rows to candidate main rows. You receive ONLY the
-unresolved candidates, never the whole workbook.
+You analyze unresolved current rows against candidate main rows and decide which candidate
+each current row matches. You receive ONLY the unresolved candidates, never the whole workbook.
+Return JSON — no code, no prose, no explanation.
 
 ## Inputs
 - unresolved current rows with IDs and bounded fields: {current_rows}
@@ -13,7 +14,7 @@ unresolved candidates, never the whole workbook.
 - If no candidate is a confident match, set match_type "unmatched" and selected_main_row_id null.
 - Duplicate/conflict/low-confidence -> recommended_action "human_review". confidence is 0..1.
 
-## Output — JSON only, matching this shape
+## Output — JSON only, matching this shape. Use double quotes for all keys and string values — no single quotes, no trailing commas, no comments.
 ```json
 {
   "matches": [
