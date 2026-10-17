@@ -8,8 +8,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
-from app.api.dependencies import get_dynamo_store, get_s3_store
-from app.api.dependencies import get_workflow_store
+from app.api.dependencies import get_dynamo_store, get_s3_store, get_workflow_store
 from app.auth import current_user_id
 from app.domain.enums import JobStatus
 from app.domain.models import (
@@ -20,7 +19,7 @@ from app.domain.models import (
     PresignedUpload,
 )
 from app.domain.schemas import CreateJobRequest
-from app.storage.dynamo_store import DynamoStore, JobAlreadyExistsError
+from app.storage.dynamo_store import DynamoStore, JobAlreadyExistsError, RevisionConflictError
 from app.storage.s3_store import S3Store
 from app.storage.sfn_store import WorkflowNotConfiguredError, WorkflowStore
 from app.workers.demo_pipeline import run_demo_pipeline
@@ -178,7 +177,7 @@ def start_job(
                     expected_revision=int(inspecting["revision"]),
                     updates={"execution_arn": started["execution_arn"], "workflow_segment": 1},
                 )
-            except Exception:
+            except RevisionConflictError:
                 # A Lambda may finish before the StartExecution response is persisted.
                 running = dynamo.get_job(job_id) or inspecting
             return JobResponse(job=_record(running), request_id=request.state.request_id)

@@ -7,17 +7,18 @@ from hashlib import sha256
 from io import BytesIO
 from typing import Any
 
+from openpyxl import load_workbook
+
 from app.main import app
+from app.settings import settings
 from app.storage.dynamo_store import DynamoStore
 from app.storage.s3_store import S3Store
-from app.workers.bedrock_worker import run_tool_segment
 from app.workers.apply_changes import apply_accepted_changes, apply_accepted_updates
-from app.workers.validate_output import validate_output
+from app.workers.bedrock_worker import run_tool_segment
 from app.workers.inspect_workbook import inspect_bytes, manifest_json
 from app.workers.matching import build_tool5_inputs, load_canonical_rows
 from app.workers.quality_rules import run_quality_rules
-from app.settings import settings
-from openpyxl import load_workbook
+from app.workers.validate_output import validate_output
 
 
 def api_handler(event, context):
@@ -109,7 +110,7 @@ def bedrock_handler(event: dict[str, Any], context) -> dict[str, Any]:
         "tool5": "UPDATE_PENDING",
     }
     if tool in status_by_tool:
-        updated = dynamo.update_job(job_id, int(item["revision"]), {"status": status_by_tool[tool]})
+        dynamo.update_job(job_id, int(item["revision"]), {"status": status_by_tool[tool]})
     return proposal
 
 
