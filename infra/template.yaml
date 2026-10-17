@@ -2,6 +2,10 @@ AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: XLSX data-quality / standardization / update workflow.
 
+Metadata:
+  AWSToolsMetrics:
+    AWSAgentToolkit: aws-cloudformation@3
+
 Parameters:
   Environment:
     Type: String
@@ -28,7 +32,6 @@ Globals:
         ENVIRONMENT: !Ref Environment
         DYNAMO_TABLE: !Ref MetadataTable
         APP_DATA_BUCKET: !Ref DataBucket
-        STATE_MACHINE_ARN: !Ref WorkflowStateMachine
         BEDROCK_MODEL_ID: !Ref BedrockModelId
         BEDROCK_MODEL_ID_HEAVY: !Ref BedrockHeavyModelId
 
@@ -121,6 +124,7 @@ Resources:
         DefaultAuthorizer: CognitoAuthorizer
         Authorizers:
           CognitoAuthorizer:
+            IdentitySource: $request.header.Authorization
             JwtConfiguration:
               issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}
               audience: [!Ref UserPoolClient]
@@ -129,6 +133,9 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: app.lambda_handlers.api_handler
+      Environment:
+        Variables:
+          STATE_MACHINE_ARN: !Ref WorkflowStateMachine
       Policies:
         - S3CrudPolicy: { BucketName: !Ref DataBucket }
         - DynamoDBCrudPolicy: { TableName: !Ref MetadataTable }
