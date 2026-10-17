@@ -18,6 +18,9 @@ class JobConfig(BaseModel):
     input_sheet: str | None = None
     main_sheet: str | None = None
     key_column: str | None = None  # business key for matching (§3.2)
+    input_header_row: int | None = Field(default=None, ge=1, le=20)
+    main_header_row: int | None = Field(default=None, ge=1, le=20)
+    main_key_column: str | None = None
 
     def output_policy(self) -> OutputPolicy:
         if self.standardize and self.update:

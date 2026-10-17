@@ -19,7 +19,9 @@ from app.domain.models import (
     PresignedUpload,
 )
 from app.domain.schemas import CreateJobRequest
-from app.storage.dynamo_store import DynamoStore, JobAlreadyExistsError
+from app.storage.dynamo_store import DynamoStore, JobAlreadyExistsError, RevisionConflictError
+from app.api.workbooks import validate_selections
+from app.domain.workbooks import WorkbookSelection
 from app.storage.s3_store import S3Store
 from app.workers.demo_pipeline import run_demo_pipeline
 
@@ -147,6 +149,7 @@ def start_job(
     owner_id: str = Depends(current_user_id),
     dynamo: DynamoStore = Depends(get_dynamo_store),
     s3: S3Store = Depends(get_s3_store),
+    expected_revision: int | None = Query(default=None, ge=0),
 ) -> JobResponse:
     """Run the AWS-backed pass-through pipeline for the uploaded workbook."""
 
@@ -161,6 +164,13 @@ def start_job(
             detail=f"job must be UPLOADED before starting; current status is {item.get('status')}",
         )
 
+    if isinstance(expected_revision, int) and expected_revision != int(item["revision"]):
+        raise HTTPException(409, "Job revision changed; reload before Start")
+    if not item.get("configuration_confirmed"):
+        raise HTTPException(422, "Confirm worksheet, header row and required keys before Start")
+    selections = {slot: WorkbookSelection.model_validate(value) for slot, value in item.get("workbook_selections", {}).items()}
+    validate_selections(item, selections, s3)
+
     try:
         inspecting = dynamo.update_job(
             job_id,
@@ -173,6 +183,9 @@ def start_job(
             dynamo=dynamo,
             s3=s3,
         )
+    except RevisionConflictError as error:
+        # A losing duplicate must not mark the winning execution as failed.
+        raise HTTPException(409, "Job changed; refresh status before retrying") from error
     except Exception as error:
         current = dynamo.get_job(job_id)
         if current and current.get("status") not in {

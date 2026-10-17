@@ -34,7 +34,7 @@ Prompt carries only the minimum evidence: headers + type summaries, bounded samp
 ## The five tools (§10)
 
 ### Tool #1 — semantic verification (§10.2)
-Input: `comment_name`, requested output header, current + normalized headers, main headers (when available), column type summaries, bounded sample values + evidence cell IDs, job config + prompt version.
+Input: `prompt`, requested output header, current + normalized headers, main headers (when available), column type summaries, bounded sample values + evidence cell IDs, job config + prompt version.
 Output: `meaning`, `existing_column_matches[]` (column_id, confidence, reason), `recommended_output_header`, `interpretation`, `confidence`, `status` (`confirmed|ambiguous|not_found`), `questions_for_human[]`.
 **Cannot create values** — only verifies meaning + identifies candidate source columns. UI must show evidence.
 
@@ -46,7 +46,7 @@ Backend **re-parses the normalized value with Python** before it can be accepted
 
 ### Tool #3 — formula generation (§10.4) — optional
 Only used when the user selects a formula-based new column.
-Input: comment meaning, source headers, allowed functions, sample rows, expected output type.
+Input: prompt meaning, source headers, allowed functions, sample rows, expected output type.
 Output: `formula_template`, `target_header`, `expected_type`, `referenced_headers[]`, `explanation`, `confidence`.
 Verification (done by BE, but design to it): allowlist functions, validate references in-range, row expansion, lightweight test against fixture rows; **no** external links / macros / `WEBSERVICE` / `HYPERLINK` / `INDIRECT` / `OFFSET` / volatile. Labeled "syntax verified," never "calculated."
 
