@@ -1,32 +1,36 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: XLSX data-quality / standardization / update workflow (demo). See docs/backend-plan.md (§7).
-
-# SKELETON — resources are placeholders. BE Day 1 fills these in (§17).
+Description: XLSX data-quality / standardization / update workflow.
 
 Parameters:
   Environment:
     Type: String
     Default: demo
+    AllowedPattern: "^[a-z0-9-]+$"
   BedrockModelId:
     Type: String
-    Description: Resolved + verified non-Marketplace model id (preflight, §10.1).
+    Default: amazon.nova-lite-v1:0
+  BedrockHeavyModelId:
+    Type: String
+    Default: amazon.nova-pro-v1:0
   FrontendOrigin:
     Type: String
     Default: http://localhost:5173
-    Description: Browser origin allowed to upload workbooks directly to S3.
 
 Globals:
   Function:
     Runtime: python3.12
     MemorySize: 1024
     Timeout: 60
+    CodeUri: ../backend
     Environment:
       Variables:
         ENVIRONMENT: !Ref Environment
         DYNAMO_TABLE: !Ref MetadataTable
         APP_DATA_BUCKET: !Ref DataBucket
+        STATE_MACHINE_ARN: !Ref WorkflowStateMachine
         BEDROCK_MODEL_ID: !Ref BedrockModelId
+        BEDROCK_MODEL_ID_HEAVY: !Ref BedrockHeavyModelId
 
 Resources:
   DataBucket:
@@ -43,37 +47,266 @@ Resources:
       VersioningConfiguration: { Status: Enabled }
       CorsConfiguration:
         CorsRules:
-          - AllowedOrigins:
-              - !Ref FrontendOrigin
-              - http://127.0.0.1:5173
+          - AllowedOrigins: [!Ref FrontendOrigin, http://127.0.0.1:5173]
             AllowedMethods: [GET, PUT, HEAD]
             AllowedHeaders: ["*"]
-            ExposedHeaders: [ETag]
+            ExposedHeaders: [ETag, x-amz-version-id]
       LifecycleConfiguration:
         Rules:
           - Id: expire-demo-jobs
             Status: Enabled
+            Prefix: jobs/
             ExpirationInDays: 14
 
   MetadataTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub "xlsx-workflow-${Environment}"
+      TableName: !Sub xlsx-workflow-${Environment}
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - { AttributeName: PK, AttributeType: S }
         - { AttributeName: SK, AttributeType: S }
+        - { AttributeName: GSI1PK, AttributeType: S }
+        - { AttributeName: GSI1SK, AttributeType: S }
+        - { AttributeName: GSI2PK, AttributeType: S }
+        - { AttributeName: GSI2SK, AttributeType: S }
       KeySchema:
         - { AttributeName: PK, KeyType: HASH }
         - { AttributeName: SK, KeyType: RANGE }
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - { AttributeName: GSI1PK, KeyType: HASH }
+            - { AttributeName: GSI1SK, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+        - IndexName: GSI2
+          KeySchema:
+            - { AttributeName: GSI2PK, KeyType: HASH }
+            - { AttributeName: GSI2SK, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+      PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true }
+      SSESpecification: { SSEEnabled: true }
       TimeToLiveSpecification: { AttributeName: expires_at, Enabled: true }
-      # TODO(BE): GSI1 (OWNER#), GSI2 (STATUS#) per §7.6
 
-  # TODO(BE): ApiFunction (FastAPI+Mangum), worker functions, StateMachine,
-  # Cognito UserPool, HttpApi with JWT authorizer. See docs/backend-plan.md.
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub xlsx-workflow-${Environment}
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows: [ALLOW_USER_PASSWORD_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
+
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref Environment
+      CorsConfiguration:
+        AllowOrigins: [!Ref FrontendOrigin, http://127.0.0.1:5173]
+        AllowHeaders: [Authorization, Content-Type, X-Request-Id]
+        AllowMethods: [GET, POST, OPTIONS]
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            JwtConfiguration:
+              issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}
+              audience: [!Ref UserPoolClient]
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handlers.api_handler
+      Policies:
+        - S3CrudPolicy: { BucketName: !Ref DataBucket }
+        - DynamoDBCrudPolicy: { TableName: !Ref MetadataTable }
+        - Statement:
+            - Effect: Allow
+              Action: states:StartExecution
+              Resource: !GetAtt WorkflowStateMachine.Arn
+            - Effect: Allow
+              Action: states:StopExecution
+              Resource:
+                - !Sub
+                  - arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${StateMachineName}:*
+                  - StateMachineName: !Select [6, !Split [":", !GetAtt WorkflowStateMachine.Arn]]
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /{proxy+}
+            Method: ANY
+        Root:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /
+            Method: ANY
+
+  InspectFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handlers.inspect_handler
+      Policies:
+        - S3CrudPolicy: { BucketName: !Ref DataBucket }
+        - DynamoDBCrudPolicy: { TableName: !Ref MetadataTable }
+
+  QualityFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handlers.quality_handler
+      Policies:
+        - S3CrudPolicy: { BucketName: !Ref DataBucket }
+        - DynamoDBCrudPolicy: { TableName: !Ref MetadataTable }
+
+  QualityGateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handlers.quality_gate_handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref MetadataTable }
+
+  BedrockFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handlers.bedrock_handler
+      Policies:
+        - S3CrudPolicy: { BucketName: !Ref DataBucket }
+        - DynamoDBCrudPolicy: { TableName: !Ref MetadataTable }
+        - Statement:
+            - Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource:
+                - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/${BedrockModelId}
+                - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/${BedrockHeavyModelId}
+
+  ApplyFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handlers.apply_handler
+      Policies:
+        - S3CrudPolicy: { BucketName: !Ref DataBucket }
+        - DynamoDBCrudPolicy: { TableName: !Ref MetadataTable }
+
+  ValidateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handlers.validate_handler
+      Policies:
+        - S3CrudPolicy: { BucketName: !Ref DataBucket }
+        - DynamoDBCrudPolicy: { TableName: !Ref MetadataTable }
+
+  FailureFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handlers.failure_handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref MetadataTable }
+
+  ApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ApiFunction}
+      RetentionInDays: 14
+
+  InspectLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${InspectFunction}
+      RetentionInDays: 14
+
+  QualityLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${QualityFunction}
+      RetentionInDays: 14
+
+  QualityGateLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${QualityGateFunction}
+      RetentionInDays: 14
+
+  BedrockLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${BedrockFunction}
+      RetentionInDays: 14
+
+  ApplyLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ApplyFunction}
+      RetentionInDays: 14
+
+  ValidateLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ValidateFunction}
+      RetentionInDays: 14
+
+  FailureLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${FailureFunction}
+      RetentionInDays: 14
+
+  WorkflowStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Type: STANDARD
+      DefinitionUri: statemachine.asl.json
+      DefinitionSubstitutions:
+        InspectWorkerArn: !GetAtt InspectFunction.Arn
+        QualityWorkerArn: !GetAtt QualityFunction.Arn
+        QualityGateWorkerArn: !GetAtt QualityGateFunction.Arn
+        BedrockWorkerArn: !GetAtt BedrockFunction.Arn
+        ApplyWorkerArn: !GetAtt ApplyFunction.Arn
+        ValidateWorkerArn: !GetAtt ValidateFunction.Arn
+        FailureWorkerArn: !GetAtt FailureFunction.Arn
+      Policies:
+        - LambdaInvokePolicy: { FunctionName: !Ref InspectFunction }
+        - LambdaInvokePolicy: { FunctionName: !Ref QualityFunction }
+        - LambdaInvokePolicy: { FunctionName: !Ref QualityGateFunction }
+        - LambdaInvokePolicy: { FunctionName: !Ref BedrockFunction }
+        - LambdaInvokePolicy: { FunctionName: !Ref ApplyFunction }
+        - LambdaInvokePolicy: { FunctionName: !Ref ValidateFunction }
+        - LambdaInvokePolicy: { FunctionName: !Ref FailureFunction }
 
 Outputs:
-  DataBucketName:
-    Value: !Ref DataBucket
-  MetadataTableName:
-    Value: !Ref MetadataTable
+  ApiUrl:
+    Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${Environment}
+  DataBucketName: { Value: !Ref DataBucket }
+  MetadataTableName: { Value: !Ref MetadataTable }
+  StateMachineArn: { Value: !Ref WorkflowStateMachine }
+  UserPoolId: { Value: !Ref UserPool }
+  UserPoolClientId: { Value: !Ref UserPoolClient }

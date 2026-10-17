@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     max_jobs_per_day: int = 50
     presigned_url_ttl_seconds: int = 300
     max_samples_per_column: int = 20    # §15 cap — placeholder, confirm with team
-    max_candidate_matches: int = 25     # §15 cap — placeholder, confirm with team
+    max_candidate_matches: int = 5      # ADR D6: recall-biased Tool #5 candidate cap
 
 
 settings = Settings()

@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import PurePosixPath
 from typing import Any
+
+from botocore.exceptions import ClientError
 
 from app.settings import settings
 from app.storage.aws_session import get_s3_client
@@ -78,6 +81,21 @@ class S3Store:
 
     def head_object(self, key: str) -> dict[str, Any]:
         return self.client.head_object(Bucket=self.bucket, Key=key)
+
+    def sha256(self, key: str) -> str:
+        """Hash the object bytes server-side; never trust a client-only hash."""
+
+        return sha256(self.get_bytes(key)).hexdigest()
+
+    def object_exists(self, key: str) -> bool:
+        try:
+            self.head_object(key)
+        except ClientError as error:
+            code = str(error.response.get("Error", {}).get("Code", ""))
+            if code not in {"404", "NoSuchKey", "NotFound"}:
+                raise
+            return False
+        return True
 
     def put_bytes(self, key: str, body: bytes, content_type: str) -> None:
         self.client.put_object(
