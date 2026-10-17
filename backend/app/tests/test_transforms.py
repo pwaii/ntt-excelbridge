@@ -28,6 +28,7 @@ def test_accepted_duplicate_deletion_creates_valid_new_output():
             "issues": [{
                 "issue_id": "duplicate-1",
                 "kind": "duplicate_rows",
+                "sheet": "Customers",
                 "row_numbers": [2, 3],
             }]
         },
