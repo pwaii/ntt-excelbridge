@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from io import BytesIO
 from datetime import datetime
+from io import BytesIO
 from typing import Any
 
 from openpyxl import load_workbook

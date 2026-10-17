@@ -137,6 +137,6 @@ The architectural decisions for this completion pass are recorded in
 `docs/decisions/0002-backend-days5-7-completion.md` and the follow-up privacy
 and correctness decisions are in
 `docs/decisions/0003-backend-correctness-hardening.md`.
-Proposal artifact access and review-reason auditing are recorded in
-`docs/decisions/0004-proposal-artifact-access.md`. The command-by-command
+Runtime correctness and deployment-transform fixes are recorded in
+`docs/decisions/0006-backend-runtime-correctness.md`. The command-by-command
 verification sequence is in `docs/backend-smoke-test.md`.

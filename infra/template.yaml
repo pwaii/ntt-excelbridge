@@ -5,6 +5,12 @@ Description: XLSX data-quality / standardization / update workflow.
 Metadata:
   AWSToolsMetrics:
     AWSAgentToolkit: aws-cloudformation@3
+  com.aws.cloudformation.Context:
+    arch: "API Gateway HTTP API -> Lambda workers -> Step Functions -> S3/DynamoDB/Bedrock"
+    must:
+      - "IAM roles are managed outside this stack and supplied as ARN parameters."
+      - "This template must not create IAM roles or inline/managed IAM policies."
+      - "CloudFormation must be invoked with an existing service-role ARN."
 
 Parameters:
   Environment:
@@ -20,6 +26,14 @@ Parameters:
   FrontendOrigin:
     Type: String
     Default: http://localhost:5173
+  LambdaExecutionRoleArn:
+    Type: String
+    Description: Existing Lambda execution role ARN with the union of permissions required by the API and worker functions.
+    AllowedPattern: "^arn:[A-Za-z0-9-]+:iam::[0-9]{12}:role/.+$"
+  StateMachineExecutionRoleArn:
+    Type: String
+    Description: Existing Step Functions execution role ARN allowed to invoke the worker Lambda functions.
+    AllowedPattern: "^arn:[A-Za-z0-9-]+:iam::[0-9]{12}:role/.+$"
 
 Globals:
   Function:
@@ -133,22 +147,10 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: app.lambda_handlers.api_handler
+      Role: !Ref LambdaExecutionRoleArn
       Environment:
         Variables:
           STATE_MACHINE_ARN: !Ref WorkflowStateMachine
-      Policies:
-        - S3CrudPolicy: { BucketName: !Ref DataBucket }
-        - DynamoDBCrudPolicy: { TableName: !Ref MetadataTable }
-        - Statement:
-            - Effect: Allow
-              Action: states:StartExecution
-              Resource: !GetAtt WorkflowStateMachine.Arn
-            - Effect: Allow
-              Action: states:StopExecution
-              Resource:
-                - !Sub
-                  - arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${StateMachineName}:*
-                  - StateMachineName: !Select [6, !Split [":", !GetAtt WorkflowStateMachine.Arn]]
       Events:
         Api:
           Type: HttpApi
@@ -167,61 +169,43 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: app.lambda_handlers.inspect_handler
-      Policies:
-        - S3CrudPolicy: { BucketName: !Ref DataBucket }
-        - DynamoDBCrudPolicy: { TableName: !Ref MetadataTable }
+      Role: !Ref LambdaExecutionRoleArn
 
   QualityFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: app.lambda_handlers.quality_handler
-      Policies:
-        - S3CrudPolicy: { BucketName: !Ref DataBucket }
-        - DynamoDBCrudPolicy: { TableName: !Ref MetadataTable }
+      Role: !Ref LambdaExecutionRoleArn
 
   QualityGateFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: app.lambda_handlers.quality_gate_handler
-      Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref MetadataTable }
+      Role: !Ref LambdaExecutionRoleArn
 
   BedrockFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: app.lambda_handlers.bedrock_handler
-      Policies:
-        - S3CrudPolicy: { BucketName: !Ref DataBucket }
-        - DynamoDBCrudPolicy: { TableName: !Ref MetadataTable }
-        - Statement:
-            - Effect: Allow
-              Action: bedrock:InvokeModel
-              Resource:
-                - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/${BedrockModelId}
-                - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/${BedrockHeavyModelId}
+      Role: !Ref LambdaExecutionRoleArn
 
   ApplyFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: app.lambda_handlers.apply_handler
-      Policies:
-        - S3CrudPolicy: { BucketName: !Ref DataBucket }
-        - DynamoDBCrudPolicy: { TableName: !Ref MetadataTable }
+      Role: !Ref LambdaExecutionRoleArn
 
   ValidateFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: app.lambda_handlers.validate_handler
-      Policies:
-        - S3CrudPolicy: { BucketName: !Ref DataBucket }
-        - DynamoDBCrudPolicy: { TableName: !Ref MetadataTable }
+      Role: !Ref LambdaExecutionRoleArn
 
   FailureFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: app.lambda_handlers.failure_handler
-      Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref MetadataTable }
+      Role: !Ref LambdaExecutionRoleArn
 
   ApiLogGroup:
     Type: AWS::Logs::LogGroup
@@ -291,6 +275,7 @@ Resources:
     Type: AWS::Serverless::StateMachine
     Properties:
       Type: STANDARD
+      Role: !Ref StateMachineExecutionRoleArn
       DefinitionUri: statemachine.asl.json
       DefinitionSubstitutions:
         InspectWorkerArn: !GetAtt InspectFunction.Arn
@@ -300,14 +285,6 @@ Resources:
         ApplyWorkerArn: !GetAtt ApplyFunction.Arn
         ValidateWorkerArn: !GetAtt ValidateFunction.Arn
         FailureWorkerArn: !GetAtt FailureFunction.Arn
-      Policies:
-        - LambdaInvokePolicy: { FunctionName: !Ref InspectFunction }
-        - LambdaInvokePolicy: { FunctionName: !Ref QualityFunction }
-        - LambdaInvokePolicy: { FunctionName: !Ref QualityGateFunction }
-        - LambdaInvokePolicy: { FunctionName: !Ref BedrockFunction }
-        - LambdaInvokePolicy: { FunctionName: !Ref ApplyFunction }
-        - LambdaInvokePolicy: { FunctionName: !Ref ValidateFunction }
-        - LambdaInvokePolicy: { FunctionName: !Ref FailureFunction }
 
 Outputs:
   ApiUrl:

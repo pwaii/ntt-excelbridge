@@ -12,9 +12,9 @@ from typing import Any
 
 from boto3.dynamodb.conditions import Attr, Key
 
-from app.settings import settings
 from app.domain.enums import JobStatus
 from app.domain.state_machine import validate_transition
+from app.settings import settings
 from app.storage.aws_session import get_dynamodb_resource
 
 

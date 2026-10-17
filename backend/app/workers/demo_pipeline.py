@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from hashlib import sha256
-from io import BytesIO
 from typing import Any
 
 from app.domain.enums import JobStatus

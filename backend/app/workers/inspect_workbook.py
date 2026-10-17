@@ -11,9 +11,10 @@ import json
 import re
 import unicodedata
 from collections import Counter
+from collections.abc import Iterable
 from datetime import date, datetime
 from io import BytesIO
-from typing import Any, Iterable
+from typing import Any
 
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter

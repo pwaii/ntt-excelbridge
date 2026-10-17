@@ -5,24 +5,70 @@ param(
     [string]$Environment = $(if ($env:ENVIRONMENT) { $env:ENVIRONMENT } else { "demo" }),
     [string]$ModelId = $(if ($env:BEDROCK_MODEL_ID) { $env:BEDROCK_MODEL_ID } else { "amazon.nova-lite-v1:0" }),
     [string]$HeavyModelId = $(if ($env:BEDROCK_MODEL_ID_HEAVY) { $env:BEDROCK_MODEL_ID_HEAVY } else { "amazon.nova-pro-v1:0" }),
-    [string]$FrontendOrigin = $(if ($env:FRONTEND_ORIGIN) { $env:FRONTEND_ORIGIN } else { "http://localhost:5173" })
+    [string]$FrontendOrigin = $(if ($env:FRONTEND_ORIGIN) { $env:FRONTEND_ORIGIN } else { "http://localhost:5173" }),
+    [string]$CloudFormationServiceRoleArn = $(if ($env:CLOUDFORMATION_SERVICE_ROLE_ARN) { $env:CLOUDFORMATION_SERVICE_ROLE_ARN } else { "" }),
+    [string]$LambdaExecutionRoleArn = $(if ($env:LAMBDA_EXECUTION_ROLE_ARN) { $env:LAMBDA_EXECUTION_ROLE_ARN } else { "" }),
+    [string]$StateMachineExecutionRoleArn = $(if ($env:STATE_MACHINE_EXECUTION_ROLE_ARN) { $env:STATE_MACHINE_EXECUTION_ROLE_ARN } else { "" })
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
+
+$roleInputs = @{
+    CloudFormationServiceRoleArn = $CloudFormationServiceRoleArn
+    LambdaExecutionRoleArn = $LambdaExecutionRoleArn
+    StateMachineExecutionRoleArn = $StateMachineExecutionRoleArn
+}
+foreach ($roleInput in $roleInputs.GetEnumerator()) {
+    if ([string]::IsNullOrWhiteSpace($roleInput.Value)) {
+        throw "Missing $($roleInput.Key). Set the corresponding parameter or environment variable before deploying."
+    }
+    if ($roleInput.Value -notmatch '^arn:[A-Za-z0-9-]+:iam::[0-9]{12}:role/.+$') {
+        throw "$($roleInput.Key) must be an IAM role ARN, for example arn:aws:iam::123456789012:role/example"
+    }
+}
+
+# SAM's host builder must use the same Python minor version as the Lambda
+# runtime. SAM installs backend/requirements.txt into the build artifact, so a
+# full local development dependency install is not required for deployment.
+$repoPythonScripts = Join-Path $repoRoot ".venv312\Scripts"
+if (Test-Path -LiteralPath (Join-Path $repoPythonScripts "python.exe")) {
+    $env:Path = "$repoPythonScripts;$env:Path"
+    Write-Host "Using Python from .venv312 for SAM build"
+}
+
+# Use SAM from PATH, with one fallback for the standard Windows installer path.
+$sam = Get-Command sam -ErrorAction SilentlyContinue
+if ($sam) {
+    $samPath = $sam.Source
+} else {
+    $samPath = Join-Path ${env:ProgramFiles} "Amazon\AWSSAMCLI\bin\sam.cmd"
+    if (-not (Test-Path -LiteralPath $samPath)) {
+        throw "SAM CLI was not found. Install it and add it to PATH: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html"
+    }
+}
+
+function Invoke-Sam {
+    param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
+    & $samPath @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "SAM command failed with exit code $LASTEXITCODE"
+    }
+}
+
 & (Join-Path $PSScriptRoot "preflight.ps1") -Region $Region -ModelId $ModelId -ForDeploy
 if ($LASTEXITCODE -ne 0) { throw "Preflight failed" }
 
 Push-Location $repoRoot
 try {
-    sam validate --template-file infra/template.yaml
-    sam build --template-file infra/template.yaml --region $Region
-    sam deploy --template-file .aws-sam/build/template.yaml `
+    Invoke-Sam validate --template-file infra/template.yaml
+    Invoke-Sam build --template-file infra/template.yaml --region $Region
+    Invoke-Sam deploy --template-file .aws-sam/build/template.yaml `
         --stack-name $StackName `
         --region $Region `
-        --capabilities CAPABILITY_IAM `
+        --role-arn $CloudFormationServiceRoleArn `
         --resolve-s3 `
-        --parameter-overrides Environment=$Environment BedrockModelId=$ModelId BedrockHeavyModelId=$HeavyModelId FrontendOrigin=$FrontendOrigin `
+        --parameter-overrides Environment=$Environment BedrockModelId=$ModelId BedrockHeavyModelId=$HeavyModelId FrontendOrigin=$FrontendOrigin LambdaExecutionRoleArn=$LambdaExecutionRoleArn StateMachineExecutionRoleArn=$StateMachineExecutionRoleArn `
         --no-fail-on-empty-changeset
 } finally {
     Pop-Location

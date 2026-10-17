@@ -15,6 +15,24 @@ Copy-Item .env.example .env
 .\.venv\Scripts\python.exe -m ruff check backend/app
 ```
 
+Deployment uses the repository `.venv312` Python interpreter when it exists;
+SAM installs `backend/requirements.txt` into the Lambda build artifact, so a
+full development dependency install is not required. Docker is not required.
+Set `AWS_PROFILE` and `AWS_REGION` in PowerShell, then pass deployment values
+as script parameters. `.env` is used by the local Python API, not by
+PowerShell.
+
+The deployment template does not create IAM roles or policies. Before
+deploying, an administrator must provide three existing role ARNs: a
+CloudFormation service role, a Lambda execution role, and a Step Functions
+execution role. The CloudFormation service role must be trusted by
+`cloudformation.amazonaws.com`; the Lambda role must include the runtime log,
+S3, DynamoDB, Step Functions, and Bedrock permissions used by the application;
+the Step Functions role must be allowed to invoke every worker Lambda. The
+caller also needs `iam:PassRole` for the CloudFormation service role. The
+CloudFormation service role itself needs `iam:PassRole` for the Lambda and
+Step Functions execution roles.
+
 The local API uses the `local-user` fallback only when Cognito is not
 configured. That fallback must not be used as a production authentication
 boundary.
@@ -44,8 +62,15 @@ services/models.
   -Environment demo `
   -ModelId amazon.nova-lite-v1:0 `
   -HeavyModelId amazon.nova-pro-v1:0 `
-  -FrontendOrigin http://localhost:5173
+  -FrontendOrigin http://localhost:5173 `
+  -CloudFormationServiceRoleArn $env:CLOUDFORMATION_SERVICE_ROLE_ARN `
+  -LambdaExecutionRoleArn $env:LAMBDA_EXECUTION_ROLE_ARN `
+  -StateMachineExecutionRoleArn $env:STATE_MACHINE_EXECUTION_ROLE_ARN
 ```
+
+This command passes `--role-arn` to SAM/CloudFormation and does not pass
+`CAPABILITY_IAM`, because the template contains no `AWS::IAM::*` resources and
+no SAM `Policies:` blocks.
 
 The stack creates a private versioned S3 bucket, on-demand DynamoDB table with
 owner/status GSIs and TTL, Cognito user-pool/client, JWT-protected HTTP API,
@@ -99,8 +124,8 @@ The completion decisions are documented in
 [`docs/decisions/0002-backend-days5-7-completion.md`](decisions/0002-backend-days5-7-completion.md).
 The follow-up privacy and correctness hardening is documented in
 [`docs/decisions/0003-backend-correctness-hardening.md`](decisions/0003-backend-correctness-hardening.md).
-Proposal artifact access and audit reasons are documented in
-[`docs/decisions/0004-proposal-artifact-access.md`](decisions/0004-proposal-artifact-access.md).
+Runtime correctness and deployment-transform fixes are documented in
+[`docs/decisions/0006-backend-runtime-correctness.md`](decisions/0006-backend-runtime-correctness.md).
 The full smoke-test sequence is in
 [`docs/backend-smoke-test.md`](backend-smoke-test.md).
 
