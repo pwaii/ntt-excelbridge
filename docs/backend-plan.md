@@ -118,3 +118,37 @@ Unit (§16.1): header normalization, fingerprinting, duplicate/blank detection, 
 - Rule engine: BE owns deterministic findings; AI consulted on semantic/type fields.
 - Tools #1–#5: AI owns schemas/fixtures; **BE owns the invocation boundary** (`bedrock_worker`, one tool at a time, validate before apply).
 - Infra/IAM: AI supplies exact Bedrock permissions + model IDs.
+
+## Implementation status after backend completion pass
+
+The Day 5 backend slice is implemented in the working tree:
+
+- Tool #2 is conditionally invoked for deterministic type-mismatch findings.
+- Tool #5 uses bounded backend-generated candidates and validates selected row IDs.
+- Tool #2 rules and Tool #5 matches have item-addressable review IDs.
+- The apply worker supports all four output policies and never overwrites source
+  objects; unmatched update rows are skipped for the demo.
+- Update jobs require a business key and expose explicit `reject_all`,
+  `latest_wins`, or `merge` conflict behavior for duplicate destinations.
+- Output, audit, review-summary, validation, inspection, and quality artifacts
+  can be downloaded through ownership-checked presigned URLs.
+- Individual full proposal payloads can be fetched through an authenticated,
+  ownership-checked presigned URL, and review reasons are included in the
+  decision audit.
+- Lambda log groups are retained for 14 days and deployment runs `sam validate`
+  before `sam build`.
+- DynamoDB proposal summaries contain metadata only; update policies require a
+  business key validated at job creation and apply time; S3 existence checks re-raise non-not-found AWS errors; and
+  decision event keys distinguish issue/proposal records. See
+  `docs/decisions/0003-backend-correctness-hardening.md`.
+
+The remaining verification work is environment-dependent rather than an
+unimplemented backend contract: install the test/lint dependencies, run the
+full pytest/Ruff suite, validate the SAM template, deploy one AWS environment,
+and execute the Cognito-to-download smoke test. Tool #5 does not insert
+unmatched rows and OpenPyXL does not calculate formulas; both are explicit demo
+policies recorded in `docs/decisions/0002-backend-days5-7-completion.md`.
+The complete command-by-command runbook is in
+`docs/backend-smoke-test.md`.
+The current environment does not provide `pytest`, Ruff, SAM CLI, or cfn-lint;
+the dependency-light smoke check and Python/JSON parsing checks pass.

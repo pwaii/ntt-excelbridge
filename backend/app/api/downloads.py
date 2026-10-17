@@ -1,4 +1,9 @@
-"""Short-lived download URLs for approved job artifacts."""
+"""Legacy download router retained for compatibility.
+
+The application registers :mod:`app.api.artifacts`, which supersedes this
+module with the complete ownership-checked artifact endpoint. Do not register
+both routers because they expose the same path.
+"""
 
 from __future__ import annotations
 

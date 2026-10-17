@@ -15,7 +15,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.downloads import router as downloads_router
+from app.api.artifacts import router as artifacts_router
 from app.api.jobs import router as jobs_router
 from app.api.reviews import router as reviews_router
 from app.api.uploads import router as uploads_router
@@ -97,7 +97,7 @@ async def configuration_error(request: Request, error: ValueError) -> JSONRespon
 
 app.include_router(jobs_router)
 app.include_router(uploads_router)
-app.include_router(downloads_router)
+app.include_router(artifacts_router)
 app.include_router(reviews_router)
 
 

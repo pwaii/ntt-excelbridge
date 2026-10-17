@@ -11,14 +11,19 @@ The backend now supports this end-to-end demo flow:
 1. Create a job in DynamoDB and receive short-lived S3 upload URLs.
 2. Upload `.xlsx` files directly from the browser to a private S3 bucket.
 3. Confirm each upload; the API verifies the S3 object and updates DynamoDB.
-4. Start the job; the demo worker reads the input workbook from S3.
-5. Validate the workbook with OpenPyXL and write an inspection manifest.
-6. Write a separate `final.xlsx` output object to S3.
-7. Reopen and validate the output, then mark the job `COMPLETED` in DynamoDB.
-8. Request a short-lived download URL for the output artifact.
+4. Start the job; the deployed path runs the first short workflow segment.
+5. Inspect the workbook, run deterministic quality rules, and invoke Tool #1
+   plus Tool #2 when type mismatches exist.
+6. Submit a revision-checked quality review; the winning review starts segment 2.
+7. Run formula, standardization, and bounded update matching proposals.
+8. Submit the transformation review; the winning review starts segment 3.
+9. Apply accepted changes to a new output object, write decision-level audit
+   artifacts, reopen/validate the output, and mark the job `COMPLETED`.
+10. Request short-lived download URLs for output, audit, summary, or input artifacts.
 
-The current worker is intentionally a pass-through. It proves the storage,
-metadata, validation, and output path without changing the user's workbook.
+The local no-`STATE_MACHINE_ARN` path remains intentionally pass-through for
+development. Deployed environments use the three short Step Functions
+segments and the deterministic inspection/quality/apply/validate workers.
 
 ## Main files
 
@@ -37,11 +42,15 @@ metadata, validation, and output path without changing the user's workbook.
 - `backend/app/api/uploads.py` verifies S3 uploads and records their size,
   ETag, content type, and optional SHA-256 hash. It also provides a multipart
   fallback at `/v1/jobs/{job_id}/uploads/file/{slot}` for local demos.
-- `backend/app/workers/demo_pipeline.py` performs the OpenPyXL inspection,
-  manifest creation, pass-through output, output validation, and final status
-  update.
-- `backend/app/api/downloads.py` returns a presigned download URL for a
-  completed artifact.
+- `backend/app/workers/demo_pipeline.py` remains the local no-state-machine
+  fallback for inspection and deterministic quality checks.
+- `backend/app/workers/matching.py` creates bounded candidate sets before Tool
+  #5; it never sends the entire main workbook to the model.
+- `backend/app/workers/apply_changes.py` applies accepted quality,
+  type-normalization, formula, standardization, and update decisions to a new
+  workbook copy.
+- `backend/app/api/artifacts.py` lists review artifacts and returns ownership-
+  checked presigned download URLs, including full proposal artifacts.
 - `frontend/src/features/job-create/index.tsx` demonstrates the browser flow:
   create job, PUT to S3, confirm upload, and start the job.
 - `infra/template.yaml` records the intended S3/DynamoDB resources and CORS
@@ -102,24 +111,32 @@ jobs/<job_id>/output/final.xlsx
 
 ## What is still a gap
 
-- The worker is synchronous and pass-through; it does not yet run the complete
-  transformation chain or create Excel formulas from AI proposals.
-- Step Functions or another durable job runner is not wired into `start` yet.
-- Bedrock proposal generation and the review/approve loop are not connected to
-  this storage path.
-- Full OpenPyXL transformations, validation rules, audit events, and final
-  `results.csv`/Excel output are still to be integrated.
-- Cognito/API Gateway or another production authentication boundary is not
-  deployed. The current local auth path is suitable for development only.
+- The local no-`STATE_MACHINE_ARN` path is intentionally synchronous; deployed
+  environments use the segmented workflow.
+- Tool #5 demo behavior skips unmatched rows rather than inserting new rows.
+- Excel formulas are syntax-verified but are not calculated by OpenPyXL.
+- Production Bedrock model evaluation, AWS deployment, alarms, budgets, and
+  cost-guard enforcement still require an account-specific verification pass.
+- The frontend remains responsible for the review screens and user-facing
+  bulk-review interactions.
+- Cognito/API Gateway is defined in `infra/template.yaml`; the local auth path
+  remains suitable for development only until the stack is deployed.
 - IAM policies, deployment packaging, CloudWatch monitoring, retries, and
   production error reporting still need deployment-specific configuration.
 - The frontend is a working upload placeholder, not the completed product UI.
 
-## Verification completed
+## Verification status
 
-The branch was checked with the backend test suite and Ruff. At the time of
-commit, the result was `17 passed`; Ruff also passed. A repository scan found
-no committed `.env` files, AWS access keys, session tokens, or private keys.
+Static JSON/Python checks and focused deterministic tests should be run after
+the local dependencies are available. Full pytest/Ruff execution and SAM
+validation require the Python packages and SAM CLI; no AWS deployment is
+claimed by this session. A repository scan must continue to exclude `.env`
+files, AWS access keys, session tokens, and private keys.
 
-The next backend milestone is to replace `run_demo_pipeline` with the durable
-orchestrated workflow while preserving the existing S3/DynamoDB API contract.
+The architectural decisions for this completion pass are recorded in
+`docs/decisions/0002-backend-days5-7-completion.md` and the follow-up privacy
+and correctness decisions are in
+`docs/decisions/0003-backend-correctness-hardening.md`.
+Proposal artifact access and review-reason auditing are recorded in
+`docs/decisions/0004-proposal-artifact-access.md`. The command-by-command
+verification sequence is in `docs/backend-smoke-test.md`.
