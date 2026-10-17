@@ -41,7 +41,7 @@ Source of truth for structural errors; runs **before any LLM call**. Report stor
 
 - **Duplicate lines (§9.1):** stable row fingerprint after normalization (trim, normalize Unicode whitespace, consistent empties, exclude generated output column, version by sheet name + header order). Report group ID, all row numbers, duplicated values, recommended action. Default: keep first, mark later exact dups as deletion candidates — user approves.
 - **Blank row (§9.2):** every relevant cell empty after normalization (ignore formatting-only cells, formulas → empty string). Default: delete from output copy.
-- **Blank column (§9.3):** every data-row value empty. Exclude the new output column; distinguish intentional-blank vs comment/output field vs formatting artifact. Default: exclude from transformation input, never delete without approval.
+- **Blank column (§9.3):** every data-row value empty. Exclude the new output column; distinguish intentional-blank vs prompt/output field vs formatting artifact. Default: exclude from transformation input, never delete without approval.
 - **Type mismatch (§9.4):** infer per-column type distribution (text/int/decimal/bool/date/percentage/identifier-like/formula/unknown). Flag when dominant type below threshold or incompatible minority exceeds threshold. Rule engine proposes a target type; **Tool #2 decides whether conversion is safe.** Any loss of precision / leading zeros / timezone / meaning → `manual_review`.
 
 ## Workers (§13.2) — one responsibility, bounded timeout, idempotent

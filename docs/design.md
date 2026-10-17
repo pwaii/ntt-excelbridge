@@ -4,7 +4,7 @@
 
 This document is the implementation brief for a real, end-to-end demonstration of an XLSX data-quality, semantic-column, standardization, and update workflow.
 
-The demo accepts one current XLSX workbook and a natural-language comment describing the column to add. The user may optionally select standardization, update, or both and upload a main/reference workbook from the database. The system detects data problems, asks an LLM to interpret column meaning and mappings, presents proposed changes to a human, generates and verifies Excel formulas where needed, and produces a downloadable final workbook plus an audit trail.
+The demo accepts one current XLSX workbook and a natural-language prompt describing the column to add. The user may optionally select standardization, update, or both and upload a main/reference workbook from the database. The system detects data problems, asks an LLM to interpret column meaning and mappings, presents proposed changes to a human, generates and verifies Excel formulas where needed, and produces a downloadable final workbook plus an audit trail.
 
 The plan treats “Vile” as **Vite**. The application stack remains React + Vite, FastAPI + Python, OpenPyXL, S3, and DynamoDB, with the additional AWS services required to run the workflow safely: API Gateway, Lambda, Step Functions, Amazon Bedrock, Cognito, CloudWatch, IAM, KMS, and optionally CloudFront.
 
@@ -37,7 +37,7 @@ Step Functions Standard  <-> DynamoDB
     |
     +--> S3/OpenPyXL inspection and deterministic rule engine
     |
-    +--> Bedrock Tool #1: comment/column semantic verification
+    +--> Bedrock Tool #1: prompt/column semantic verification
     |
     +--> Human review gate #1: accept/fix data-quality proposals
     |
@@ -63,15 +63,15 @@ The system must never allow an LLM response to directly execute arbitrary Python
 
 ## 3. Requirement interpretation and assumptions
 
-### 3.1 Meaning of “comment name”
+### 3.1 Meaning of “prompt”
 
-For this demo, **comment name** is the natural-language description of the new column’s business meaning. Examples:
+For this demo, **prompt** is the natural-language description of the new column’s business meaning. Examples:
 
 - `customer segment`
 - `approved product category`
 - `risk level derived from the customer profile`
 
-The UI also asks for the exact output column header separately. If the user leaves the header empty, the system creates a safe header from the comment, for example `customer_segment`.
+The UI also asks for the exact output column header separately. If the user leaves the header empty, the system creates a safe header from the prompt, for example `customer_segment`.
 
 This separation avoids confusing a human description with an Excel field name.
 
@@ -114,7 +114,7 @@ No automatic path is allowed to bypass a review gate in the demo, even when the 
 ### 4.1 In scope
 
 - Upload current and optional main XLSX files through the browser.
-- Select a worksheet, output column header, comment name, standardize flag, update flag, and optional key column.
+- Select a worksheet, output column header, prompt, standardize flag, update flag, and optional key column.
 - Validate that a main file is present when standardize or update is selected.
 - Store original files immutably in S3.
 - Detect duplicate lines, completely blank rows, completely blank columns, and mismatched value types.
@@ -152,7 +152,7 @@ No automatic path is allowed to bypass a review gate in the demo, even when the 
 
 1. User signs in through Cognito.
 2. User uploads the current workbook.
-3. User enters the comment name and optional exact output header.
+3. User enters the prompt and optional exact output header.
 4. User chooses standardize, update, both, or neither.
 5. If either option is selected, user uploads the main workbook.
 6. User selects the relevant sheets and optional business key.
@@ -232,7 +232,7 @@ Rule-based checks produce a quality report before any LLM call. The report is st
 
 ### State 5 — `SEMANTIC_REVIEW_PENDING`
 
-Tool #1 receives the comment, selected headers, sample values, and schema metadata. It returns:
+Tool #1 receives the prompt, selected headers, sample values, and schema metadata. It returns:
 
 - whether the requested meaning is represented by an existing column;
 - the candidate source column(s);
@@ -550,10 +550,10 @@ Default proposal: delete the row from the output copy. The UI shows the row numb
 A column is blank when every data-row value is empty. The engine excludes the new output column from this check and distinguishes:
 
 - an intentionally blank column;
-- a column that is the requested comment/output field;
+- a column that is the requested prompt/output field;
 - a structural artifact caused by formatting.
 
-Default proposal: exclude the blank column from the transformation input, but never delete it without human approval. The UI offers “count as comment/output column” or “remove from output.”
+Default proposal: exclude the blank column from the transformation input, but never delete it without human approval. The UI offers “count as prompt/output column” or “remove from output.”
 
 ### 9.4 Mismatched value types
 
@@ -600,7 +600,7 @@ The rule engine proposes a target type but Tool #2 determines whether a semantic
 
 **Input:**
 
-- `comment_name`;
+- `prompt`;
 - requested output header;
 - current headers and normalized headers;
 - main headers when available;
@@ -655,7 +655,7 @@ The backend re-parses the normalized value with Python before it can be accepted
 
 Tool #3 is optional. It is used only when the user selects a formula-based new column.
 
-**Input:** comment meaning, source headers, allowed functions, sample rows, and expected output type.
+**Input:** prompt meaning, source headers, allowed functions, sample rows, and expected output type.
 
 **Output:**
 
@@ -750,7 +750,7 @@ The backend uses a conditional DynamoDB update on `revision`. A stale browser re
 ### 12.1 Pages
 
 1. **Sign in** — Cognito-hosted or embedded Cognito form.
-2. **Job creation** — upload current file, comment name, output header, standardize/update checkboxes, main file, sheet/key selectors.
+2. **Job creation** — upload current file, prompt, output header, standardize/update checkboxes, main file, sheet/key selectors.
 3. **Job progress** — state timeline, counts, errors, refresh/polling.
 4. **Quality review** — issue table with filters, row preview, proposal editor, bulk actions.
 5. **Transformation review** — mappings, update matches, formula preview, conflict resolution.
@@ -977,7 +977,7 @@ The expected result workbook must be checked into `sample-data/expected-result.x
 - Create Vite + React + TypeScript app.
 - Build route shell and basic layout.
 - Define shared frontend types for `Job`, `Issue`, `Proposal`, `ReviewRevision`, and `Artifact`.
-- Build static job-creation form with current file, comment name, output header, standardize/update toggles, and main file.
+- Build static job-creation form with current file, prompt, output header, standardize/update toggles, and main file.
 
 **BE**
 
