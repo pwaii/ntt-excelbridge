@@ -1,0 +1,159 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: "Inter", "Segoe UI Variable", "Segoe UI", Helvetica, Arial, sans-serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+}
+
+:root {
+  color-scheme: light;
+  --background: #f6f8fc;
+  --foreground: #13213b;
+  --card: #ffffff;
+  --card-foreground: #13213b;
+  --popover: #ffffff;
+  --popover-foreground: #13213b;
+  --primary: #2857aa;
+  --primary-foreground: #ffffff;
+  --secondary: #edf3fa;
+  --secondary-foreground: #13213b;
+  --muted: #f0f4fa;
+  --muted-foreground: #5f6e86;
+  --accent: #eaf3fb;
+  --accent-foreground: #2857aa;
+  --destructive: #b83249;
+  --border: #dce5f0;
+  --input: #cbd7e5;
+  --ring: #3668c6;
+  --radius: 0.75rem;
+  --workflow-violet: #7150b5;
+  --workflow-coral: #a45525;
+}
+
+@layer components {
+  .app-shell {
+    background: radial-gradient(ellipse at 82% 0%, #8dd3e71a, transparent 45%), var(--background);
+  }
+
+  .workspace-sidebar {
+    background: linear-gradient(180deg, #ffffff, #f9fbfe);
+  }
+
+  .workflow-title-accent {
+    color: var(--primary);
+  }
+
+  .workflow-identity {
+    background: linear-gradient(135deg, #8dd3e7, #91a9f4 70%, #b7a0ff);
+    box-shadow: 0 4px 16px #314a7612, inset 0 1px 0 #ffffff80;
+  }
+
+  .workflow-builder {
+    box-shadow: 0 8px 30px #243a6107;
+  }
+
+  .processing-card:has(input:focus-visible) {
+    outline: 2px solid var(--ring);
+    outline-offset: 3px;
+  }
+
+  .ai-composer {
+    border: 1px solid transparent;
+    background: linear-gradient(145deg, #ffffff, #fdfbff) padding-box,
+      linear-gradient(135deg, #8dd3e780, #9166db99 55%, #5076cd80) border-box;
+    box-shadow: 0 3px 14px #7150b508;
+    transition: box-shadow 180ms ease, border-color 180ms ease;
+  }
+
+  .ai-composer:focus-within {
+    box-shadow: 0 0 0 3px #a995f51c, 0 6px 20px #7150b50a;
+  }
+
+  .ai-composer:has(textarea:focus-visible) {
+    outline: 2px solid var(--ring);
+    outline-offset: 3px;
+  }
+
+  .ai-composer:has([aria-invalid="true"]) {
+    border-color: var(--destructive);
+    box-shadow: 0 0 0 2px #b832490d;
+  }
+
+  .workflow-primary {
+    background: linear-gradient(110deg, #8dd3e7, #a4bdf2 70%, #b7a0ff);
+    box-shadow: 0 4px 12px #5670b026, inset 0 1px 0 #ffffff80;
+    transition: box-shadow 160ms ease, filter 160ms ease;
+  }
+
+  .workflow-primary:hover:not(:disabled) {
+    filter: brightness(1.08);
+    box-shadow: 0 6px 18px #7ac1dc20;
+  }
+
+  .workflow-primary:disabled {
+    box-shadow: none;
+  }
+
+  .workflow-disclosure[open] > div {
+    animation: disclosure-in 160ms ease-out;
+  }
+}
+
+@keyframes disclosure-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply m-0 bg-background font-sans text-foreground antialiased;
+    min-width: 320px;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    @apply outline-2 outline-offset-4 outline-ring;
+  }
+
+  ::selection {
+    @apply bg-primary text-primary-foreground;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0s !important;
+    animation-duration: 0s !important;
+    scroll-behavior: auto !important;
+  }
+}

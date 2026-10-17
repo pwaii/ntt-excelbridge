@@ -15,7 +15,7 @@
 ## Pages (§12.1)
 
 1. **Sign in** — Cognito-hosted or embedded Cognito form.
-2. **Job creation** — upload current file, comment name, output header, standardize/update checkboxes, main file, sheet/key selectors.
+2. **Job creation** — upload current file, prompt, output header, standardize/update checkboxes, main file, sheet/key selectors.
 3. **Job progress** — state timeline, counts, errors, refresh/polling.
 4. **Quality review** — issue table with filters, row preview, proposal editor, bulk actions.
 5. **Transformation review** — mappings, update matches, formula preview, conflict resolution.
@@ -70,7 +70,7 @@ All endpoints require the Cognito JWT; every response has `request_id`. BE publi
 
 ## Day-by-day
 
-- **Day 1** — Vite + React + TS app; route shell + layout; shared types; static job-creation form (current file, comment name, output header, standardize/update toggles, main file).
+- **Day 1** — Vite + React + TS app; route shell + layout; shared types; static job-creation form (current file, prompt, output header, standardize/update toggles, main file).
 - **Day 2** — Cognito sign-in (or test-user config); wire form to `POST /v1/jobs`; presigned upload progress for both files; sheet selection after upload metadata returns.
   > **⚠️ ADD — D10:** On that same post-upload screen, add a **header-row confirm**: show the auto-detected header guess and let the user correct it before the job starts (a wrong guess poisons every downstream column/type/prompt).
 - **Day 3** — Job-progress screen (state timeline + polling); quality-review table + filters; row/cell preview + Accept/Reject/Edit.

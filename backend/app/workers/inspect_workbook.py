@@ -86,7 +86,14 @@ def _fingerprint(sheet: str, headers: list[str], values: Iterable[Any]) -> str:
     return hashlib.sha256(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
 
 
-def inspect_bytes(source: bytes, *, max_rows: int | None = None, sample_limit: int | None = None) -> dict[str, Any]:
+def inspect_bytes(
+    source: bytes,
+    *,
+    max_rows: int | None = None,
+    sample_limit: int | None = None,
+    sheet_name: str | None = None,
+    header_row: int | None = None,
+) -> dict[str, Any]:
     """Inspect an XLSX byte string and return a bounded JSON-serializable manifest."""
 
     max_rows = max_rows or settings.max_data_rows
@@ -95,11 +102,17 @@ def inspect_bytes(source: bytes, *, max_rows: int | None = None, sample_limit: i
     try:
         sheets: list[dict[str, Any]] = []
         total_rows = 0
+        if sheet_name is not None and sheet_name not in workbook.sheetnames:
+            raise ValueError("Selected worksheet does not exist")
         for worksheet in workbook.worksheets:
             rows = list(worksheet.iter_rows(values_only=True))
             if len(rows) > max_rows:
                 raise ValueError(f"workbook exceeds the {max_rows} row limit")
-            header_index = _header_row(rows)
+            header_index = (
+                header_row
+                if worksheet.title == sheet_name and header_row is not None
+                else _header_row(rows)
+            )
             raw_headers = list(rows[header_index - 1]) if rows else []
             width = max(len(raw_headers), worksheet.max_column or 0)
             headers = [normalize_text(raw_headers[i]) or f"Column_{i + 1}" for i in range(width)]

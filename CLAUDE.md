@@ -8,7 +8,7 @@ Pre-scaffold. The repo currently contains only this file, `README.md`, and the f
 
 ## What this is
 
-A human-gated, event-driven workflow that takes an XLSX workbook plus a natural-language "comment name" describing a column to add, detects data-quality problems, uses Bedrock to propose interpretations/mappings, requires explicit human approval at two gates, and emits a new workbook + JSON audit + review summary. Stack: React/Vite, FastAPI on Lambda, OpenPyXL, Step Functions Standard, S3, DynamoDB, Bedrock, Cognito. AWS-only.
+A human-gated, event-driven workflow that takes an XLSX workbook plus a natural-language "prompt" describing a column to add, detects data-quality problems, uses Bedrock to propose interpretations/mappings, requires explicit human approval at two gates, and emits a new workbook + JSON audit + review summary. Stack: React/Vite, FastAPI on Lambda, OpenPyXL, Step Functions Standard, S3, DynamoDB, Bedrock, Cognito. AWS-only.
 
 ## Architecture big picture
 

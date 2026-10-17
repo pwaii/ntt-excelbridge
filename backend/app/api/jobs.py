@@ -9,6 +9,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from app.api.dependencies import get_dynamo_store, get_s3_store, get_workflow_store
+from app.api.workbooks import validate_selections
 from app.auth import current_user_id
 from app.domain.enums import JobStatus
 from app.domain.models import (
@@ -19,6 +20,7 @@ from app.domain.models import (
     PresignedUpload,
 )
 from app.domain.schemas import CreateJobRequest
+from app.domain.workbooks import WorkbookSelection
 from app.storage.dynamo_store import DynamoStore, JobAlreadyExistsError, RevisionConflictError
 from app.storage.s3_store import S3Store
 from app.storage.sfn_store import WorkflowNotConfiguredError, WorkflowStore
@@ -149,6 +151,7 @@ def start_job(
     dynamo: DynamoStore = Depends(get_dynamo_store),
     s3: S3Store = Depends(get_s3_store),
     workflow: WorkflowStore = Depends(get_workflow_store),
+    expected_revision: int | None = Query(default=None, ge=0),
 ) -> JobResponse:
     """Start segment 1; local development falls back to the synchronous demo."""
 
@@ -162,6 +165,13 @@ def start_job(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"job must be UPLOADED before starting; current status is {item.get('status')}",
         )
+
+    if isinstance(expected_revision, int) and expected_revision != int(item["revision"]):
+        raise HTTPException(409, "Job revision changed; reload before Start")
+    if not item.get("configuration_confirmed"):
+        raise HTTPException(422, "Confirm worksheet, header row and required keys before Start")
+    selections = {slot: WorkbookSelection.model_validate(value) for slot, value in item.get("workbook_selections", {}).items()}
+    validate_selections(item, selections, s3)
 
     try:
         inspecting = dynamo.update_job(
@@ -185,6 +195,9 @@ def start_job(
         return JobResponse(job=_record(completed), request_id=request.state.request_id)
     except WorkflowNotConfiguredError:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="workflow is not configured")
+    except RevisionConflictError as error:
+        # A losing duplicate must not mark the winning execution as failed.
+        raise HTTPException(409, "Job changed; refresh status before retrying") from error
     except Exception as error:
         current = dynamo.get_job(job_id)
         if current and current.get("status") not in {

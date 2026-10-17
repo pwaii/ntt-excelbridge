@@ -19,6 +19,9 @@ class JobConfig(BaseModel):
     main_sheet: str | None = None
     key_column: str | None = None  # business key for matching (§3.2)
     conflict_policy: Literal["reject_all", "latest_wins", "merge"] = "reject_all"
+    input_header_row: int | None = Field(default=None, ge=1, le=20)
+    main_header_row: int | None = Field(default=None, ge=1, le=20)
+    main_key_column: str | None = None
 
     @model_validator(mode="after")
     def validate_update_key(self) -> "JobConfig":

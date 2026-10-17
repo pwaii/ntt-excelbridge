@@ -1,0 +1,120 @@
+import { z } from "zod";
+import type { components } from "./generated/backend";
+import { createApiClient } from "./http-client";
+import { ApiError } from "./errors";
+import type { CreateJobAdapter } from "./create-job-types";
+import type { PresignedPutInstruction, UploadConfirmationAdapter, WorkbookRole } from "@/uploads/types";
+
+export type BackendJob = components["schemas"]["JobRecord"];
+type CreateRequest = components["schemas"]["CreateJobRequest"];
+type JobResponse = components["schemas"]["JobResponse"];
+type CreateResponse = components["schemas"]["CreateJobResponse"];
+type CompleteResponse = components["schemas"]["UploadCompleteResponse"];
+export type UploadInstructions = Partial<Record<WorkbookRole, PresignedPutInstruction>>;
+const text = z.string().min(1);
+const fileSchema = z.object({ filename: text, key: text, content_type: z.string().nullable().optional(), size_bytes: z.number().int().nonnegative().nullable().optional(), etag: z.string().nullable().optional(), uploaded: z.boolean().default(false) });
+const selectionSchema = z.object({ sheet_name: text, header_row: z.number().int().min(1).max(20), header_confirmed: z.literal(true), key_column: z.string().nullable().optional(), workbook_version: text });
+const jobSchema = z.object({
+  job_id: text, owner_id: text,
+  status: z.enum(["DRAFT", "UPLOADING", "UPLOADED", "INSPECTING", "DETECTED", "SEMANTIC_REVIEW_PENDING", "QUALITY_REVIEW_PENDING", "NORMALIZATION_PENDING", "FORMULA_REVIEW_PENDING", "STANDARDIZATION_PENDING", "UPDATE_PENDING", "TRANSFORMATION_REVIEW_PENDING", "APPLYING", "VALIDATING_OUTPUT", "COMPLETED", "FAILED", "CANCELLED", "COST_GUARD_REACHED"]),
+  revision: z.number().int().nonnegative(),
+  config: z.object({ comment_name: text.max(200), output_header: z.string().nullable().optional(), standardize: z.boolean().default(false), update: z.boolean().default(false), input_sheet: z.string().nullable().optional(), main_sheet: z.string().nullable().optional(), key_column: z.string().nullable().optional(), input_header_row: z.number().int().nullable().optional(), main_header_row: z.number().int().nullable().optional(), main_key_column: z.string().nullable().optional() }),
+  configuration_confirmed: z.boolean().default(false), workbook_selections: z.record(z.string(), selectionSchema).default({}),
+  files: z.record(z.string(), fileSchema).default({}),
+  artifacts: z.record(z.string(), z.record(z.string(), z.unknown())).default({}),
+  created_at: z.iso.datetime({ offset: true }), updated_at: z.iso.datetime({ offset: true }),
+  input_hash: z.string().nullable().optional(), main_hash: z.string().nullable().optional(), output_hash: z.string().nullable().optional(), expires_at: z.number().int().nullable().optional(),
+});
+const responseSchema = z.object({ job: jobSchema, request_id: text });
+const createSchema = responseSchema.extend({ uploads: z.array(z.object({ slot: text, filename: text, key: text, url: z.url(), expires_in: z.number().int().positive() })) });
+const completeSchema = responseSchema.extend({ uploaded_slot: z.enum(["input", "main"]) });
+const metadataSchema = z.object({ job_id: text, slot: z.enum(["input", "main"]), workbook_version: text, size_bytes: z.number().int().nonnegative(), header_min: z.number().int(), header_max: z.number().int(), index_base: z.literal(1), key_required: z.boolean(), sheets: z.array(z.object({ name: text, detected_header_row: z.number().int().nullable(), header_row: z.number().int().nullable(), data_row_count: z.number().int().nonnegative(), columns: z.array(z.object({ id: text, label: text })), errors: z.array(z.string()).default([]) })), request_id: text });
+const xlsxContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const slotFor = (role: WorkbookRole) => role === "current" ? "input" : "main";
+function jobPath(id: string) {
+  if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new ApiError("configuration", "Invalid backend job identity.");
+  return `/v1/jobs/${id}`;
+}
+
+// Runtime decoders mirror the pinned OpenAPI; return annotations check against
+// generated types. Additional semantic checks bind responses to this operation.
+export function createJobsApi(client: ReturnType<typeof createApiClient>, allowedOrigins: readonly string[]) {
+  const checkId = (job: BackendJob, id: string) => {
+    if (job.job_id !== id) throw new ApiError("protocol", "The backend returned a different job.");
+  };
+  async function getJob(id: string, signal?: AbortSignal): Promise<JobResponse> {
+    const result = await client.request(jobPath(id), { signal, decode: (value): JobResponse => responseSchema.parse(value) });
+    checkId(result.data.job, id);
+    return result.data;
+  }
+  const createAdapter: CreateJobAdapter<UploadInstructions> = {
+    async create(configuration, signal) {
+      const roles: WorkbookRole[] = configuration.standardize || configuration.update ? ["current", "main"] : ["current"];
+      const files = { current: configuration.currentFile!, main: configuration.mainFile };
+      for (const role of roles) {
+        if (/[\\/]/.test(files[role]!.name) || files[role]!.name.length > 255) throw new ApiError("configuration", "Use workbook filenames of at most 255 characters without path separators.");
+      }
+      const body: CreateRequest = {
+        config: { comment_name: configuration.comment_name, output_header: configuration.outputHeader, standardize: configuration.standardize, update: configuration.update },
+        input_filename: files.current.name,
+        ...(roles.includes("main") ? { main_filename: files.main!.name } : {}),
+      };
+      if (body.config.comment_name.length > 200) throw new ApiError("configuration", "Prompt must contain at most 200 characters, as required by the backend.");
+      const requestedAt = Date.now();
+      const result = await client.request("/v1/jobs", { method: "POST", body, signal, decode: (value): CreateResponse => createSchema.parse(value) });
+      const { job, uploads, request_id } = result.data;
+      jobPath(job.job_id);
+      if (job.config.comment_name !== body.config.comment_name || job.config.output_header !== body.config.output_header || job.config.standardize !== body.config.standardize || job.config.update !== body.config.update) throw new ApiError("protocol", "The backend job configuration does not match the submitted configuration.");
+      if (uploads.length !== roles.length) throw new ApiError("protocol", "The backend upload slots do not match the requested workbooks.");
+      const instructions: UploadInstructions = {};
+      for (const role of roles) {
+        const slot = slotFor(role);
+        const entries = uploads.filter((upload) => upload.slot === slot);
+        const stored = job.files?.[slot];
+        const upload = entries[0];
+        if (entries.length !== 1 || !stored || upload.filename !== files[role]!.name || stored.filename !== upload.filename || stored.key !== upload.key) throw new ApiError("protocol", "Backend upload identity could not be verified.");
+        const url = new URL(upload.url);
+        if (url.protocol !== "https:" || url.username || url.password || url.hash || !allowedOrigins.includes(url.origin)) throw new ApiError("protocol", "Backend upload URL is outside the configured S3 origins.");
+        // The checked-in S3Store signs put_object with this exact ContentType.
+        // expires_in starts before the response arrives, so use request start.
+        instructions[role] = { method: "PUT", url: upload.url, headers: { "Content-Type": xlsxContentType }, expiresAt: requestedAt + upload.expires_in * 1000 };
+      }
+      return { jobId: job.job_id, uploadInstructions: instructions, requestId: request_id };
+    },
+  };
+  const confirmationAdapter: UploadConfirmationAdapter<BackendJob> = {
+    // No blind retry: this backend advances revision per slot and partial success
+    // must be reconciled with GET before issuing another confirmation.
+    async confirm(id, roles, _transfers, signal) {
+      const requestIds: string[] = [];
+      let { job } = await getJob(id, signal);
+      for (const role of roles) {
+        const slot = slotFor(role);
+        if (job.files?.[slot]?.uploaded) continue;
+        const body: components["schemas"]["UploadCompleteRequest"] = { slot };
+        const result = await client.request(`${jobPath(id)}/uploads/complete`, { method: "POST", body, signal, decode: (value): CompleteResponse => completeSchema.parse(value) });
+        checkId(result.data.job, id);
+        if (result.data.uploaded_slot !== slot || !result.data.job.files?.[slot]?.uploaded) throw new ApiError("protocol", "Backend did not confirm the requested workbook.");
+        job = result.data.job;
+        requestIds.push(result.data.request_id);
+      }
+      if (!roles.every((role) => job.files?.[slotFor(role)]?.uploaded)) throw new ApiError("protocol", "Required workbooks are not server-confirmed.");
+      return { manifest: job, requestIds };
+    },
+  };
+  async function getMetadata(id: string, slot: "input" | "main", query: Record<string, string | number>, signal?: AbortSignal) {
+    const result = await client.request(`${jobPath(id)}/workbooks/${slot}/metadata`, { query, signal, decode: (value): components["schemas"]["WorkbookMetadataResponse"] => metadataSchema.parse(value) });
+    if (result.data.job_id !== id || result.data.slot !== slot) throw new ApiError("protocol", "Workbook metadata identity mismatch.");
+    return result.data;
+  }
+  async function saveConfiguration(id: string, body: components["schemas"]["SaveWorkbookConfiguration"], signal?: AbortSignal) {
+    const result = await client.request(`${jobPath(id)}/configuration`, { method: "PUT", body, signal, decode: (value): JobResponse => responseSchema.parse(value) });
+    checkId(result.data.job, id); return result.data;
+  }
+  async function startJob(id: string, revision: number, signal?: AbortSignal) {
+    const result = await client.request(`${jobPath(id)}/start`, { method: "POST", query: { expected_revision: revision }, signal, decode: (value): JobResponse => responseSchema.parse(value) });
+    checkId(result.data.job, id); return result.data;
+  }
+  return { getJob, createAdapter, confirmationAdapter, getMetadata, saveConfiguration, startJob };
+}
+export type JobsApi = ReturnType<typeof createJobsApi>;

@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.enums import JobStatus
 from app.domain.schemas import JobConfig
+from app.domain.workbooks import WorkbookSelection
 
 
 class StoredFile(BaseModel):
@@ -34,6 +35,8 @@ class JobRecord(BaseModel):
     status: JobStatus
     revision: int = Field(ge=0)
     config: JobConfig
+    configuration_confirmed: bool = False
+    workbook_selections: dict[str, WorkbookSelection] = Field(default_factory=dict)
     files: dict[str, StoredFile] = Field(default_factory=dict)
     artifacts: dict[str, dict[str, Any]] = Field(default_factory=dict)
     input_hash: str | None = None

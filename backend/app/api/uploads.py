@@ -42,6 +42,9 @@ def _complete_uploaded_slot(
 ) -> UploadCompleteResponse:
     """Verify an S3 object and atomically record it as uploaded."""
 
+    if item.get("status") not in {"UPLOADING", "UPLOADED"}:
+        raise HTTPException(409, "Uploads cannot change after workflow start")
+
     files = dict(item.get("files", {}))
     file_info = dict(files.get(payload.slot, {}))
     key = file_info.get("key")
@@ -112,7 +115,7 @@ def _complete_uploaded_slot(
         if all(files[slot].get("uploaded") for slot in required_slots)
         else JobStatus.UPLOADING.value
     )
-    updates = {"files": files, "status": next_status}
+    updates = {"files": files, "status": next_status, "configuration_confirmed": False, "workbook_selections": {}}
     if file_info.get("sha256"):
         updates["input_hash" if payload.slot == "input" else "main_hash"] = file_info["sha256"]
 
@@ -157,6 +160,8 @@ async def upload_workbook(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="job not found")
 
     file_info = item.get("files", {}).get(slot)
+    if item.get("status") not in {"UPLOADING", "UPLOADED"}:
+        raise HTTPException(409, "Uploads cannot change after workflow start")
     if not file_info:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="upload slot not found")
     expected_filename = str(file_info.get("filename", ""))

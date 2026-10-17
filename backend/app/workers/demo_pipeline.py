@@ -23,10 +23,15 @@ from app.workers.quality_rules import run_quality_rules
 XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
-def _inspect_workbook(source: bytes) -> dict[str, Any]:
-    """Compatibility wrapper for callers of the original demo worker."""
+def _inspect_workbook(source: bytes, sheet_name=None, header_row=None) -> dict[str, Any]:
+    """Validate an XLSX and return the full quality-check manifest."""
 
-    return inspect_bytes(source, max_rows=settings.max_data_rows)
+    return inspect_bytes(
+        source,
+        max_rows=settings.max_data_rows,
+        sheet_name=sheet_name,
+        header_row=header_row,
+    )
 
 
 def run_demo_pipeline(
@@ -41,7 +46,10 @@ def run_demo_pipeline(
     if not item or item.get("status") != JobStatus.INSPECTING.value:
         raise ValueError("job is not ready for inspection")
 
-    input_file = item.get("files", {}).get("input", {})
+    # ADR D2: the demo copy uses the selected policy's base. No approved review
+    # mutations exist in this walking skeleton; it never claims AI application.
+    base_slot = "main" if item.get("config", {}).get("update") else "input"
+    input_file = item.get("files", {}).get(base_slot, {})
     if not input_file.get("uploaded") or not input_file.get("key"):
         raise ValueError("input workbook has not been uploaded")
 
@@ -52,18 +60,26 @@ def run_demo_pipeline(
     )
 
     source = s3.get_bytes(input_file["key"])
+    confirmed_version = item.get("workbook_selections", {}).get(base_slot, {}).get("workbook_version")
+    if confirmed_version and sha256(source).hexdigest() != confirmed_version:
+        raise ValueError("Workbook changed after configuration confirmation")
     if len(source) > settings.max_workbook_mb * 1024 * 1024:
         raise ValueError(f"workbook exceeds the {settings.max_workbook_mb} MB limit")
 
-    manifest = _inspect_workbook(source)
+    selection = item.get("workbook_selections", {}).get(base_slot, {})
+    manifest = _inspect_workbook(source, selection.get("sheet_name"), selection.get("header_row"))
+    source_hash = sha256(source).hexdigest()
+    input_hash = source_hash if base_slot == "input" else sha256(s3.get_bytes(item["files"]["input"]["key"])).hexdigest()
     quality = run_quality_rules(source, manifest)
-    input_hash = sha256(source).hexdigest()
     timestamp = datetime.now(UTC).isoformat()
     manifest.update(
         {
             "job_id": job_id,
             "source_key": input_file["key"],
             "input_sha256": input_hash,
+            "source_sha256": source_hash,
+            "output_base": base_slot,
+            "execution_mode": "validation-copy-demo",
             "created_at": timestamp,
         }
     )
@@ -96,7 +112,7 @@ def run_demo_pipeline(
 
     # Reopen the object that was actually written to S3, not only the input.
     output = s3.get_bytes(output_key)
-    _inspect_workbook(output)
+    _inspect_workbook(output, selection.get("sheet_name"), selection.get("header_row"))
     output_hash = sha256(output).hexdigest()
 
     return dynamo.update_job(
