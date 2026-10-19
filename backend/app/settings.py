@@ -1,5 +1,6 @@
 """Runtime configuration loaded from the repository .env or deployment env."""
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -31,6 +32,7 @@ class Settings(BaseSettings):
 
     cognito_user_pool_id: str = ""
     cognito_app_client_id: str = ""
+    cognito_api_token_type: Literal["access", "id"] = "access"
 
     # Demo guardrails (§15)
     max_workbook_mb: int = 25
@@ -38,7 +40,7 @@ class Settings(BaseSettings):
     max_jobs_per_day: int = 50
     presigned_url_ttl_seconds: int = 300
     max_samples_per_column: int = 20    # §15 cap — placeholder, confirm with team
-    max_candidate_matches: int = 25     # §15 cap — placeholder, confirm with team
+    max_candidate_matches: int = 5      # ADR D6: recall-biased Tool #5 candidate cap
 
 
 settings = Settings()

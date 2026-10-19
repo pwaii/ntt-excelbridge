@@ -4,6 +4,7 @@ import { createApiClient } from "./http-client";
 import { ApiError } from "./errors";
 import type { CreateJobAdapter } from "./create-job-types";
 import type { PresignedPutInstruction, UploadConfirmationAdapter, WorkbookRole } from "@/uploads/types";
+import { qualitySnapshotSchema } from "@/quality/types";
 
 export type BackendJob = components["schemas"]["JobRecord"];
 type CreateRequest = components["schemas"]["CreateJobRequest"];
@@ -11,6 +12,8 @@ type JobResponse = components["schemas"]["JobResponse"];
 type CreateResponse = components["schemas"]["CreateJobResponse"];
 type CompleteResponse = components["schemas"]["UploadCompleteResponse"];
 export type UploadInstructions = Partial<Record<WorkbookRole, PresignedPutInstruction>>;
+export const artifactTypes = ["output", "audit", "review_summary", "validation", "quality", "inspection"] as const;
+export type ArtifactType = typeof artifactTypes[number];
 const text = z.string().min(1);
 const fileSchema = z.object({ filename: text, key: text, content_type: z.string().nullable().optional(), size_bytes: z.number().int().nonnegative().nullable().optional(), etag: z.string().nullable().optional(), uploaded: z.boolean().default(false) });
 const selectionSchema = z.object({ sheet_name: text, header_row: z.number().int().min(1).max(20), header_confirmed: z.literal(true), key_column: z.string().nullable().optional(), workbook_version: text });
@@ -18,12 +21,14 @@ const jobSchema = z.object({
   job_id: text, owner_id: text,
   status: z.enum(["DRAFT", "UPLOADING", "UPLOADED", "INSPECTING", "DETECTED", "SEMANTIC_REVIEW_PENDING", "QUALITY_REVIEW_PENDING", "NORMALIZATION_PENDING", "FORMULA_REVIEW_PENDING", "STANDARDIZATION_PENDING", "UPDATE_PENDING", "TRANSFORMATION_REVIEW_PENDING", "APPLYING", "VALIDATING_OUTPUT", "COMPLETED", "FAILED", "CANCELLED", "COST_GUARD_REACHED"]),
   revision: z.number().int().nonnegative(),
-  config: z.object({ comment_name: text.max(200), output_header: z.string().nullable().optional(), standardize: z.boolean().default(false), update: z.boolean().default(false), input_sheet: z.string().nullable().optional(), main_sheet: z.string().nullable().optional(), key_column: z.string().nullable().optional(), input_header_row: z.number().int().nullable().optional(), main_header_row: z.number().int().nullable().optional(), main_key_column: z.string().nullable().optional() }),
+  config: z.object({ comment_name: text.max(200), output_header: z.string().nullable().optional(), standardize: z.boolean().default(false), update: z.boolean().default(false), conflict_policy: z.enum(["reject_all", "latest_wins", "merge"]).default("reject_all"), input_sheet: z.string().nullable().optional(), main_sheet: z.string().nullable().optional(), key_column: z.string().nullable().optional(), input_header_row: z.number().int().nullable().optional(), main_header_row: z.number().int().nullable().optional(), main_key_column: z.string().nullable().optional() }),
   configuration_confirmed: z.boolean().default(false), workbook_selections: z.record(z.string(), selectionSchema).default({}),
   files: z.record(z.string(), fileSchema).default({}),
   artifacts: z.record(z.string(), z.record(z.string(), z.unknown())).default({}),
   created_at: z.iso.datetime({ offset: true }), updated_at: z.iso.datetime({ offset: true }),
   input_hash: z.string().nullable().optional(), main_hash: z.string().nullable().optional(), output_hash: z.string().nullable().optional(), expires_at: z.number().int().nullable().optional(),
+  execution_arn: z.string().nullable().optional(), workflow_segment: z.number().int().nullable().optional(), error_code: z.string().nullable().optional(), error_detail: z.string().nullable().optional(),
+  result_summary: z.record(z.string(), z.union([z.number().int(), z.string()])).nullable().optional(),
 });
 const responseSchema = z.object({ job: jobSchema, request_id: text });
 const createSchema = responseSchema.extend({ uploads: z.array(z.object({ slot: text, filename: text, key: text, url: z.url(), expires_in: z.number().int().positive() })) });
@@ -38,7 +43,7 @@ function jobPath(id: string) {
 
 // Runtime decoders mirror the pinned OpenAPI; return annotations check against
 // generated types. Additional semantic checks bind responses to this operation.
-export function createJobsApi(client: ReturnType<typeof createApiClient>, allowedOrigins: readonly string[]) {
+export function createJobsApi(client: ReturnType<typeof createApiClient>, allowedOrigins: readonly string[], downloadOrigins: readonly string[] = allowedOrigins) {
   const checkId = (job: BackendJob, id: string) => {
     if (job.job_id !== id) throw new ApiError("protocol", "The backend returned a different job.");
   };
@@ -55,7 +60,7 @@ export function createJobsApi(client: ReturnType<typeof createApiClient>, allowe
         if (/[\\/]/.test(files[role]!.name) || files[role]!.name.length > 255) throw new ApiError("configuration", "Use workbook filenames of at most 255 characters without path separators.");
       }
       const body: CreateRequest = {
-        config: { comment_name: configuration.comment_name, output_header: configuration.outputHeader, standardize: configuration.standardize, update: configuration.update },
+        config: { comment_name: configuration.comment_name, output_header: configuration.outputHeader, standardize: configuration.standardize, update: configuration.update, conflict_policy: "reject_all" },
         input_filename: files.current.name,
         ...(roles.includes("main") ? { main_filename: files.main!.name } : {}),
       };
@@ -115,6 +120,32 @@ export function createJobsApi(client: ReturnType<typeof createApiClient>, allowe
     const result = await client.request(`${jobPath(id)}/start`, { method: "POST", query: { expected_revision: revision }, signal, decode: (value): JobResponse => responseSchema.parse(value) });
     checkId(result.data.job, id); return result.data;
   }
-  return { getJob, createAdapter, confirmationAdapter, getMetadata, saveConfiguration, startJob };
+  async function submitReview(id: string, body: components["schemas"]["ReviewRequest"], signal?: AbortSignal) {
+    const result = await client.request(`${jobPath(id)}/reviews`, { method: "POST", body, signal,
+      decode: (value): components["schemas"]["ReviewResponse"] => responseSchema.extend({ review_id: text }).parse(value) });
+    checkId(result.data.job, id);
+    if (result.data.job.revision <= body.expected_revision) throw new ApiError("protocol", "The backend did not acknowledge a new review revision.");
+    return result.data;
+  }
+  async function getArtifact(id: string, type: ArtifactType, signal?: AbortSignal) {
+    const requestedAt = Date.now();
+    const result = await client.request(`${jobPath(id)}/artifacts/${type}`, { signal,
+      decode: (value): components["schemas"]["PresignedDownload"] => z.object({ artifact_type: text, key: text, url: z.url(), expires_in: z.number().int().positive(), request_id: text }).parse(value) });
+    const signed = result.data;
+    const url = new URL(signed.url);
+    if (signed.artifact_type !== type || url.protocol !== "https:" || url.username || url.password || url.hash || !downloadOrigins.includes(url.origin)) throw new ApiError("protocol", "The artifact download URL or identity could not be verified.");
+    return { ...signed, expiresAt: requestedAt + signed.expires_in * 1000 };
+  }
+  async function getReviewReport(id: string, stage: "quality" | "transformation", revision: number, cursor: number, signal?: AbortSignal) {
+    const result = await client.request(`${jobPath(id)}/review-report`, { query: { stage, expected_revision: revision, cursor, limit: 100 }, signal,
+      decode: (value): components["schemas"]["ReviewReportPage"] => qualitySnapshotSchema.safeExtend({ stage: z.enum(["quality", "transformation"]), total: z.number().int().nonnegative(), nextCursor: z.number().int().nonnegative().nullable().optional(), requestId: text }).parse(value) });
+    if (result.data.jobId !== id || result.data.revision !== revision || result.data.stage !== stage) throw new ApiError("protocol", "Review report identity or revision mismatch.");
+    return result.data;
+  }
+  async function retryJob(id: string, signal?: AbortSignal) {
+    const result = await client.request(`${jobPath(id)}/retry`, { method: "POST", signal, decode: (value): JobResponse => responseSchema.parse(value) });
+    checkId(result.data.job, id); return result.data;
+  }
+  return { getJob, createAdapter, confirmationAdapter, getMetadata, saveConfiguration, startJob, submitReview, getArtifact, getReviewReport, retryJob };
 }
 export type JobsApi = ReturnType<typeof createJobsApi>;

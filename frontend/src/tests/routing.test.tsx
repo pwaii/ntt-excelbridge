@@ -57,9 +57,9 @@ describe("application routing", () => {
     expect(container.querySelector("h1")?.textContent).toBe(heading);
     expect(document.title).toBe(`${heading} | XLSX Data Workflow`);
     expect(document.activeElement?.id).toBe("main-content");
-    if (heading !== "Create workflow" && heading !== "Page not found" && heading !== "Sign in" && heading !== "Job progress") {
-      expect(container.textContent).toContain("Coming soon");
-      expect(container.textContent).toContain("is not implemented yet");
+    if (["Transformation review", "Result"].includes(heading)) {
+      expect(container.textContent).toContain("Sign in and configure the backend API");
+      expect(container.textContent).not.toContain("Coming soon");
       expect(container.querySelector("form")).toBeNull();
     }
   });

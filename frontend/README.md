@@ -23,5 +23,12 @@ Copy `.env.example` to `.env.local` and configure public values for your environ
 See the session document before choosing Cognito or local development access. Never
 put AWS credentials, JWTs or a client secret in Vite configuration.
 
-The connected worker is a validation/copy demo. Real AWS/Cognito and browser smoke
-verification remain pending; passing mocked tests does not certify real services.
+The configured backend uses reviewed workflow segments. Without STATE_MACHINE_ARN,
+the local backend uses copy mode. Real AWS/Cognito and browser smoke verification
+remain pending; synthetic tests do not certify those services.
+
+
+Frontend screens through Day 7 are connected to the integrated review and artifact
+contracts. Real-service acceptance remains environment-dependent. Use the
+[demo runbook](../docs/frontend-demo-runbook.md) and `npm.cmd run demo:verify` for a
+deterministic component rehearsal with synthetic service boundaries.

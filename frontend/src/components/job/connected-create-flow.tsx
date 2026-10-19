@@ -78,7 +78,7 @@ export function ConnectedCreateFlow({ configuration, canCreate, onLockedChange, 
   return <section aria-labelledby="backend-create-title" className="mt-5 space-y-4 rounded-2xl border bg-card p-4 sm:p-5">
     <h2 id="backend-create-title" className="text-sm font-semibold">Create job and upload</h2>
     <p className="text-xs leading-relaxed text-muted-foreground">Creates a real backend job and sends workbook files directly to S3. This does not start the workflow.</p>
-    <p className="text-xs leading-relaxed text-muted-foreground">Enabled AI steps send workbook data to Amazon Bedrock after the required review and start steps.</p>
+    <p className="text-xs leading-relaxed text-muted-foreground">Where AI analysis is enabled by the backend workflow, workbook data is sent to Amazon Bedrock. Review proposed changes before approving them. Local copy mode does not perform AI processing.</p>
     {issues.length > 0 && <ul role="note" className="list-disc space-y-1 pl-4 text-xs text-muted-foreground">{issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>}
     {state.phase === "creating-job" && <p role="status" className="text-sm">Creating backend job…</p>}
     {state.phase === "create-error" && <p role="alert" className="text-sm text-destructive">{state.error.message}{state.error.requestId && <span className="block break-all text-xs">Request ID: {state.error.requestId}</span>}{state.outcomeUnknown && <span className="block">The outcome is unknown. Reconcile existing jobs with the backend before creating another job.</span>}</p>}

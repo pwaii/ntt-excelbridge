@@ -14,7 +14,8 @@
       "key_column": null,
       "input_header_row": null,
       "main_header_row": null,
-      "main_key_column": null
+      "main_key_column": null,
+      "conflict_policy": "reject_all"
     },
     "configuration_confirmed": false,
     "workbook_selections": {},

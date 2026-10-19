@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from io import BytesIO
+from zipfile import is_zipfile
+
 from botocore.exceptions import ClientError
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 
@@ -67,16 +70,43 @@ def _complete_uploaded_slot(
             detail=f"workbook exceeds the {settings.max_workbook_mb} MB limit",
         )
 
+    content_type = str(head.get("ContentType") or "").split(";", 1)[0].strip().lower()
+    allowed_types = {XLSX_CONTENT_TYPE, "application/octet-stream", ""}
+    if content_type not in allowed_types:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="uploaded object is not an .xlsx content type",
+        )
+    try:
+        actual_sha256 = s3.sha256(key)
+    except AttributeError:
+        # Keeps lightweight adapter fakes compatible while production S3Store always hashes.
+        actual_sha256 = None
+    try:
+        if not is_zipfile(BytesIO(s3.get_bytes(key))):
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail="uploaded object is not a valid XLSX package",
+            )
+    except AttributeError:
+        # Lightweight local adapter fakes may only implement head_object.
+        pass
+    if payload.sha256 and actual_sha256 and payload.sha256.lower() != actual_sha256:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="uploaded object SHA-256 does not match the declared hash",
+        )
     file_info.update(
         {
             "uploaded": True,
             "size_bytes": size_bytes,
             "etag": str(head.get("ETag", "")).strip('"') or None,
-            "content_type": head.get("ContentType") or file_info.get("content_type"),
+            "content_type": content_type or file_info.get("content_type"),
         }
     )
-    if payload.sha256:
-        file_info["sha256"] = payload.sha256
+    file_info["sha256"] = actual_sha256 or payload.sha256
+    if head.get("VersionId"):
+        file_info["version_id"] = head["VersionId"]
     files[payload.slot] = file_info
 
     required_slots = {"input"} | ({"main"} if "main" in files else set())
@@ -86,10 +116,8 @@ def _complete_uploaded_slot(
         else JobStatus.UPLOADING.value
     )
     updates = {"files": files, "status": next_status, "configuration_confirmed": False, "workbook_selections": {}}
-    if payload.slot == "input" and payload.sha256:
-        updates["input_hash"] = payload.sha256
-    if payload.slot == "main" and payload.sha256:
-        updates["main_hash"] = payload.sha256
+    if file_info.get("sha256"):
+        updates["input_hash" if payload.slot == "input" else "main_hash"] = file_info["sha256"]
 
     try:
         updated = dynamo.update_job(

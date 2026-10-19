@@ -18,6 +18,7 @@ class JobConfig(BaseModel):
     input_sheet: str | None = None
     main_sheet: str | None = None
     key_column: str | None = None  # business key for matching (§3.2)
+    conflict_policy: Literal["reject_all", "latest_wins", "merge"] = "reject_all"
     input_header_row: int | None = Field(default=None, ge=1, le=20)
     main_header_row: int | None = Field(default=None, ge=1, le=20)
     main_key_column: str | None = None
@@ -43,7 +44,7 @@ class ReviewItemDecision(BaseModel):
 
 
 class ReviewRequest(BaseModel):
-    expected_revision: int
+    expected_revision: int = Field(ge=0)
     decisions: dict[str, ReviewItemDecision] = Field(min_length=1)  # keyed by issue/proposal id
     approved_by: str | None = None  # populated from authenticated Cognito subject
 
@@ -56,7 +57,7 @@ class CreateJobRequest(BaseModel):
 
 class UploadCompleteRequest(BaseModel):
     slot: Literal["input", "main"]
-    sha256: str | None = Field(default=None, min_length=64, max_length=64)
+    sha256: str | None = Field(default=None, min_length=64, max_length=64, pattern=r"^[0-9a-fA-F]{64}$")
 
 
 # --- Tool #1: semantic verification (§10.2) ---

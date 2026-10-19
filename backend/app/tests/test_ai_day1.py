@@ -38,7 +38,9 @@ def test_caps_sourced_from_settings():
     assert policy.MAX_ROWS == 50_000
     assert policy.MAX_OUTPUT_TOKENS == 2048
     assert policy.MAX_SAMPLES_PER_COLUMN == 20
-    assert policy.MAX_CANDIDATE_MATCHES == 25
+    # ADR D6: the deployed default is five; the matching helper retains a
+    # defensive hard ceiling of 25 for controlled experiments.
+    assert policy.MAX_CANDIDATE_MATCHES == 5
 
 
 def test_safe_log_keeps_only_allowlisted_fields():

@@ -1,32 +1,53 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: XLSX data-quality / standardization / update workflow (demo). See docs/backend-plan.md (§7).
+Description: XLSX data-quality / standardization / update workflow.
 
-# SKELETON — resources are placeholders. BE Day 1 fills these in (§17).
+Metadata:
+  AWSToolsMetrics:
+    AWSAgentToolkit: aws-cloudformation@3
+  com.aws.cloudformation.Context:
+    arch: "API Gateway HTTP API -> Lambda workers -> Step Functions -> S3/DynamoDB/Bedrock"
+    must:
+      - "IAM roles are managed outside this stack and supplied as ARN parameters."
+      - "This template must not create IAM roles or inline/managed IAM policies."
+      - "CloudFormation must be invoked with an existing service-role ARN."
 
 Parameters:
   Environment:
     Type: String
     Default: demo
+    AllowedPattern: "^[a-z0-9-]+$"
   BedrockModelId:
     Type: String
-    Description: Resolved + verified non-Marketplace model id (preflight, §10.1).
+    Default: amazon.nova-lite-v1:0
+  BedrockHeavyModelId:
+    Type: String
+    Default: amazon.nova-pro-v1:0
   FrontendOrigin:
     Type: String
     Default: http://localhost:5173
-    Description: Browser origin allowed to upload workbooks directly to S3.
+  LambdaExecutionRoleArn:
+    Type: String
+    Description: Existing Lambda execution role ARN with the union of permissions required by the API and worker functions.
+    AllowedPattern: "^arn:[A-Za-z0-9-]+:iam::[0-9]{12}:role/.+$"
+  StateMachineExecutionRoleArn:
+    Type: String
+    Description: Existing Step Functions execution role ARN allowed to invoke the worker Lambda functions.
+    AllowedPattern: "^arn:[A-Za-z0-9-]+:iam::[0-9]{12}:role/.+$"
 
 Globals:
   Function:
     Runtime: python3.12
     MemorySize: 1024
     Timeout: 60
+    CodeUri: ../backend
     Environment:
       Variables:
         ENVIRONMENT: !Ref Environment
         DYNAMO_TABLE: !Ref MetadataTable
         APP_DATA_BUCKET: !Ref DataBucket
         BEDROCK_MODEL_ID: !Ref BedrockModelId
+        BEDROCK_MODEL_ID_HEAVY: !Ref BedrockHeavyModelId
 
 Resources:
   DataBucket:
@@ -43,37 +64,252 @@ Resources:
       VersioningConfiguration: { Status: Enabled }
       CorsConfiguration:
         CorsRules:
-          - AllowedOrigins:
-              - !Ref FrontendOrigin
-              - http://127.0.0.1:5173
+          - AllowedOrigins: [!Ref FrontendOrigin, http://127.0.0.1:5173]
             AllowedMethods: [GET, PUT, HEAD]
             AllowedHeaders: ["*"]
-            ExposedHeaders: [ETag]
+            ExposedHeaders: [ETag, x-amz-version-id]
       LifecycleConfiguration:
         Rules:
           - Id: expire-demo-jobs
             Status: Enabled
+            Prefix: jobs/
             ExpirationInDays: 14
 
   MetadataTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub "xlsx-workflow-${Environment}"
+      TableName: !Sub xlsx-workflow-${Environment}
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - { AttributeName: PK, AttributeType: S }
         - { AttributeName: SK, AttributeType: S }
+        - { AttributeName: GSI1PK, AttributeType: S }
+        - { AttributeName: GSI1SK, AttributeType: S }
+        - { AttributeName: GSI2PK, AttributeType: S }
+        - { AttributeName: GSI2SK, AttributeType: S }
       KeySchema:
         - { AttributeName: PK, KeyType: HASH }
         - { AttributeName: SK, KeyType: RANGE }
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - { AttributeName: GSI1PK, KeyType: HASH }
+            - { AttributeName: GSI1SK, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+        - IndexName: GSI2
+          KeySchema:
+            - { AttributeName: GSI2PK, KeyType: HASH }
+            - { AttributeName: GSI2SK, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+      PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true }
+      SSESpecification: { SSEEnabled: true }
       TimeToLiveSpecification: { AttributeName: expires_at, Enabled: true }
-      # TODO(BE): GSI1 (OWNER#), GSI2 (STATUS#) per §7.6
 
-  # TODO(BE): ApiFunction (FastAPI+Mangum), worker functions, StateMachine,
-  # Cognito UserPool, HttpApi with JWT authorizer. See docs/backend-plan.md.
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub xlsx-workflow-${Environment}
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows: [ALLOW_USER_PASSWORD_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows: [code]
+      AllowedOAuthScopes: [openid, email, profile]
+      SupportedIdentityProviders: [COGNITO]
+      CallbackURLs: [!Sub '${FrontendOrigin}/auth/callback']
+      LogoutURLs: [!Sub '${FrontendOrigin}/login']
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId: !Ref UserPool
+      Domain: !Sub 'xlsx-${AWS::AccountId}-${AWS::Region}-${Environment}'
+
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref Environment
+      CorsConfiguration:
+        AllowOrigins: [!Ref FrontendOrigin, http://127.0.0.1:5173]
+        AllowHeaders: [Authorization, Content-Type, X-Request-Id]
+        AllowMethods: [GET, POST, PUT, OPTIONS]
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}
+              audience: [!Ref UserPoolClient]
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handlers.api_handler
+      Role: !Ref LambdaExecutionRoleArn
+      Environment:
+        Variables:
+          STATE_MACHINE_ARN: !Ref WorkflowStateMachine
+          COGNITO_USER_POOL_ID: !Ref UserPool
+          COGNITO_APP_CLIENT_ID: !Ref UserPoolClient
+          COGNITO_API_TOKEN_TYPE: access
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /{proxy+}
+            Method: ANY
+        Root:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /
+            Method: ANY
+
+  InspectFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handlers.inspect_handler
+      Role: !Ref LambdaExecutionRoleArn
+
+  QualityFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handlers.quality_handler
+      Role: !Ref LambdaExecutionRoleArn
+
+  QualityGateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handlers.quality_gate_handler
+      Role: !Ref LambdaExecutionRoleArn
+
+  BedrockFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handlers.bedrock_handler
+      Role: !Ref LambdaExecutionRoleArn
+
+  ApplyFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handlers.apply_handler
+      Role: !Ref LambdaExecutionRoleArn
+
+  ValidateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handlers.validate_handler
+      Role: !Ref LambdaExecutionRoleArn
+
+  FailureFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handlers.failure_handler
+      Role: !Ref LambdaExecutionRoleArn
+
+  ApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ApiFunction}
+      RetentionInDays: 14
+
+  InspectLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${InspectFunction}
+      RetentionInDays: 14
+
+  QualityLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${QualityFunction}
+      RetentionInDays: 14
+
+  QualityGateLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${QualityGateFunction}
+      RetentionInDays: 14
+
+  BedrockLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${BedrockFunction}
+      RetentionInDays: 14
+
+  ApplyLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ApplyFunction}
+      RetentionInDays: 14
+
+  ValidateLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ValidateFunction}
+      RetentionInDays: 14
+
+  FailureLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${FailureFunction}
+      RetentionInDays: 14
+
+  WorkflowStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Type: STANDARD
+      Role: !Ref StateMachineExecutionRoleArn
+      DefinitionUri: statemachine.asl.json
+      DefinitionSubstitutions:
+        InspectWorkerArn: !GetAtt InspectFunction.Arn
+        QualityWorkerArn: !GetAtt QualityFunction.Arn
+        QualityGateWorkerArn: !GetAtt QualityGateFunction.Arn
+        BedrockWorkerArn: !GetAtt BedrockFunction.Arn
+        ApplyWorkerArn: !GetAtt ApplyFunction.Arn
+        ValidateWorkerArn: !GetAtt ValidateFunction.Arn
+        FailureWorkerArn: !GetAtt FailureFunction.Arn
 
 Outputs:
-  DataBucketName:
-    Value: !Ref DataBucket
-  MetadataTableName:
-    Value: !Ref MetadataTable
+  ApiUrl:
+    Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${Environment}
+  DataBucketName: { Value: !Ref DataBucket }
+  MetadataTableName: { Value: !Ref MetadataTable }
+  StateMachineArn: { Value: !Ref WorkflowStateMachine }
+  UserPoolId: { Value: !Ref UserPool }
+  UserPoolClientId: { Value: !Ref UserPoolClient }
+  CognitoAuthority:
+    Value: !Sub 'https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}'
+  CognitoHostedUi:
+    Value: !Sub 'https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com'

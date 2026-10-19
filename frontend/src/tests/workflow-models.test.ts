@@ -42,7 +42,7 @@ describe("future artifact presentation (ADR D2)", () => {
 });
 
 describe("ADR-aware mock coverage", () => {
-  it("covers four human-review states with pattern-level rules, not per-cell objects", () => {
+  it("covers each persisted human-review state with pattern-level rules", () => {
     expect(new Set(mockPatternRules.map((rule) => rule.status))).toEqual(new Set(Object.keys(proposalStatusLabels)));
     expect(mockPatternRules.every((rule) => rule.kind === "value-pattern-rule")).toBe(true);
     expect(mockPatternRules[0].affectedCellCount).toBeGreaterThan(mockPatternRules[0].examples.length);
