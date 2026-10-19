@@ -1,39 +1,130 @@
 {
-  "Comment": "SKELETON — XLSX workflow (§6). Human gates use .waitForTaskToken. BE fleshes out Day 3/5.",
-  "StartAt": "Inspect",
+  "Comment": "Short Step Functions Standard segments. Human gates are execution boundaries, never task-token waits.",
+  "StartAt": "RouteSegment",
   "States": {
+    "RouteSegment": {
+      "Type": "Choice",
+      "Choices": [
+        { "Variable": "$.segment", "NumericEquals": 1, "Next": "Inspect" },
+        { "Variable": "$.segment", "NumericEquals": 2, "Next": "Tool3" },
+        { "Variable": "$.segment", "NumericEquals": 3, "Next": "Apply" }
+      ],
+      "Default": "InvalidSegment"
+    },
     "Inspect": {
       "Type": "Task",
       "Resource": "${InspectWorkerArn}",
-      "Comment": "INSPECTING -> DETECTED",
-      "Next": "SemanticVerify"
+      "Retry": [{ "ErrorEquals": ["States.Timeout", "Lambda.ServiceException", "Lambda.TooManyRequestsException"], "IntervalSeconds": 2, "MaxAttempts": 3, "BackoffRate": 2 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed" }],
+      "ResultPath": "$.inspect_result",
+      "Next": "Quality"
     },
-    "SemanticVerify": {
+    "Quality": {
+      "Type": "Task",
+      "Resource": "${QualityWorkerArn}",
+      "Retry": [{ "ErrorEquals": ["States.Timeout", "Lambda.ServiceException", "Lambda.TooManyRequestsException"], "IntervalSeconds": 2, "MaxAttempts": 3, "BackoffRate": 2 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed" }],
+      "ResultPath": "$.quality_result",
+      "Next": "TypeMismatchChoice"
+    },
+    "TypeMismatchChoice": {
+      "Type": "Choice",
+      "Choices": [{ "Variable": "$.quality_result.type_mismatch_count", "NumericGreaterThan": 0, "Next": "Tool2" }],
+      "Default": "Semantic"
+    },
+    "Tool2": {
       "Type": "Task",
       "Resource": "${BedrockWorkerArn}",
-      "Comment": "Tool #1 -> SEMANTIC_REVIEW_PENDING",
-      "Next": "QualityReviewGate"
+      "Parameters": { "job_id.$": "$.job_id", "tool": "tool2" },
+      "Retry": [{ "ErrorEquals": ["States.Timeout", "Lambda.ServiceException"], "IntervalSeconds": 3, "MaxAttempts": 2, "BackoffRate": 2 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed" }],
+      "ResultPath": "$.tool2_result",
+      "Next": "Semantic"
     },
-    "QualityReviewGate": {
+    "Semantic": {
       "Type": "Task",
-      "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
-      "Comment": "Human gate #1 — resumes only on valid review revision (§6)",
-      "Parameters": { "FunctionName": "${GatePublisherArn}", "Payload": { "taskToken.$": "$$.Task.Token", "gate": "quality" } },
-      "Next": "Transform"
+      "Resource": "${BedrockWorkerArn}",
+      "Parameters": { "job_id.$": "$.job_id", "tool": "tool1" },
+      "Retry": [{ "ErrorEquals": ["States.Timeout", "Lambda.ServiceException"], "IntervalSeconds": 3, "MaxAttempts": 2, "BackoffRate": 2 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed" }],
+      "ResultPath": "$.semantic_result",
+      "Next": "QualityGate"
     },
-    "Transform": {
-      "Type": "Pass",
-      "Comment": "TODO: Tool #2/#3/#4/#5 branches (optional per config), then human gate #2",
-      "Next": "TransformationReviewGate"
-    },
-    "TransformationReviewGate": {
+    "QualityGate": {
       "Type": "Task",
-      "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
-      "Comment": "Human gate #2",
-      "Parameters": { "FunctionName": "${GatePublisherArn}", "Payload": { "taskToken.$": "$$.Task.Token", "gate": "transformation" } },
-      "Next": "Apply"
+      "Resource": "${QualityGateWorkerArn}",
+      "Parameters": { "job_id.$": "$.job_id" },
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed" }],
+      "ResultPath": "$.quality_gate_result",
+      "End": true
     },
-    "Apply": { "Type": "Task", "Resource": "${ApplyWorkerArn}", "Next": "Validate" },
-    "Validate": { "Type": "Task", "Resource": "${ValidateWorkerArn}", "End": true }
+    "Tool3": {
+      "Type": "Task",
+      "Resource": "${BedrockWorkerArn}",
+      "Parameters": { "job_id.$": "$.job_id", "tool": "tool3" },
+      "Retry": [{ "ErrorEquals": ["States.Timeout", "Lambda.ServiceException"], "IntervalSeconds": 3, "MaxAttempts": 2, "BackoffRate": 2 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed" }],
+      "ResultPath": "$.tool3_result",
+      "Next": "Tool4Choice"
+    },
+    "Tool4Choice": {
+      "Type": "Choice",
+      "Choices": [{ "Variable": "$.config.standardize", "BooleanEquals": true, "Next": "Tool4" }],
+      "Default": "Tool5Choice"
+    },
+    "Tool4": {
+      "Type": "Task",
+      "Resource": "${BedrockWorkerArn}",
+      "Parameters": { "job_id.$": "$.job_id", "tool": "tool4" },
+      "Retry": [{ "ErrorEquals": ["States.Timeout", "Lambda.ServiceException"], "IntervalSeconds": 3, "MaxAttempts": 2, "BackoffRate": 2 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed" }],
+      "ResultPath": "$.tool4_result",
+      "Next": "Tool5Choice"
+    },
+    "Tool5Choice": {
+      "Type": "Choice",
+      "Choices": [{ "Variable": "$.config.update", "BooleanEquals": true, "Next": "Tool5" }],
+      "Default": "MarkTransformationReview"
+    },
+    "Tool5": {
+      "Type": "Task",
+      "Resource": "${BedrockWorkerArn}",
+      "Parameters": { "job_id.$": "$.job_id", "tool": "tool5" },
+      "Retry": [{ "ErrorEquals": ["States.Timeout", "Lambda.ServiceException"], "IntervalSeconds": 3, "MaxAttempts": 2, "BackoffRate": 2 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed" }],
+      "ResultPath": "$.tool5_result",
+      "Next": "MarkTransformationReview"
+    },
+    "MarkTransformationReview": {
+      "Type": "Task",
+      "Resource": "${QualityGateWorkerArn}",
+      "Parameters": { "job_id.$": "$.job_id", "gate": "transformation" },
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed" }],
+      "ResultPath": "$.transformation_gate_result",
+      "End": true
+    },
+    "Apply": {
+      "Type": "Task",
+      "Resource": "${ApplyWorkerArn}",
+      "Retry": [{ "ErrorEquals": ["States.Timeout", "Lambda.ServiceException"], "IntervalSeconds": 2, "MaxAttempts": 2, "BackoffRate": 2 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed" }],
+      "ResultPath": "$.apply_result",
+      "Next": "Validate"
+    },
+    "Validate": {
+      "Type": "Task",
+      "Resource": "${ValidateWorkerArn}",
+      "Retry": [{ "ErrorEquals": ["States.Timeout", "Lambda.ServiceException"], "IntervalSeconds": 2, "MaxAttempts": 2, "BackoffRate": 2 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed" }],
+      "ResultPath": "$.validate_result",
+      "End": true
+    },
+    "MarkFailed": {
+      "Type": "Task",
+      "Resource": "${FailureWorkerArn}",
+      "Parameters": { "job_id.$": "$.job_id" },
+      "End": true
+    },
+    "InvalidSegment": { "Type": "Fail", "Error": "INVALID_WORKFLOW_SEGMENT", "Cause": "segment must be 1, 2, or 3" }
   }
 }

@@ -20,6 +20,8 @@ class StoredFile(BaseModel):
     content_type: str | None = None
     size_bytes: int | None = Field(default=None, ge=0)
     etag: str | None = None
+    sha256: str | None = None
+    version_id: str | None = None
     uploaded: bool = False
 
 
@@ -40,6 +42,10 @@ class JobRecord(BaseModel):
     input_hash: str | None = None
     main_hash: str | None = None
     output_hash: str | None = None
+    execution_arn: str | None = None
+    workflow_segment: int | None = None
+    error_code: str | None = None
+    error_detail: str | None = None
     created_at: datetime
     updated_at: datetime
     expires_at: int | None = None
@@ -79,6 +85,7 @@ class UploadCompleteResponse(JobResponse):
 
 class ReviewResponse(JobResponse):
     review_id: str
+    execution_arn: str | None = None
 
 
 class PresignedDownload(BaseModel):

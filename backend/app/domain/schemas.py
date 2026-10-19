@@ -4,7 +4,7 @@ these and rejected if it doesn't fit (§10). Keep in sync with prompts/ and fron
 """
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.domain.enums import MatchType, OutputPolicy, ReviewDecision
 
@@ -18,9 +18,16 @@ class JobConfig(BaseModel):
     input_sheet: str | None = None
     main_sheet: str | None = None
     key_column: str | None = None  # business key for matching (§3.2)
+    conflict_policy: Literal["reject_all", "latest_wins", "merge"] = "reject_all"
     input_header_row: int | None = Field(default=None, ge=1, le=20)
     main_header_row: int | None = Field(default=None, ge=1, le=20)
     main_key_column: str | None = None
+
+    @model_validator(mode="after")
+    def validate_update_key(self) -> "JobConfig":
+        if self.update and (not self.key_column or not self.key_column.strip()):
+            raise ValueError("key_column is required when update is enabled")
+        return self
 
     def output_policy(self) -> OutputPolicy:
         if self.standardize and self.update:
@@ -56,7 +63,7 @@ class CreateJobRequest(BaseModel):
 
 class UploadCompleteRequest(BaseModel):
     slot: Literal["input", "main"]
-    sha256: str | None = Field(default=None, min_length=64, max_length=64)
+    sha256: str | None = Field(default=None, min_length=64, max_length=64, pattern=r"^[0-9a-fA-F]{64}$")
 
 
 # --- Tool #1: semantic verification (§10.2) ---

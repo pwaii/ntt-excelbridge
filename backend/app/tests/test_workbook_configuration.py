@@ -69,6 +69,7 @@ def prepare(api, standardize=False, update=False):
             "output_header": "profit",
             "standardize": standardize,
             "update": update,
+            "key_column": "ID" if update else None,
         },
         "input_filename": "current.xlsx",
     }

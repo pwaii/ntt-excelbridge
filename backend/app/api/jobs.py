@@ -8,7 +8,8 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
-from app.api.dependencies import get_dynamo_store, get_s3_store
+from app.api.dependencies import get_dynamo_store, get_s3_store, get_workflow_store
+from app.api.workbooks import validate_selections
 from app.auth import current_user_id
 from app.domain.enums import JobStatus
 from app.domain.models import (
@@ -19,10 +20,10 @@ from app.domain.models import (
     PresignedUpload,
 )
 from app.domain.schemas import CreateJobRequest
-from app.storage.dynamo_store import DynamoStore, JobAlreadyExistsError, RevisionConflictError
-from app.api.workbooks import validate_selections
 from app.domain.workbooks import WorkbookSelection
+from app.storage.dynamo_store import DynamoStore, JobAlreadyExistsError, RevisionConflictError
 from app.storage.s3_store import S3Store
+from app.storage.sfn_store import WorkflowNotConfiguredError, WorkflowStore
 from app.workers.demo_pipeline import run_demo_pipeline
 
 router = APIRouter(prefix="/v1/jobs", tags=["jobs"])
@@ -149,9 +150,10 @@ def start_job(
     owner_id: str = Depends(current_user_id),
     dynamo: DynamoStore = Depends(get_dynamo_store),
     s3: S3Store = Depends(get_s3_store),
+    workflow: WorkflowStore = Depends(get_workflow_store),
     expected_revision: int | None = Query(default=None, ge=0),
 ) -> JobResponse:
-    """Run the AWS-backed pass-through pipeline for the uploaded workbook."""
+    """Start segment 1; local development falls back to the synchronous demo."""
 
     item = dynamo.get_job(job_id)
     if not item or item.get("owner_id") != owner_id:
@@ -177,12 +179,22 @@ def start_job(
             expected_revision=int(item["revision"]),
             updates={"status": JobStatus.INSPECTING.value},
         )
-        completed = run_demo_pipeline(
-            job_id,
-            expected_revision=int(inspecting["revision"]),
-            dynamo=dynamo,
-            s3=s3,
-        )
+        if workflow.state_machine_arn:
+            started = workflow.start_segment(job_id, 1, int(inspecting["revision"]))
+            try:
+                running = dynamo.update_job(
+                    job_id,
+                    expected_revision=int(inspecting["revision"]),
+                    updates={"execution_arn": started["execution_arn"], "workflow_segment": 1},
+                )
+            except RevisionConflictError:
+                # A Lambda may finish before the StartExecution response is persisted.
+                running = dynamo.get_job(job_id) or inspecting
+            return JobResponse(job=_record(running), request_id=request.state.request_id)
+        completed = run_demo_pipeline(job_id, expected_revision=int(inspecting["revision"]), dynamo=dynamo, s3=s3)
+        return JobResponse(job=_record(completed), request_id=request.state.request_id)
+    except WorkflowNotConfiguredError:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="workflow is not configured")
     except RevisionConflictError as error:
         # A losing duplicate must not mark the winning execution as failed.
         raise HTTPException(409, "Job changed; refresh status before retrying") from error
@@ -208,4 +220,50 @@ def start_job(
             detail="workflow failed; inspect the job status and server logs",
         ) from error
 
-    return JobResponse(job=_record(completed), request_id=request.state.request_id)
+
+
+@router.post("/{job_id}/cancel", response_model=JobResponse)
+def cancel_job(
+    job_id: str,
+    request: Request,
+    owner_id: str = Depends(current_user_id),
+    dynamo: DynamoStore = Depends(get_dynamo_store),
+    workflow: WorkflowStore = Depends(get_workflow_store),
+) -> JobResponse:
+    item = dynamo.get_job(job_id)
+    if not item or item.get("owner_id") != owner_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="job not found")
+    if item.get("status") in {JobStatus.COMPLETED.value, JobStatus.FAILED.value, JobStatus.CANCELLED.value}:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="job is already terminal")
+    execution_arn = item.get("execution_arn")
+    if execution_arn and workflow.state_machine_arn:
+        workflow.stop(execution_arn)
+    try:
+        updated = dynamo.update_job(job_id, expected_revision=int(item["revision"]), updates={"status": JobStatus.CANCELLED.value})
+    except Exception as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="job changed; refresh and retry") from error
+    return JobResponse(job=_record(updated), request_id=request.state.request_id)
+
+
+@router.post("/{job_id}/retry", response_model=JobResponse)
+def retry_job(
+    job_id: str,
+    request: Request,
+    owner_id: str = Depends(current_user_id),
+    dynamo: DynamoStore = Depends(get_dynamo_store),
+    workflow: WorkflowStore = Depends(get_workflow_store),
+) -> JobResponse:
+    item = dynamo.get_job(job_id)
+    if not item or item.get("owner_id") != owner_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="job not found")
+    if item.get("status") != JobStatus.FAILED.value:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="only FAILED jobs can be retried")
+    segment = int(item.get("workflow_segment", 1))
+    status_by_segment = {1: JobStatus.INSPECTING.value, 2: JobStatus.NORMALIZATION_PENDING.value, 3: JobStatus.APPLYING.value}
+    try:
+        updated = dynamo.update_job(job_id, int(item["revision"]), {"status": status_by_segment.get(segment, JobStatus.INSPECTING.value), "error_code": None, "error_detail": None})
+        started = workflow.start_segment(job_id, segment, int(updated["revision"]), context={"config": item.get("config", {})})
+        updated = dynamo.update_job(job_id, int(updated["revision"]), {"execution_arn": started["execution_arn"]})
+    except Exception as error:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="workflow retry could not be started") from error
+    return JobResponse(job=_record(updated), request_id=request.state.request_id)

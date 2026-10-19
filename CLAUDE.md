@@ -12,7 +12,7 @@ A human-gated, event-driven workflow that takes an XLSX workbook plus a natural-
 
 ## Architecture big picture
 
-The spine is a **Step Functions Standard** state machine (`infra/statemachine.asl.json`) that walks a job through the states in plan §6 (`DRAFT` → … → `COMPLETED`/`FAILED`). The state machine holds only S3 pointers, hashes, IDs, and small review metadata — **never workbook bytes, row arrays, or prompts** (those live in S3). Human approval gates pause execution via task tokens and resume only on a valid review revision.
+The spine is a **Step Functions Standard** state machine (`infra/statemachine.asl.json`) that walks a job through the states in plan §6 (`DRAFT` → … → `COMPLETED`/`FAILED`). The state machine holds only S3 pointers, hashes, IDs, and small review metadata — **never workbook bytes, row arrays, or prompts** (those live in S3). Human approval gates are execution boundaries: a segment ends at a pending review status, and the winning review submission starts the next short execution. There are no task tokens or paused executions.
 
 Three cooperating layers, split across `backend/app/`:
 
@@ -22,7 +22,7 @@ Three cooperating layers, split across `backend/app/`:
 
 State/config/decisions persist in a **single DynamoDB table** (`xlsx-workflow`, single-table design, plan §7.6) keyed `PK=JOB#<id>` / `SK=META|ISSUE#|PROPOSAL#|REVIEW#|EVENT#`. Every state transition is a **conditional update on `revision`** so a stale browser gets `409 REVIEW_REVISION_CONFLICT` instead of clobbering newer decisions.
 
-The **rule engine (`workers/quality_rules.py`)** is the source of truth for structural errors (duplicates, blank rows/columns, type mismatches) and runs **before any LLM call**. Bedrock only supplements interpretation.
+The **rule engine (`workers/quality_rules.py`)** is the source of truth for structural errors (duplicates, blank rows/columns, type mismatches) and runs **before any LLM call**. Bedrock only supplements interpretation. Human gates are execution boundaries: a segment ends at a pending review status, and the winning review submission starts the next short execution. There are no task tokens or paused executions.
 
 ## Non-negotiable invariants
 

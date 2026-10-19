@@ -11,48 +11,27 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from hashlib import sha256
-from io import BytesIO
 from typing import Any
-
-from openpyxl import load_workbook
 
 from app.domain.enums import JobStatus
 from app.settings import settings
-from app.services.workbook_metadata import inspect_upload
 from app.storage.dynamo_store import DynamoStore
 from app.storage.s3_store import S3Store
+from app.workers.inspect_workbook import inspect_bytes, manifest_json
+from app.workers.quality_rules import run_quality_rules
 
 XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 def _inspect_workbook(source: bytes, sheet_name=None, header_row=None) -> dict[str, Any]:
-    """Validate an XLSX and return metadata without recording cell contents."""
+    """Validate an XLSX and return the full quality-check manifest."""
 
-    _version, inspected = inspect_upload(source, sheet_name, header_row)
-    workbook = load_workbook(BytesIO(source), read_only=True, data_only=False)
-    try:
-        sheets = []
-        total_rows = sum(sheet.data_row_count for sheet in inspected)
-        for worksheet in workbook.worksheets:
-            rows = worksheet.max_row or 0
-            columns = worksheet.max_column or 0
-            sheets.append(
-                {
-                    "name": worksheet.title,
-                    "max_row": rows,
-                    "max_column": columns,
-                }
-            )
-        if total_rows > settings.max_data_rows:
-            raise ValueError(f"workbook exceeds the {settings.max_data_rows} row limit")
-        return {
-            "format": "xlsx",
-            "sheet_count": len(sheets),
-            "total_rows": total_rows,
-            "sheets": sheets,
-        }
-    finally:
-        workbook.close()
+    return inspect_bytes(
+        source,
+        max_rows=settings.max_data_rows,
+        sheet_name=sheet_name,
+        header_row=header_row,
+    )
 
 
 def run_demo_pipeline(
@@ -91,6 +70,7 @@ def run_demo_pipeline(
     manifest = _inspect_workbook(source, selection.get("sheet_name"), selection.get("header_row"))
     source_hash = sha256(source).hexdigest()
     input_hash = source_hash if base_slot == "input" else sha256(s3.get_bytes(item["files"]["input"]["key"])).hexdigest()
+    quality = run_quality_rules(source, manifest)
     timestamp = datetime.now(UTC).isoformat()
     manifest.update(
         {
@@ -105,12 +85,20 @@ def run_demo_pipeline(
     )
 
     manifest_key = s3.artifact_key(job_id, "inspection", "manifest.json")
+    quality_key = s3.artifact_key(job_id, "quality", "quality-report.json")
     output_key = s3.artifact_key(job_id, "output", "final.xlsx")
     s3.put_bytes(
         manifest_key,
-        json.dumps(manifest, indent=2).encode("utf-8"),
+        manifest_json(manifest),
         "application/json",
     )
+    s3.put_bytes(quality_key, json.dumps(quality, indent=2).encode("utf-8"), "application/json")
+    for issue in quality["issues"]:
+        dynamo.put_child(
+            job_id,
+            f"ISSUE#{issue['issue_id']}",
+            {"entity_type": "issue", "issue_id": issue["issue_id"], "kind": issue["kind"], "summary": issue["message"]},
+        )
 
     # Demo transformation: preserve the source bytes but write a new object.
     # This proves the output path without silently changing user data.
@@ -145,6 +133,12 @@ def run_demo_pipeline(
                     "key": manifest_key,
                     "content_type": "application/json",
                     "size_bytes": len(json.dumps(manifest).encode("utf-8")),
+                },
+                "quality": {
+                    "key": quality_key,
+                    "content_type": "application/json",
+                    "size_bytes": len(json.dumps(quality).encode("utf-8")),
+                    "issue_count": quality["issue_count"],
                 },
             },
         },

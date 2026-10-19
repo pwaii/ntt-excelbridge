@@ -34,10 +34,13 @@ def _client(text: str, usage: dict | None = None):
 
 T5_FIXTURE = {
     "current_rows": [
-        {"current_row_id": "c1", "fields": {"Email": "a@x.com"}},
-        {"current_row_id": "c2", "fields": {"Email": "zzz@x.com"}},
+        {"current_row_id": "c1", "candidate_main_row_ids": ["m1", "m2"], "fields": {"Email": "a@x.com"}},
+        {"current_row_id": "c2", "candidate_main_row_ids": [], "fields": {"Email": "zzz@x.com"}},
     ],
-    "candidate_rows": [{"main_row_id": "m1", "fields": {"Email": "a@x.com"}}],
+    "candidate_rows": [
+        {"main_row_id": "m1", "fields": {"Email": "a@x.com"}},
+        {"main_row_id": "m2", "fields": {"Email": "other@x.com"}},
+    ],
     "match_key": "Email",
 }
 
@@ -138,3 +141,26 @@ def test_run_tool5_emits_cost_log(caplog):
     assert record["input_tokens"] == 100 and record["output_tokens"] == 40
     # no raw field values ever reach the log
     assert "a@x.com" not in lines[0]
+
+
+def test_run_tool5_emits_deterministic_matches_without_calling_bedrock():
+    from app.ai.bedrock_client import BedrockClient
+
+    fake = FakeBedrock('{"matches":[]}')
+    result = run_tool5(
+        {
+            "current_rows": [],
+            "candidate_rows": [],
+            "match_key": "CustomerID",
+            "deterministic_matches": [
+                {
+                    "current_row_id": "Current!2",
+                    "candidate_main_row_ids": ["Main!2"],
+                    "selected_main_row_id": "Main!2",
+                }
+            ],
+        },
+        client=BedrockClient(client=fake),
+    )
+    assert fake.calls == []
+    assert result.payload.matches[0].selected_main_row_id == "Main!2"

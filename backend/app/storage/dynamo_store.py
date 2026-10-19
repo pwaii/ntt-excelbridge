@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
+import json
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from time import time
@@ -9,6 +12,8 @@ from typing import Any
 
 from boto3.dynamodb.conditions import Attr, Key
 
+from app.domain.enums import JobStatus
+from app.domain.state_machine import validate_transition
 from app.settings import settings
 from app.storage.aws_session import get_dynamodb_resource
 
@@ -85,6 +90,17 @@ class DynamoStore:
         )
         return response.get("Item")
 
+    def get_child(self, job_id: str, sort_key: str) -> dict[str, Any] | None:
+        """Read one issue/proposal/review/event by its exact sort key."""
+
+        if not sort_key or "/" in sort_key or "\\" in sort_key:
+            raise ValueError("sort_key must be a non-empty single identifier")
+        response = self.table.get_item(
+            Key={"PK": f"JOB#{job_id}", "SK": sort_key},
+            ConsistentRead=True,
+        )
+        return response.get("Item")
+
     def update_job(
         self,
         job_id: str,
@@ -95,6 +111,12 @@ class DynamoStore:
 
         if not updates:
             raise ValueError("updates must contain at least one field")
+        if "status" in updates:
+            current = self.get_job(job_id)
+            if current and current.get("status"):
+                from_status = JobStatus(current["status"])
+                to_status = JobStatus(getattr(updates["status"], "value", updates["status"]))
+                validate_transition(from_status, to_status)
         names = {"#revision": "revision", "#updated_at": "updated_at"}
         values: dict[str, Any] = {
             ":one": 1,
@@ -163,6 +185,37 @@ class DynamoStore:
         }
         self.table.put_item(Item=child)
         return child
+
+    def list_children(self, job_id: str, prefix: str, limit: int = 100) -> list[dict[str, Any]]:
+        items, _ = self.list_children_page(job_id, prefix, limit=limit)
+        return items
+
+    def list_children_page(
+        self,
+        job_id: str,
+        prefix: str,
+        *,
+        limit: int = 100,
+        cursor: str | None = None,
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        query: dict[str, Any] = {
+            "KeyConditionExpression": Key("PK").eq(f"JOB#{job_id}") & Key("SK").begins_with(prefix),
+            "Limit": max(1, min(limit, 100)),
+            "ScanIndexForward": True,
+        }
+        if cursor:
+            try:
+                decoded = base64.urlsafe_b64decode(cursor.encode("ascii")).decode("utf-8")
+                query["ExclusiveStartKey"] = json.loads(decoded)
+            except (ValueError, UnicodeDecodeError, json.JSONDecodeError, binascii.Error) as error:
+                raise ValueError("invalid DynamoDB pagination cursor") from error
+        response = self.table.query(**query)
+        last_key = response.get("LastEvaluatedKey")
+        next_cursor = None
+        if last_key:
+            encoded = json.dumps(last_key, separators=(",", ":")).encode("utf-8")
+            next_cursor = base64.urlsafe_b64encode(encoded).decode("ascii")
+        return response.get("Items", []), next_cursor
 
 
 def utc_now() -> str:
