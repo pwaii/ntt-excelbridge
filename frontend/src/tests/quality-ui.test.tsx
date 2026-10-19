@@ -77,7 +77,8 @@ it("shows loading and failure states without displaying raw thrown values", asyn
   expect(container.textContent).toContain("could not be loaded"); expect(container.textContent).not.toContain("private-workbook-data");
 });
 it("marks only actual timeline observations and links to the real quality gate", () => {
-  const job = { ...qualityReceipt().job, status: "QUALITY_REVIEW_PENDING" as const };
+  const receipt = qualityReceipt();
+  const job = { ...receipt.job, config: { ...receipt.job.config, conflict_policy: "reject_all" as const }, status: "QUALITY_REVIEW_PENDING" as const };
   act(() => root.render(<MemoryRouter><JobTimeline job={job} observed={["INSPECTING", "QUALITY_REVIEW_PENDING"]} /></MemoryRouter>));
   expect(container.querySelectorAll('[aria-current="step"]')).toHaveLength(1);
   expect(container.querySelector('[aria-current="step"]')?.textContent).toContain("Quality review");

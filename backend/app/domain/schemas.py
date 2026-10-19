@@ -4,7 +4,7 @@ these and rejected if it doesn't fit (§10). Keep in sync with prompts/ and fron
 """
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 from app.domain.enums import MatchType, OutputPolicy, ReviewDecision
 
@@ -22,12 +22,6 @@ class JobConfig(BaseModel):
     input_header_row: int | None = Field(default=None, ge=1, le=20)
     main_header_row: int | None = Field(default=None, ge=1, le=20)
     main_key_column: str | None = None
-
-    @model_validator(mode="after")
-    def validate_update_key(self) -> "JobConfig":
-        if self.update and (not self.key_column or not self.key_column.strip()):
-            raise ValueError("key_column is required when update is enabled")
-        return self
 
     def output_policy(self) -> OutputPolicy:
         if self.standardize and self.update:
@@ -50,7 +44,7 @@ class ReviewItemDecision(BaseModel):
 
 
 class ReviewRequest(BaseModel):
-    expected_revision: int
+    expected_revision: int = Field(ge=0)
     decisions: dict[str, ReviewItemDecision] = Field(min_length=1)  # keyed by issue/proposal id
     approved_by: str | None = None  # populated from authenticated Cognito subject
 

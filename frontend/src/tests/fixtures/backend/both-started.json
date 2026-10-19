@@ -14,7 +14,8 @@
       "key_column": "A",
       "input_header_row": 3,
       "main_header_row": 3,
-      "main_key_column": "A"
+      "main_key_column": "A",
+      "conflict_policy": "reject_all"
     },
     "configuration_confirmed": true,
     "workbook_selections": {

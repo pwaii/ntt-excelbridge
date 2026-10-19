@@ -140,3 +140,15 @@ and correctness decisions are in
 Runtime correctness and deployment-transform fixes are recorded in
 `docs/decisions/0006-backend-runtime-correctness.md`. The command-by-command
 verification sequence is in `docs/backend-smoke-test.md`.
+
+
+## Frontend integration follow-up (2026-10-19)
+
+The frontend integration branch merges this backend baseline and adds the typed,
+revision-bound review-report API, concrete frontend consumers, complete gate decision
+validation, durable stage review pointers and failed-continuation recovery. It also
+adds direct Cognito JWT verification and Hosted UI/CORS wiring. Confirmed header/key
+metadata now feeds matching/apply workers; approved output formulas and row deletion
+ordering have integration coverage. DynamoDB numbers are normalized at the storage
+boundary. See SESSION_FRONTEND.md for the current scope, checks and environment blockers.
+No cloud deployment or real Cognito/Bedrock run was performed by this follow-up.

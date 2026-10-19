@@ -32,7 +32,7 @@ export function JobTimeline({ job, observed }: { job: BackendJob; observed: read
       <p className="text-sm font-medium">Your quality review is required before processing can continue.</p>
       <Button asChild><Link to={`/jobs/${encodeURIComponent(job.job_id)}/quality-review`}><ListChecks aria-hidden="true" />Review data quality</Link></Button>
     </div>}
-    {["FORMULA_REVIEW_PENDING", "TRANSFORMATION_REVIEW_PENDING"].includes(job.status) && <Button asChild><Link to={`/jobs/${encodeURIComponent(job.job_id)}/transformation-review`}>Review transformations</Link></Button>}
+    {job.status === "TRANSFORMATION_REVIEW_PENDING" && <Button asChild><Link to={`/jobs/${encodeURIComponent(job.job_id)}/transformation-review`}>Review transformations</Link></Button>}
     {job.status === "COMPLETED" && <Button asChild><Link to={`/jobs/${encodeURIComponent(job.job_id)}/result`}>View result and downloads</Link></Button>}
     <p className="text-xs text-muted-foreground">Issue counts and processing history are unavailable until the backend publishes its quality report and history contracts.</p>
   </section>;

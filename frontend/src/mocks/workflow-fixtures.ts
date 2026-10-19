@@ -23,6 +23,7 @@ export const mockPatternRules = [
   { id: "mock-rule-trim", kind: "value-pattern-rule", originalPattern: "Outer whitespace", transformation: "Trim outer whitespace", examples: [{ before: { origin: "data", value: " Example " }, after: { origin: "data", value: "Example" } }], affectedCellCount: 8, status: "human_accepted" },
   { id: "mock-rule-yes", kind: "value-pattern-rule", originalPattern: "Y / Yes", transformation: "Map explicitly reviewed values to true", examples: [{ before: { origin: "data", value: "Y" }, after: { origin: "data", value: "true" } }], confidence: 0.8, status: "human_edited" },
   { id: "mock-rule-identifiers", kind: "value-pattern-rule", originalPattern: "Zero-prefixed identifier", transformation: "Remove leading zeroes (rejected mock proposal)", examples: [{ before: { origin: "data", value: "00123" }, after: { origin: "data", value: "123" } }], status: "human_rejected" },
+  { id: "mock-rule-ignored", kind: "value-pattern-rule", originalPattern: "Optional format", transformation: "Keep original values with a recorded reason", examples: [], status: "human_ignored" },
 ] as const satisfies readonly PatternRuleViewModel[];
 
 export const mockUpdateMatches = [

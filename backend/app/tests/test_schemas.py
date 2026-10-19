@@ -29,5 +29,5 @@ def test_output_policy_and_main_file_requirement():
     assert JobConfig(comment_name="x").requires_main_file() is False
     assert JobConfig(comment_name="x", update=True, key_column="CustomerID").requires_main_file() is True
     assert JobConfig(comment_name="x", update=True, key_column="CustomerID").conflict_policy == "reject_all"
-    with pytest.raises(ValueError, match="key_column"):
-        JobConfig(comment_name="x", update=True)
+    # Keys are chosen from actual metadata after upload and enforced at Start.
+    assert JobConfig(comment_name="x", update=True).key_column is None

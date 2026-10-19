@@ -125,6 +125,18 @@ Resources:
       UserPoolId: !Ref UserPool
       GenerateSecret: false
       ExplicitAuthFlows: [ALLOW_USER_PASSWORD_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows: [code]
+      AllowedOAuthScopes: [openid, email, profile]
+      SupportedIdentityProviders: [COGNITO]
+      CallbackURLs: [!Sub '${FrontendOrigin}/auth/callback']
+      LogoutURLs: [!Sub '${FrontendOrigin}/login']
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId: !Ref UserPool
+      Domain: !Sub 'xlsx-${AWS::AccountId}-${AWS::Region}-${Environment}'
 
   HttpApi:
     Type: AWS::Serverless::HttpApi
@@ -133,7 +145,7 @@ Resources:
       CorsConfiguration:
         AllowOrigins: [!Ref FrontendOrigin, http://127.0.0.1:5173]
         AllowHeaders: [Authorization, Content-Type, X-Request-Id]
-        AllowMethods: [GET, POST, OPTIONS]
+        AllowMethods: [GET, POST, PUT, OPTIONS]
       Auth:
         DefaultAuthorizer: CognitoAuthorizer
         Authorizers:
@@ -151,6 +163,9 @@ Resources:
       Environment:
         Variables:
           STATE_MACHINE_ARN: !Ref WorkflowStateMachine
+          COGNITO_USER_POOL_ID: !Ref UserPool
+          COGNITO_APP_CLIENT_ID: !Ref UserPoolClient
+          COGNITO_API_TOKEN_TYPE: access
       Events:
         Api:
           Type: HttpApi
@@ -294,3 +309,7 @@ Outputs:
   StateMachineArn: { Value: !Ref WorkflowStateMachine }
   UserPoolId: { Value: !Ref UserPool }
   UserPoolClientId: { Value: !Ref UserPoolClient }
+  CognitoAuthority:
+    Value: !Sub 'https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}'
+  CognitoHostedUi:
+    Value: !Sub 'https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com'

@@ -6,7 +6,7 @@ import { artifactTypes, type ArtifactType, type BackendJob, type JobsApi } from 
 import { Button } from "@/components/ui/button";
 import { getOutputPolicy, outputPolicies } from "@/lib/output-policy";
 
-const labels: Record<ArtifactType, string> = { output: "Output workbook (.xlsx)", manifest: "Processing manifest (.json)", quality: "Quality report", proposals: "Proposals report", inspection: "Inspection report" };
+const labels: Record<ArtifactType, string> = { output: "Output workbook (.xlsx)", audit: "Change report (.json)", review_summary: "Review summary (.md)", validation: "Output validation (.json)", quality: "Quality report", inspection: "Inspection report" };
 type SignedLink = Awaited<ReturnType<JobsApi["getArtifact"]>>;
 export function ResultWorkspace({ api, jobId }: { api: JobsApi; jobId: string }) {
   const [job, setJob] = useState<BackendJob>();
@@ -42,7 +42,7 @@ export function ResultWorkspace({ api, jobId }: { api: JobsApi; jobId: string })
       <section aria-label="Artifact downloads" className="rounded-2xl border bg-card p-6"><h2 className="text-lg font-semibold">Downloads</h2><p className="mt-2 text-sm text-muted-foreground">Download links are temporary. Generate a new link when one expires. Files are downloaded directly from storage.</p>
         {job.status === "COMPLETED" ? <div className="mt-5 grid gap-4 md:grid-cols-2">{artifactTypes.map((type) => <ArtifactDownload key={type} api={api} jobId={jobId} type={type} expectedKey={typeof job.artifacts?.[type]?.key === "string" ? job.artifacts[type].key as string : undefined} />)}</div> : <p className="mt-4 text-sm text-muted-foreground">Downloads become available after backend completion.</p>}
       </section>
-      <section aria-label="Processing evidence" className="rounded-2xl border bg-card p-6"><h2 className="text-lg font-semibold">Processing evidence</h2><p className="mt-2 text-sm text-muted-foreground">The connected worker currently validates and copies workbooks. A completed job alone does not certify AI corrections, standardization, merging, or formula calculation.</p><p className="mt-3 text-sm text-muted-foreground">Applied/updated/skipped/rejected counts, formula syntax results and the human review audit summary are not supplied by the current job response. A change report JSON and review summary Markdown require backend artifact support.</p>
+      <section aria-label="Processing evidence" className="rounded-2xl border bg-card p-6"><h2 className="text-lg font-semibold">Processing evidence</h2>{job.result_summary ? <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2">{[["updated_rows", "Updated rows"], ["skipped_rows", "Skipped rows"], ["rejected_decisions", "Rejected decisions"], ["formula_cells_verified", "Formula cells syntax verified"]].map(([key, label]) => <div key={key}><dt className="text-muted-foreground">{label}</dt><dd className="mt-1 font-medium">{job.result_summary?.[key] ?? "Not reported"}</dd></div>)}</dl> : <p className="mt-2 text-sm text-muted-foreground">Detailed processing counts, formula syntax results and review outcomes are not reported for this job. A completed job alone does not certify AI corrections, standardization, merging, or formula calculation.</p>}<p className="mt-3 text-sm text-muted-foreground">Use the published change report and review summary for the backend audit trail. Formula syntax verification does not certify calculated results.</p>
         {job.output_hash && <p className="mt-3 break-all text-xs">Output hash reported by backend: {job.output_hash}</p>}
       </section>
     </>}

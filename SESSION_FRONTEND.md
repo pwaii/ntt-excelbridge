@@ -1,29 +1,31 @@
 # Session log — Frontend Engineer (Days 1–7)
 
 Updated: 2026-10-19 (Asia/Bangkok).
-Branch: `feat/frontend-day1-day2-integration`.
+Branch: `feat/frontend-review-auth-integration`.
 Day 1–2 implementation commit: `2b3bba0`; integrated `origin/main` at
 `aa66457` with a fast-forward before extending Days 3–7.
 
-**Current status:** Frontend screens and independently testable review behavior
-through Day 7 are implemented. Result downloads consume the existing backend API.
-The quality/transformation routes deliberately show report-unavailable states until
-Backend publishes and implements the report/gate contracts. The current worker is
-still a validation/copy demo. Real Cognito/AWS and deployed login-to-download E2E,
-AI processing, and browser visual acceptance are **not certified complete**.
+**Current status:** Frontend screens through Day 7 now consume the integrated
+Backend report/review/download contracts. `origin/backend` at `2d49ec7` was merged
+before connecting these routes. Cognito JWT verification, Hosted UI configuration,
+gate validation/persistence and result evidence are implemented. The no-state-machine
+local path remains a copy demo; the configured workflow uses reviewed segments.
+Actual Cognito/AWS/Bedrock, deployed login-to-download E2E and browser visual acceptance
+remain pending. Do not equate the synthetic integration tests with those checks.
 
-| Day | Frontend implementation | Remaining acceptance dependency |
+| Day | Implementation | Remaining acceptance |
 | --- | --- | --- |
-| 1 | Complete: foundation, routes, job creation and validation | None for the local implementation |
-| 2 | API/auth/upload/metadata/configuration/Start implemented | Real Cognito and AWS smoke |
-| 3 | Progress, quality evidence and decisions implemented | Backend reports, gate enforcement, persistence and continuation |
-| 4 | Formula evidence/syntax and standardization review implemented | Published proposal contract and formula revalidation for edits |
-| 5 | Six match badges, explicit decisions, confirmed bulk drafts and summary implemented | Real match/proposal reports and applied row counts |
-| 6 | Result/downloads, refresh and text-safety checks implemented | Actual browser verification and deployed login-to-download E2E; change/review artifacts |
-| 7 | Contextual guidance, deterministic rehearsal and runbook implemented | Actual browser/usability rehearsal and screenshots |
+| 1 | Foundation, routes and job validation | Local implementation complete |
+| 2 | Auth, direct upload, metadata, configuration and Start | Actual Cognito/AWS smoke |
+| 3 | Revision-bound quality report, evidence, gate submission and recovery | Live workflow verification |
+| 4 | Verified formula evidence and standardization decisions | Live Bedrock proposals; formula edits remain disabled |
+| 5 | Match evidence, target selection, bulk confirmation and decision summary | Live matching and application evidence |
+| 6 | Output/audit/summary/validation downloads and backend outcome counts | Actual browser and deployed login-to-download E2E |
+| 7 | Guidance, deterministic rehearsal and runbook | Actual desktop/mobile visual rehearsal |
 
-See [Days 4–7](#frontend-days-4-7) for the latest work
-and [demo runbook](docs/frontend-demo-runbook.md) for reproducible local checks.
+The earlier Days 1-7 notes below are historical. The latest integration handoff
+at the end of this file supersedes their missing-report/auth/artifact blockers.
+See [demo runbook](docs/frontend-demo-runbook.md) for the exact validation scope.
 
 ## Source of truth
 
@@ -695,3 +697,79 @@ or actual download was attempted. Backend tests were not rerun for this frontend
 Browser automation inventory returned zero apps and zero browsers; desktop/mobile visual
 checks and actual browser formula-looking-value validation remain pending. Use the runbook
 in an approved configured environment to close those acceptance items.
+
+
+## Frontend/backend integration handoff - 2026-10-19
+
+### Integrated behavior
+
+- Merged `origin/backend` at `2d49ec7` into the frontend work. Existing backend
+  workers and deployment resources now share the frontend checkout.
+- Published typed `GET /v1/jobs/{job_id}/review-report` with stage, expected revision,
+  bounded pages, total coverage and request ID. It reads actual owned S3 artifacts,
+  uses every DynamoDB child page and verifies that the job did not change during load.
+- Regenerated pinned OpenAPI/TypeScript from the integrated FastAPI application.
+  Production review pages inject the concrete paginated source. No fake report source
+  is enabled in application routes. Missing/unready artifacts remain explicit errors.
+- Backend validates the exact required item IDs, gate, revision, supported decisions,
+  ignore reasons and edited match targets before accepting a review. Ignore decisions
+  reload as `Human ignored`, without being mislabeled accepted or rejected.
+- Immutable review JSON is written before the winning CAS publishes its pointer and
+  next segment. Job metadata retains authoritative stage review pointers so a failed
+  secondary index write does not lose approved decisions. Failed continuation is
+  recorded as FAILED with its segment, and processing can be explicitly retried.
+- Added the frontend retry action and backend failure details. Unknown retry outcomes
+  require refresh; mutations are never automatically replayed. Formula status is an
+  intermediate processing state; only TRANSFORMATION_REVIEW_PENDING is the final gate.
+- Tool 4 mappings now retain individual producer decision IDs. Mapping edits and match
+  target selections are applied using the exact persisted decision. Matching consumes
+  confirmed header labels; browser selections retain their original Excel-column IDs.
+- Workers honor confirmed sheet/header rows. Formula templates are generated after
+  accepted row deletions. Approved formulas are also written to main-derived Update/
+  Both outputs, with actual reference-layout/range checks before approval.
+- Fixed DynamoDB number conversion for confidence floats and integral header/revision
+  values, so real boto3 serialization and JSON/workbook consumers use compatible types.
+- Result uses actual artifact keys (`output`, `audit`, `review_summary`, `validation`,
+  `quality`, `inspection`) and backend outcome counts. Rejected decisions are labeled
+  decisions; updated/skipped counts describe actual update audit rows. Syntax counts
+  never imply formula calculation. Informational blank-column/type findings do not
+  offer a direct mutation that the worker cannot apply.
+
+### Authentication and infrastructure
+
+- Backend verifies RS256 signatures with Cognito JWKS, issuer, exp/iat, subject,
+  token_use and the configured app client for both direct FastAPI and Gateway calls.
+  Local fallback is limited to loopback development and forbidden for Lambda requests.
+- SAM configures an OAuth code client with no secret, Hosted UI domain, matching
+  callback/logout URLs, backend Cognito settings, and PUT in API CORS.
+- Backend uses `COGNITO_API_TOKEN_TYPE=access` by default; frontend must explicitly
+  configure the same token type from the deployed environment.
+- Verification follows the official Cognito JWT guidance linked from `auth.py`.
+
+### Final local verification
+
+- Frontend: 348 tests in 25 files; TypeScript, lint and production build pass.
+- Backend: 126 tests, including actual route/worker/XLSX flows for all four modes,
+  two reviews, persisted reload, output reopening, unchanged sources and downloads.
+  AWS, Step Functions and Bedrock remain synthetic boundaries in these tests.
+- Deterministic component/adapter rehearsal: 41 tests in 6 files.
+- Changed Python modules: Ruff checks pass. CloudFormation template lint passes.
+- Existing router/dependency notices and approximately 504 kB chunk advisory are
+  nonblocking. No deployed build or real identity login was certified.
+
+### Environment blockers and running services
+
+- Frontend is running at http://127.0.0.1:5173/ and Backend at http://127.0.0.1:8000/;
+  both HTTP checks return 200. This does not prove AWS access.
+- AWS session preflight returns `ProfileNotFound`; `aws configure list-profiles`
+  found no available profiles. Cognito public settings are still blank locally.
+  Root `.env` also has malformed-line warnings; it was not printed or overwritten.
+- Browser automation has no browser surface; creating an in-app browser returned
+  `Browser is not available: iab`. Visual desktop/mobile and true browser E2E remain pending.
+- GitHub authentication succeeds when checked with actual network access; the earlier
+  sandbox-only check was misleading. Git delivery/PR outcome is recorded below after
+  the final push. No AWS resources were provisioned.
+
+The user's note that root settings/access exist does not provide a working local
+profile or deployed Cognito configuration. Use an approved AWS profile and the actual
+stack outputs for real-service acceptance; do not send secrets in chat.

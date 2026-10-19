@@ -2,7 +2,7 @@ import { ApiError } from "@/api/errors";
 import { qualitySnapshotSchema, transformationKinds, type QualityItem, type DecisionDraft, type QualityReviewAdapter, type QualitySnapshot } from "./types";
 
 export type ReviewStage = "quality" | "transformation";
-export const reviewGates = { quality: ["QUALITY_REVIEW_PENDING"], transformation: ["FORMULA_REVIEW_PENDING", "TRANSFORMATION_REVIEW_PENDING"] };
+export const reviewGates = { quality: ["QUALITY_REVIEW_PENDING"], transformation: ["TRANSFORMATION_REVIEW_PENDING"] };
 
 export interface QualityState {
   phase: "idle" | "loading" | "ready" | "submitting" | "submitted" | "error";
@@ -18,6 +18,7 @@ export function decisionError(draft: DecisionDraft, item?: QualityItem): string 
   if (item?.kind === "formula" && ["accept", "edit"].includes(draft.decision) && (item.formula?.syntax !== "verified" || draft.decision === "edit")) return "Only backend syntax-verified formulas may be accepted. Edited formulas require backend revalidation; reject and request a new proposal.";
   if (item?.kind === "update-match" && ["accept", "edit"].includes(draft.decision) && (!item.match || item.match.type === "unmatched" || !item.match.targetKeys.length)) return "Unmatched rows are skipped. A verified match is required before approval.";
   if (draft.decision === "edit" && typeof draft.edited_value !== "string") return "Enter an edited value, including an empty value if intentional.";
+  if (draft.decision === "edit" && item?.match && !item.match.targetKeys.includes(draft.edited_value ?? "")) return "Choose one of the backend-supplied target row IDs.";
   if (draft.decision === "ignore" && !draft.reason?.trim()) return "A reason is required to ignore an issue.";
 }
 // High confidence never replaces a human decision on ambiguous evidence.

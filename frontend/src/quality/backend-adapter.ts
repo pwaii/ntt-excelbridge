@@ -2,10 +2,30 @@ import type { BackendJob, JobsApi } from "@/api/jobs-api";
 import { ApiError } from "@/api/errors";
 import { qualitySnapshotSchema, type QualityReviewAdapter, type QualitySnapshot } from "./types";
 
-// No GET issues/proposals operation exists in the current OpenAPI. This is an
-// internal boundary to implement after a backend-owned report contract is published.
+// Each report page is bound to one authoritative job revision and stage.
 export interface QualityReportSource {
   load(job: BackendJob, signal: AbortSignal): Promise<QualitySnapshot>;
+}
+export function createQualityReportSource(api: JobsApi, stage: "quality" | "transformation"): QualityReportSource {
+  return { async load(job, signal) {
+    const items: unknown[] = [];
+    const seen = new Set<number>();
+    let cursor = 0;
+    let total: number | undefined;
+    while (true) {
+      const page = await api.getReviewReport(job.job_id, stage, job.revision, cursor, signal);
+      if (page.status !== job.status || (total !== undefined && page.total !== total)) throw new ApiError("protocol", "Review coverage changed during load. Reload the job.");
+      total = page.total;
+      items.push(...page.items);
+      if (items.length > total || total > 100_000) throw new ApiError("protocol", "Review report exceeds its declared coverage.");
+      if (page.nextCursor === undefined || page.nextCursor === null) {
+        if (!page.complete || items.length !== total) throw new ApiError("protocol", "The backend review report is incomplete.");
+        return qualitySnapshotSchema.parse({ jobId: job.job_id, revision: job.revision, status: job.status, items, complete: true, requestId: page.requestId });
+      }
+      if (page.complete || page.nextCursor <= cursor || seen.has(page.nextCursor) || !page.items.length) throw new ApiError("protocol", "Review pagination did not advance.");
+      seen.add(page.nextCursor); cursor = page.nextCursor;
+    }
+  } };
 }
 export function createBackendQualityAdapter(api: JobsApi, source?: QualityReportSource, stage = "Quality"): QualityReviewAdapter {
   return {

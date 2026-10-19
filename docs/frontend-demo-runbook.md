@@ -1,101 +1,115 @@
-# Frontend demonstration runbook
+# Frontend demonstration and acceptance runbook
 
-Use the existing React/Vite frontend. Implementation and verification status lives
-in [SESSION_FRONTEND.md](../SESSION_FRONTEND.md). This runbook covers rehearsal;
-it does not certify the deployed backend, AWS, Cognito, or AI workflow.
+Implementation and environment status lives in [SESSION_FRONTEND.md](../SESSION_FRONTEND.md).
+This runbook distinguishes synthetic local checks from deployed acceptance.
 
 ## Deterministic local rehearsal
 
-From the repository root, after installing the locked frontend dependencies:
+After installing the locked frontend dependencies, run from the repository root:
 
 ```powershell
 npm.cmd --prefix frontend run demo:verify
 ```
 
-This command runs the real React components and controllers under Vitest/jsdom,
-with explicitly synthetic backend responses, authentication, S3 and review reports.
-It does not upload files, create AWS jobs, call Bedrock or log in to Cognito.
-Test-only review sources are injected directly into component tests; production
-routes never use those sources. No browser screenshot is produced by this command.
+This runs 41 React/controller/adapter assertions across 6 files with synthetic
+external boundaries. It covers creation/configuration, review evidence and decisions,
+complete pagination at one revision, bulk confirmation, final-gate polling, explicit
+processing retry, result links, expiry and refresh. Production routes use the actual
+backend review-report source; test fixtures are never injected into application routes.
+This command does not log in to Cognito, call Bedrock or upload to real S3.
 
-The verbose output walks through these assertions:
-
-1. Create/upload: current and main workbooks are validated, uploads are confirmed,
-   backend sheet/header/key metadata is selected, configuration is saved and Start
-   is sent once. Refresh recovers saved configuration.
-2. Quality: inspect before/after evidence as text, filter and page findings, draft
-   accept/reject/edit/ignore decisions, and explicitly confirm submission.
-3. Transformation: inspect formula text, referenced columns and backend syntax
-   status; inspect all six match badges. Unmatched rows are skipped. Bulk acceptance
-   requires scope confirmation, covers filtered pages, preserves existing drafts,
-   excludes ambiguous/duplicate/conflict/unmatched groups, and requires separate
-   confirmation before submission.
-4. Result: published artifacts require an explicit download-link request. Links
-   expire, can be regenerated, and are removed on result refresh. No links appear
-   for jobs that have not completed or artifacts the backend has not published.
-5. Progress: polling backs off and stops at human gates, terminal states or errors.
-
-For all frontend checks:
+The backend integration suite runs real FastAPI routes and workbook workers with
+synthetic AWS/Step Functions/Bedrock boundaries. It opens actual generated XLSX
+outputs for all four modes, including confirmed header rows, two review gates,
+standardization, updated/skipped matches, approved formulas, source preservation,
+audit/summary downloads, stale revisions and recovery from continuation failure.
 
 ```powershell
+python -m pytest backend/app/tests -q
 npm.cmd --prefix frontend run typecheck
 npm.cmd --prefix frontend run lint
 npm.cmd --prefix frontend test -- --reporter=dot
 npm.cmd --prefix frontend run build
 ```
 
-## Browser rehearsal with the actual backend
+Use the project's Python environment with `backend[dev]` installed. The disposable
+Python path recorded in the session log is an environment convenience, not a repository
+dependency. The standalone frontend tests and backend tests do not certify real AWS.
 
-Use `frontend/.env.example` to configure public frontend settings privately in
-`frontend/.env.local`. Never place AWS secrets in Vite. Local authentication is
-restricted to loopback development and must not be enabled for production. Real
-Cognito login needs the team's issuer, client, callback and API token-type agreement.
-
-`VITE_S3_DOWNLOAD_ORIGINS` accepts comma-separated exact HTTPS origins and defaults
-to `VITE_S3_UPLOAD_ORIGINS` when blank. Add the actual artifact bucket origin if it
-differs from the upload origin. Signed URLs and tokens must not be pasted into logs
-or screenshots.
+## Local services
 
 ```powershell
-npm.cmd --prefix frontend run dev -- --host 127.0.0.1
+python -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
+npm.cmd --prefix frontend run dev -- --host 127.0.0.1 --port 5173 --strictPort
 ```
 
-Open the printed loopback URL in a browser. Use approved synthetic `.xlsx` files,
-including main-file data for Standardize/Update, and run all four mode combinations.
+Configure backend values privately in root `.env` and public frontend values in
+`frontend/.env.local`, following the example files. Existing private files must not
+be overwritten with examples. Do not put AWS credentials, passwords or JWTs in Vite.
+Local fallback only permits loopback development; it is not a real Cognito login.
+Without STATE_MACHINE_ARN, the backend's local Start path is copy mode and does not
+run the full reviewed AI workflow. HTTP /health success does not prove AWS access.
 
-| Step | Expected observation |
+## Deployed acceptance
+
+Deploy the integrated backend using [deployment instructions](backend-deployment.md)
+and approved AWS access. The SAM template now configures the OAuth code client,
+Hosted UI domain and API auth. Match FrontendOrigin to the exact origin where the
+browser is opened; it determines `/auth/callback` and `/login` URLs. Use a Linux
+compatible SAM build for the cryptography dependency (for example SAM's container build).
+
+Map actual stack outputs to public frontend configuration:
+
+| Backend output / setting | Frontend setting |
 | --- | --- |
-| Sign in | Real Hosted UI callback restores the intended route; logout removes access. |
-| Create | Prompt and output header are required. Main file is required for Standardize/Update. Review output policy. |
-| Upload | Create uploads directly to S3. Missing CORS/IAM or upload errors remain visible; Start stays disabled. |
-| Configure | Select the sheet, explicitly confirm/correct header row, and select required keys. Save, refresh, verify recovery. |
-| Start | Start once. Progress uses the actual returned status/revision. Refresh never replays Start. |
-| Quality | Currently shows a report-unavailable message until Backend publishes its report contract. No synthetic rows appear. |
-| Transformation | Currently shows a report-unavailable message until Backend publishes its report contract. No synthetic formulas/matches appear. |
-| Result | For the current validation/copy demo, COMPLETED exposes only published output/manifest/report artifact types. Generate a fresh link, download, reopen the workbook, verify original uploads remain unchanged. |
-| Expiry/error | Let a link expire and regenerate it. Exercise 401/403/404, network loss and 409 on a review-enabled backend. No mutation auto-retry. |
+| ApiUrl | VITE_API_BASE_URL |
+| CognitoAuthority | VITE_COGNITO_AUTHORITY |
+| CognitoHostedUi | VITE_COGNITO_DOMAIN |
+| UserPoolClientId | VITE_COGNITO_CLIENT_ID |
+| FrontendOrigin + /auth/callback | VITE_COGNITO_REDIRECT_URI |
+| FrontendOrigin + /login | VITE_COGNITO_LOGOUT_URI |
+| COGNITO_API_TOKEN_TYPE=access | VITE_COGNITO_API_TOKEN_TYPE=access |
+| Actual bucket HTTPS origin | VITE_S3_UPLOAD_ORIGINS |
 
-Once Backend publishes and implements report/gate support, regenerate API types,
-implement the concrete normalized report source and inject it in the review routes.
-Then verify review persistence/reload, wrong/stale gate rejection, the next short
-execution segment, standardization before update matching, and final output evidence.
-Formula edits remain unavailable until Backend offers syntax revalidation for edits.
+VITE_S3_DOWNLOAD_ORIGINS defaults to upload origins when blank. Set the exact artifact
+bucket HTTPS origin separately if it differs. Restart Vite after configuration changes.
+Use an existing approved test account for actual login. Do not place signed URLs or
+tokens in screenshots or logs. No user accounts or cloud resources were created by
+this local implementation session.
 
-The current job/download contracts do not supply authoritative applied-row counts,
-formula syntax results, change-report JSON or review-summary Markdown artifacts.
-Do not label the current copy worker as the full AI workflow.
+Run Neither, Standardize-only, Update-only and Both against actual services:
 
-## Visual and keyboard pass
+| Step | Required evidence |
+| --- | --- |
+| Login | Hosted UI callback restores intended route; expiry/refresh and logout work; unauthorized API access returns 401. |
+| Create/upload | Main is required for Standardize/Update; browser uploads directly to S3; errors keep Start disabled. |
+| Configure | Choose sheet, explicitly confirm/correct header row and choose keys; save and refresh; saved selections recover. |
+| Start | Start once; actual status/revision load; refresh never replays Start. |
+| Quality | Actual paginated report loads all required IDs at one revision. Inspect evidence, decide and submit with confirmation. |
+| Persistence | Refresh the review; human decisions reload, including ignored-with-reason. A stale tab gets 409 and must reconcile. |
+| Transformation | Wait for final TRANSFORMATION_REVIEW_PENDING. Inspect formula/reference syntax, mappings and six match badges. Ambiguous targets require explicit supplied-row selection. |
+| Bulk | Verify exact filtered scope and threshold; existing drafts are preserved; ambiguous/duplicate/conflict/unmatched groups are excluded. Submission needs separate confirmation. |
+| Continuation | Review acknowledgement and actual next-segment status are checked separately. A failed continuation records approval and permits processing retry without resubmitting it. |
+| Result | Output, audit JSON, review summary Markdown and validation downloads match published keys. Open the actual XLSX, inspect changes/formulas and verify original uploads remain unchanged. |
+| Counts | Compare updated/skipped row counts and rejected decision counts with the actual audit. No inserted rows for unmatched current records. Syntax verification is not calculation. |
+| Failure/expiry | Exercise network errors, 401/403/404/409 and expired links. Generate new links explicitly; no automatic mutation retry. |
 
-Check desktop and a narrow mobile viewport. Capture screenshots of creation,
-progress, both reviews and results using approved synthetic data after the report
-source is connected. Check keyboard navigation, visible focus, Escape on the mobile
-menu, error messages, empty reports and long workbook/cell values. Page navigation
-and the details panel must reach every item in the windowed table.
+Formula edits require a future backend revalidation contract and remain disabled.
+A formula whose references do not match the output workbook cannot be accepted.
+Blank-column findings currently provide information only; no unsupported column
+deletion is offered. Record any remaining worker-policy limitations from real rehearsal
+before marking deployed acceptance complete.
 
-Check text beginning with `=`, `+`, `-`, `@` and HTML-looking text: it must stay text
-without executing a formula or HTML. The browser never escapes or rewrites the
-downloaded XLSX. Backend owns formula/data classification and export escaping.
+## Visual and keyboard acceptance
 
-Record real environment results in the frontend session log with date, environment,
-mode and observed evidence. Leave unrun checks explicitly pending.
+Check desktop and a narrow mobile viewport using approved synthetic files. Capture
+creation, progress, both reviews and result. Verify no horizontal clipping outside
+scrollable tables; mobile menu Escape/focus, keyboard row navigation, errors, empty
+reports, long values and every item in the windowed/paginated table are reachable.
+
+Text beginning with `=`, `+`, `-`, `@` and HTML-looking text must remain text without
+executing formulas or HTML. The frontend never rewrites the downloaded XLSX; backend
+owns formula/data classification and export behavior.
+
+Record date, environment, mode and observed evidence in the frontend session log.
+Keep Cognito/AWS/browser checks pending until actually performed.

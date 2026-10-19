@@ -21,12 +21,12 @@ it.each(["invalid", "unverified", "missing"] as const)("blocks acceptance of %s 
 it("blocks formula edits until backend revalidation, even for a previously verified formula", () => {
   expect(decisionError({ decision: "edit", edited_value: "=wrong" }, formula())).toContain("backend revalidation");
 });
-it.each(["FORMULA_REVIEW_PENDING", "TRANSFORMATION_REVIEW_PENDING"])("submits verified decisions once at %s using the loaded revision", async (status) => {
+it.each(["TRANSFORMATION_REVIEW_PENDING"])("submits verified decisions once at %s using the loaded revision", async (status) => {
   const { flow, submit } = await setup(undefined, status);
   flow.decide("issue-1", { decision: "accept" }); await flow.submit(); await flow.submit();
   expect(submit).toHaveBeenCalledOnce(); expect(submit.mock.calls[0].slice(0, 3)).toEqual([qualityJobId, 7, { "issue-1": { decision: "accept" } }]);
 });
-it.each(["QUALITY_REVIEW_PENDING", "STANDARDIZATION_PENDING", "COMPLETED"])("blocks transformation submissions at %s", async (status) => {
+it.each(["FORMULA_REVIEW_PENDING", "QUALITY_REVIEW_PENDING", "STANDARDIZATION_PENDING", "COMPLETED"])("blocks transformation submissions at %s", async (status) => {
   const { flow, submit } = await setup(undefined, status);
   flow.decide("issue-1", { decision: "accept" }); await flow.submit(); expect(submit).not.toHaveBeenCalled();
 });

@@ -46,6 +46,7 @@ class JobRecord(BaseModel):
     workflow_segment: int | None = None
     error_code: str | None = None
     error_detail: str | None = None
+    result_summary: dict[str, int | str] | None = None
     created_at: datetime
     updated_at: datetime
     expires_at: int | None = None

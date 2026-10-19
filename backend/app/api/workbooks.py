@@ -104,7 +104,13 @@ def save_configuration(
     for slot, selection in payload.selections.items():
         config["input_sheet" if slot == "input" else "main_sheet"] = selection.sheet_name
         config["input_header_row" if slot == "input" else "main_header_row"] = selection.header_row
-        config["key_column" if slot == "input" else "main_key_column"] = selection.key_column
+        # Selection IDs are Excel letters; processing uses actual header labels.
+        key_label = None
+        if selection.key_column:
+            _version, sheets, _size = inspect_slot(item, slot, s3, selection.sheet_name, selection.header_row)
+            sheet = next(sheet for sheet in sheets if sheet.name == selection.sheet_name)
+            key_label = next(column.label for column in sheet.columns if column.id == selection.key_column)
+        config["key_column" if slot == "input" else "main_key_column"] = key_label
     try:
         item = dynamo.update_job(
             job_id,

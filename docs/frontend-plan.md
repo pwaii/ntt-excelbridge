@@ -96,7 +96,7 @@ All endpoints require the Cognito JWT; every response has `request_id`. BE publi
 ## Implementation status (2026-10-19)
 
 Frontend screens and independently testable behavior through Day 7 are implemented.
-Backend report/gate integration and real Cognito/AWS/browser/deployed E2E acceptance
-are still pending; this does not close the backend-dependent exit criteria above.
+Backend report/gate integration is implemented. Real Cognito/AWS/browser/deployed
+E2E acceptance is still pending; this does not close the backend-dependent exit criteria above.
 See [frontend session log](../SESSION_FRONTEND.md) for per-day status and the
 [demo runbook](frontend-demo-runbook.md) for deterministic and real-service rehearsal.

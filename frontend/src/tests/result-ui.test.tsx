@@ -65,7 +65,7 @@ it("blocks a signed link for a different artifact key", async () => {
 });
 it("renders an empty published-artifacts list without inventing output or counts", async () => {
   await render("COMPLETED", {});
-  expect(container.querySelectorAll('[aria-label="Artifact downloads"] article')).toHaveLength(5);
+  expect(container.querySelectorAll('[aria-label="Artifact downloads"] article')).toHaveLength(6);
   expect(container.querySelectorAll('[aria-label="Artifact downloads"] button')).toHaveLength(0);
   expect(container.textContent).toContain("counts, formula syntax results");
 });
