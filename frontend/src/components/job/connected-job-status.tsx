@@ -8,8 +8,9 @@ import { workflowConfigurationSchema } from "@/schemas/job-creation";
 import { createMetadataFlow } from "@/metadata/controller";
 import { createBackendMetadataAdapter } from "@/metadata/backend-adapter";
 import { PostUploadConfiguration } from "./post-upload-configuration";
+import { JobTimeline } from "./job-timeline";
 
-// Day 2 snapshot/reconciliation only. No Day 3 timeline or polling loop.
+// Real status reconciliation with capped polling and observed-only phase history.
 export function ConnectedJobStatus({ jobId }: { jobId: string }) {
   const auth = useAuth();
   const getToken = useRef(auth.getValidToken); getToken.current = auth.getValidToken;
@@ -17,6 +18,7 @@ export function ConnectedJobStatus({ jobId }: { jobId: string }) {
   const [job, setJob] = useState<BackendJob>();
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
+  const [observed, setObserved] = useState<string[]>([]);
   const active = useRef<AbortController>();
   const delay = useRef(2000);
   const ready = auth.state.status === "authenticated" && auth.configurationIssues.length === 0 && (auth.mode === "local-development" || Boolean(import.meta.env.VITE_COGNITO_API_TOKEN_TYPE));
@@ -26,7 +28,7 @@ export function ConnectedJobStatus({ jobId }: { jobId: string }) {
     setLoading(true); setError(undefined);
     try {
       const result = await services.api.getJob(jobId, controller.signal);
-      if (!controller.signal.aborted) setJob(result.job);
+      if (!controller.signal.aborted) { setJob(result.job); setObserved((previous) => previous.includes(result.job.status) ? previous : [...previous, result.job.status]); }
     } catch (failure) {
       if (!controller.signal.aborted) setError(failure instanceof ApiError ? `${failure.message}${failure.requestId ? ` Request ID: ${failure.requestId}` : ""}` : "Job status could not be loaded.");
     } finally {
@@ -37,11 +39,12 @@ export function ConnectedJobStatus({ jobId }: { jobId: string }) {
   useEffect(() => {
     delay.current = 2000;
     setJob(undefined);
+    setObserved([]);
     void load();
     return () => { const controller = active.current; active.current = undefined; controller?.abort(); };
   }, [load]);
   useEffect(() => {
-    if (!job || !["INSPECTING", "APPLYING", "VALIDATING_OUTPUT", "NORMALIZATION_PENDING", "STANDARDIZATION_PENDING", "UPDATE_PENDING"].includes(job.status) || error) return;
+    if (!job || !["INSPECTING", "DETECTED", "APPLYING", "VALIDATING_OUTPUT", "NORMALIZATION_PENDING", "STANDARDIZATION_PENDING", "UPDATE_PENDING"].includes(job.status) || error) return;
     const timer = setTimeout(() => { delay.current = Math.min(15_000, delay.current * 2); void load(); }, delay.current);
     return () => clearTimeout(timer);
   }, [job, error, load]);
@@ -64,6 +67,7 @@ export function ConnectedJobStatus({ jobId }: { jobId: string }) {
     <Button type="button" variant="outline" disabled={!ready || !services.api || loading} aria-busy={loading} onClick={() => { void load(); }}>Refresh job status</Button>
     <p className="text-xs text-muted-foreground">This reads backend state only. It does not create a job or replay Start. Incomplete uploads may require file reselection and fresh backend upload instructions.</p>
     {job && ["COMPLETED", "FAILED", "CANCELLED", "COST_GUARD_REACHED"].includes(job.status) && <p role="status" className="text-sm">Workflow finished with backend status: {job.status}. Automatic polling stopped.</p>}
+    {job && <JobTimeline job={job} observed={observed} />}
     {resumeFlow && <PostUploadConfiguration flow={resumeFlow} onStarted={() => { void load(); }} />}
   </section>;
 }

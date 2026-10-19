@@ -11,6 +11,8 @@ type JobResponse = components["schemas"]["JobResponse"];
 type CreateResponse = components["schemas"]["CreateJobResponse"];
 type CompleteResponse = components["schemas"]["UploadCompleteResponse"];
 export type UploadInstructions = Partial<Record<WorkbookRole, PresignedPutInstruction>>;
+export const artifactTypes = ["output", "manifest", "quality", "proposals", "inspection"] as const;
+export type ArtifactType = typeof artifactTypes[number];
 const text = z.string().min(1);
 const fileSchema = z.object({ filename: text, key: text, content_type: z.string().nullable().optional(), size_bytes: z.number().int().nonnegative().nullable().optional(), etag: z.string().nullable().optional(), uploaded: z.boolean().default(false) });
 const selectionSchema = z.object({ sheet_name: text, header_row: z.number().int().min(1).max(20), header_confirmed: z.literal(true), key_column: z.string().nullable().optional(), workbook_version: text });
@@ -38,7 +40,7 @@ function jobPath(id: string) {
 
 // Runtime decoders mirror the pinned OpenAPI; return annotations check against
 // generated types. Additional semantic checks bind responses to this operation.
-export function createJobsApi(client: ReturnType<typeof createApiClient>, allowedOrigins: readonly string[]) {
+export function createJobsApi(client: ReturnType<typeof createApiClient>, allowedOrigins: readonly string[], downloadOrigins: readonly string[] = allowedOrigins) {
   const checkId = (job: BackendJob, id: string) => {
     if (job.job_id !== id) throw new ApiError("protocol", "The backend returned a different job.");
   };
@@ -115,6 +117,22 @@ export function createJobsApi(client: ReturnType<typeof createApiClient>, allowe
     const result = await client.request(`${jobPath(id)}/start`, { method: "POST", query: { expected_revision: revision }, signal, decode: (value): JobResponse => responseSchema.parse(value) });
     checkId(result.data.job, id); return result.data;
   }
-  return { getJob, createAdapter, confirmationAdapter, getMetadata, saveConfiguration, startJob };
+  async function submitReview(id: string, body: components["schemas"]["ReviewRequest"], signal?: AbortSignal) {
+    const result = await client.request(`${jobPath(id)}/reviews`, { method: "POST", body, signal,
+      decode: (value): components["schemas"]["ReviewResponse"] => responseSchema.extend({ review_id: text }).parse(value) });
+    checkId(result.data.job, id);
+    if (result.data.job.revision <= body.expected_revision) throw new ApiError("protocol", "The backend did not acknowledge a new review revision.");
+    return result.data;
+  }
+  async function getArtifact(id: string, type: ArtifactType, signal?: AbortSignal) {
+    const requestedAt = Date.now();
+    const result = await client.request(`${jobPath(id)}/artifacts/${type}`, { signal,
+      decode: (value): components["schemas"]["PresignedDownload"] => z.object({ artifact_type: text, key: text, url: z.url(), expires_in: z.number().int().positive(), request_id: text }).parse(value) });
+    const signed = result.data;
+    const url = new URL(signed.url);
+    if (signed.artifact_type !== type || url.protocol !== "https:" || url.username || url.password || url.hash || !downloadOrigins.includes(url.origin)) throw new ApiError("protocol", "The artifact download URL or identity could not be verified.");
+    return { ...signed, expiresAt: requestedAt + signed.expires_in * 1000 };
+  }
+  return { getJob, createAdapter, confirmationAdapter, getMetadata, saveConfiguration, startJob, submitReview, getArtifact };
 }
 export type JobsApi = ReturnType<typeof createJobsApi>;

@@ -1,12 +1,29 @@
-# Session log — Frontend Engineer (Days 1–2)
+# Session log — Frontend Engineer (Days 1–7)
 
-Updated: 2026-10-18 (Asia/Bangkok).
+Updated: 2026-10-19 (Asia/Bangkok).
 Branch: `feat/frontend-day1-day2-integration`.
-Implementation commit: `2b3bba0`, based on `main` at `8552001`.
+Day 1–2 implementation commit: `2b3bba0`; integrated `origin/main` at
+`aa66457` with a fast-forward before extending Days 3–7.
 
-**Status:** Day 1 is complete. Day 2 application integration is implemented and
-automated checks pass. Real AWS end-to-end verification and real Cognito login
-remain unverified. Do not describe the full AI processing workflow as complete.
+**Current status:** Frontend screens and independently testable review behavior
+through Day 7 are implemented. Result downloads consume the existing backend API.
+The quality/transformation routes deliberately show report-unavailable states until
+Backend publishes and implements the report/gate contracts. The current worker is
+still a validation/copy demo. Real Cognito/AWS and deployed login-to-download E2E,
+AI processing, and browser visual acceptance are **not certified complete**.
+
+| Day | Frontend implementation | Remaining acceptance dependency |
+| --- | --- | --- |
+| 1 | Complete: foundation, routes, job creation and validation | None for the local implementation |
+| 2 | API/auth/upload/metadata/configuration/Start implemented | Real Cognito and AWS smoke |
+| 3 | Progress, quality evidence and decisions implemented | Backend reports, gate enforcement, persistence and continuation |
+| 4 | Formula evidence/syntax and standardization review implemented | Published proposal contract and formula revalidation for edits |
+| 5 | Six match badges, explicit decisions, confirmed bulk drafts and summary implemented | Real match/proposal reports and applied row counts |
+| 6 | Result/downloads, refresh and text-safety checks implemented | Actual browser verification and deployed login-to-download E2E; change/review artifacts |
+| 7 | Contextual guidance, deterministic rehearsal and runbook implemented | Actual browser/usability rehearsal and screenshots |
+
+See [Days 4–7](#frontend-days-4-7) for the latest work
+and [demo runbook](docs/frontend-demo-runbook.md) for reproducible local checks.
 
 ## Source of truth
 
@@ -23,7 +40,8 @@ remain unverified. Do not describe the full AI processing workflow as complete.
   Tailwind CSS, reusable UI components, Lucide, React Hook Form and Zod.
 - Added shared responsive navigation/layout and routes for login, job creation,
   progress, quality review, transformation review, result and Not Found.
-- Quality review, transformation review and result screens remain placeholders.
+- At the end of Day 1, quality review, transformation review and result were
+  placeholders. Day 3 replaces quality review; Days 4–6 replace transformation/result.
 - Built current/main XLSX file selection, drag/drop, removal/replacement,
   validation, processing options, reset and output-policy guidance.
 - The UI field is a multiline **Prompt**. The API field remains **`comment_name`**
@@ -116,8 +134,8 @@ The full Both policy requires standardization before matching when that future
 processing pipeline is integrated. AI modules arriving from `main` do not by
 themselves prove the frontend's Start path invokes Bedrock.
 
-The UI has Bedrock explanatory copy that should be reviewed against this boundary;
-it is not evidence that an AI operation ran. Browser visual verification is pending.
+The earlier Bedrock explanatory copy was corrected during Days 4–7 to describe this
+demo boundary. Browser visual verification is pending.
 
 ## Latest verification
 
@@ -406,8 +424,9 @@ and source/input hashes remain distinct in the audit manifest.
 
 **No quality fixes, new output column, standardization mappings or matched-row
 updates are applied by this demo worker.** Flags/choices are persisted for the
-future workflow. UI copy explicitly states this limitation. This task does not
-claim completion of Day 3–7 transformation/review functionality.
+future workflow. UI copy explicitly states this limitation. The Day 2 work did not
+complete Day 3–7 functionality; see the later sections for frontend additions and
+the remaining backend-dependent acceptance work.
 
 ### Frontend behavior
 
@@ -491,3 +510,188 @@ text; backend review data must establish origin and final Excel escaping.
 - [AWS presigned uploads](https://docs.aws.amazon.com/AmazonS3/latest/userguide/PresignedUrlUploadObject.html)
 - [Cognito PKCE](https://docs.aws.amazon.com/cognito/latest/developerguide/using-pkce-in-authorization-code.html)
 - [Cognito logout](https://docs.aws.amazon.com/cognito/latest/developerguide/logout-endpoint.html)
+
+## Day 3 — progress and quality review
+
+Implementation date: 2026-10-18. No backend implementation, AWS resource,
+authentication configuration or generated OpenAPI contract was changed.
+
+### Implemented frontend
+
+- Job Progress shows a phase timeline derived from actual backend statuses. It
+  marks only phases observed in this visit; loading a completed job does not invent
+  successful intermediate stages or timestamps. Failure/cancellation/cost-guard
+  states are explicit. Job counts/history are not guessed from undocumented fields.
+- Existing capped exponential polling is preserved, includes `DETECTED`, stops at
+  human gates/terminal states and exposes a real job-scoped Quality Review link
+  at `QUALITY_REVIEW_PENDING`. Refresh does not replay Start.
+- Quality Review is a real workspace component with type/severity/decision filters,
+  confidence-risk sorting (missing confidence first), per-type loaded-item counts,
+  50-item pages and a bounded rendered row window. All items are also reachable
+  through keyboard-operable Previous/Next issue controls.
+- Finding details show backend-supplied coordinates, reason, severity/confidence,
+  before/after evidence and optional normalization pattern/affected count. Pattern
+  rules are not expanded into thousands of per-cell decisions (ADR D4).
+- Accept/Reject/Edit/Ignore-with-reason drafts are restricted to actions supplied
+  by a report adapter. Edits are plain text; ignore requires a reason. Filters do
+  not discard drafts. Drafts are labeled draft, not human accepted before submission.
+- Every required pending item must have a valid explicit decision, the report must
+  be complete and the job must be at `QUALITY_REVIEW_PENDING` before Submit is eligible.
+  Submission also needs a separate human confirmation checkbox. No AI auto-accept
+  or Day 5 bulk-review implementation was added.
+- Controller guards duplicates and in-flight edits, submits the exact loaded
+  revision, validates acknowledgement identity/revision, preserves drafts on
+  definitive rejection and requires reconciliation for 409/unknown outcomes. An
+  explicit reload discards stale drafts; it never increments or rebases a revision.
+- Review content is rendered as React text, including formula/HTML-looking values.
+  There is no browser formula evaluation or XLSX escaping/export implementation.
+- Successful review acknowledgement says the backend recorded a review; it does
+  not claim a resumed execution or applied changes unless actual status proves it.
+
+### Contract boundary and exact backend blockers
+
+The current pinned OpenAPI has `POST /v1/jobs/{id}/reviews` with generated
+`ReviewRequest`/`ReviewResponse` types. `JobsApi.submitReview` now consumes it through
+the existing authenticated JSON transport and runtime response validation. Frontend
+does not supply `approved_by`; Backend derives identity from authentication.
+
+However, **the current backend has no published GET issues/proposals report**. The
+production route reads the actual job and reports that review findings are unavailable.
+It does not request invented endpoints, show synthetic findings or permit submission
+without a source. `QualityReportSource` is an internal normalized adapter boundary,
+not a proposed API response schema. Test fixtures never enter application routes.
+
+Backend handoff needed before real Day 3 acceptance:
+
+1. Publish paginated issues/proposals and their OpenAPI schema: stable issue/rule IDs,
+   coordinates, bounded before/after or row evidence, reason/severity/confidence,
+   persisted review status, supported decisions and authoritative revision. Define
+   complete-gate coverage so partial pagination cannot submit an incomplete review.
+2. Define normalization-rule edit representation and which items require a decision;
+   frontend must not invent edits or derive IDs from cell coordinates.
+3. Produce actual inspection/quality proposals and enter `QUALITY_REVIEW_PENDING`.
+   The existing validation/copy demo does not produce that gate.
+4. Enforce gate/status/item validation and authoritative review persistence in the
+   review endpoint. The existing handler advances revision and records decisions,
+   but does not enforce a quality gate or start the next execution segment.
+5. Implement the ADR D3/D8 conditional-write winner starting the next short segment,
+   with stale submissions returning 409. No task tokens or waiting human execution.
+
+After the contract exists, regenerate OpenAPI types and implement/inject the concrete
+`QualityReportSource` in `quality/backend-adapter.ts` using its verified paginated
+responses. Do not simply enable a mock source in the production route. Verify real
+review persistence/reload and next-segment status with the backend owner.
+
+### Files and verification scope
+
+- Added `frontend/src/quality/{types,controller,backend-adapter}.ts`.
+- Added `job-timeline.tsx` and `quality-review-workspace.tsx` in job components.
+- Updated Jobs API, connected status, progress/quality pages and routing/polling tests.
+- Added synthetic test-only quality fixtures, controller/API tests and component tests.
+- This section records Day 3 work in the existing consolidated session file.
+
+Tests cover decision completeness, partial reports, wrong gates, reason/edit rules,
+unknown/duplicate IDs, malformed reports, expiry/auth/validation failures, concurrency,
+409/timeout reconciliation, safe previews, filters/draft retention, paging/windowing,
+empty/loading/error states, existing review wire fields and gate polling. Real AWS,
+Cognito and visual/browser verification are not certified: browser inventory was empty.
+
+Day 3 verification (2026-10-18):
+
+| Command from `frontend/` | Result |
+| --- | --- |
+| `npm.cmd run typecheck` | Passed |
+| `npm.cmd run lint` | Passed |
+| `npm.cmd test -- --reporter=dot` | 293 passed across 20 files; 30 additional cases |
+| `npm.cmd run build` | Passed, including TypeScript check; approximately 482 kB JS / 148 kB gzip |
+
+Router future-flag and dependency Rollup annotation notices remain nonblocking.
+No dependency was added. The backend's previous 87-test result is historical; it
+was not rerun for this frontend-only change. No real AWS mutation/review was attempted.
+
+Day 3 end-to-end exit criterion remains **blocked by Backend**, not declared complete.
+The independently testable frontend is prepared for the report and gate handoff.
+
+
+<a id="frontend-days-4-7"></a>
+
+## Days 4–7 — transformation, results and rehearsal
+
+Work date: 2026-10-19 (Asia/Bangkok). This extends the existing Day 3 work without
+claiming the backend-dependent exit criteria are complete.
+
+### Days 4–5: review behavior
+
+- Replaced the transformation route placeholder with the shared review workspace.
+  Normalized internal models add formula, standardization and update-match evidence;
+  these are presentation types, not invented wire endpoints or a published BE schema.
+- Formula evidence shows text, referenced columns, backend syntax verification and
+  diagnostics. No formula is evaluated. Acceptance requires backend-verified syntax.
+  Formula editing is unavailable until BE supplies edit revalidation; rejection and
+  requesting a new proposal remain available.
+- Standardization proposals use the before/after evidence table and explicit decision
+  controls. Update matches expose exact/normalized/ambiguous/duplicate/conflict/unmatched
+  badges, filters, source and candidate target keys. Unmatched rows are skipped;
+  acceptance requires supplied target evidence. The demo never inserts unmatched rows.
+- Submission checks the loaded revision, complete report and correct quality/formula/
+  transformation gate. Cross-stage reports are rejected. Duplicate submissions and
+  unknown/conflicting outcomes retain the existing Day 3 reconciliation rules.
+- Bulk acceptance has a selectable 95/99/100% threshold, an explicit filtered scope
+  across pages and its own confirmation. It preserves existing drafts and excludes
+  ambiguous/duplicate/conflict/unmatched groups and unverified formulas. This creates
+  human acceptance drafts; review submission needs a separate confirmation.
+- Added proposal decision summaries and issue/action explanations. Summary counts
+  describe loaded proposals or drafts, never invented applied workbook row counts.
+- Production review routes still fetch the actual Job, then report that findings are
+  unavailable. The current OpenAPI has no report GET contract. No test source or fake
+  findings are wired into production; the Day 3 handoff remains applicable to both gates.
+
+### Day 6: results and downloads
+
+- Replaced the Result placeholder with backend status/revision/timestamps, configured
+  output policy, actual artifact availability and progress recovery.
+- Consumes the existing generated `PresignedDownload` type through authenticated
+  `GET /v1/jobs/{id}/artifacts/{type}`. Only actual supported types are offered:
+  output, manifest, quality, proposals and inspection.
+- Completion and a published artifact key are required by the UI. Signed responses
+  must match the requested type, exact HTTPS download origin and published key.
+  Links are requested explicitly, expire conservatively, can be regenerated and are
+  removed on result refresh. Signed URLs are never persisted or logged.
+- Optional public `VITE_S3_DOWNLOAD_ORIGINS` defaults to upload origins when blank.
+  S3 downloads use ordinary no-referrer links; API JWTs are not forwarded to storage.
+- Output applied/updated/skipped/rejected counts, formula syntax outcomes, change-report
+  JSON and review-summary Markdown remain missing backend contracts/artifacts. The UI
+  states that limitation and the validation/copy worker boundary.
+- Progress now links actual formula/transformation gates and completed results. Refresh
+  and reconnect continue to read server state without replaying mutations.
+
+### Day 7: rehearsal and handoff
+
+- Added [frontend demo runbook](docs/frontend-demo-runbook.md) and `npm.cmd --prefix
+  frontend run demo:verify`, a deterministic 27-case React/controller rehearsal using
+  explicitly synthetic external boundaries. It is not a deployed E2E test.
+- Updated stale Bedrock copy in job creation to describe the actual demo boundary.
+- Added focused regression coverage for gate/stage validation, formula syntax rules,
+  bulk scope and exclusions, text-safe evidence, artifact URL/key validation, expiry,
+  unpublished outputs and refresh/error states.
+- ESLint ignores Vite's transient timestamped config bundle so parallel test/build
+  startup cannot race lint by creating/removing that generated file.
+- No dependencies were added and no backend/infrastructure changes were made.
+
+### Latest validation and unresolved acceptance
+
+| Check | Result |
+| --- | --- |
+| Full Vitest suite | 334 passed in 24 files (41 additional cases beyond Day 3) |
+| Deterministic demo rehearsal | 27 passed in 5 files; includes the final review UI adjustments |
+| ESLint | Passed |
+| Production build / TypeScript | Passed; approximately 500 kB JS / 152 kB gzip |
+| Git whitespace check | Passed |
+
+React Router future notices, existing Rollup dependency annotations and the approximately
+500 kB chunk advisory are nonblocking. Route splitting is a future performance improvement.
+All service-boundary tests are synthetic; no real AWS job, Cognito login, Bedrock request
+or actual download was attempted. Backend tests were not rerun for this frontend-only work.
+Browser automation inventory returned zero apps and zero browsers; desktop/mobile visual
+checks and actual browser formula-looking-value validation remain pending. Use the runbook
+in an approved configured environment to close those acceptance items.

@@ -25,3 +25,9 @@ put AWS credentials, JWTs or a client secret in Vite configuration.
 
 The connected worker is a validation/copy demo. Real AWS/Cognito and browser smoke
 verification remain pending; passing mocked tests does not certify real services.
+
+
+Frontend screens through Day 7 are implemented; review data/gates and real-service
+acceptance remain backend/environment-dependent. Use the
+[demo runbook](../docs/frontend-demo-runbook.md) and `npm.cmd run demo:verify` for a
+deterministic component rehearsal with synthetic service boundaries.
