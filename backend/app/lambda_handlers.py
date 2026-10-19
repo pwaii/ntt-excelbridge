@@ -111,7 +111,7 @@ def bedrock_handler(event: dict[str, Any], context) -> dict[str, Any]:
         "tool5": "UPDATE_PENDING",
     }
     if tool in status_by_tool:
-        dynamo.update_job(job_id, int(item["revision"]), {"status": status_by_tool[tool]})
+        dynamo.update_job(job_id, int(item["revision"]), {"status": status_by_tool[tool], "error_code": None, "error_detail": None})
     return proposal
 
 
@@ -429,7 +429,7 @@ def apply_handler(event: dict[str, Any], context) -> dict[str, Any]:
     updated = dynamo.update_job(
         event["job_id"],
         int(item["revision"]),
-        {"status": "VALIDATING_OUTPUT", "artifacts": artifacts, "result_summary": {
+        {"status": "VALIDATING_OUTPUT", "artifacts": artifacts, "error_code": None, "error_detail": None, "result_summary": {
             "updated_rows": sum(record.get("action") == "updated" for record in audit),
             "skipped_rows": sum(record.get("action") == "skipped" for record in audit),
             "rejected_decisions": sum(record.get("decision") == "reject" for record in decision_audit + quality_decision_audit),

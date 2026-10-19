@@ -716,8 +716,9 @@ in an approved configured environment to close those acceptance items.
   reload as `Human ignored`, without being mislabeled accepted or rejected.
 - Immutable review JSON is written before the winning CAS publishes its pointer and
   next segment. Job metadata retains authoritative stage review pointers so a failed
-  secondary index write does not lose approved decisions. Failed continuation is
-  recorded as FAILED with its segment, and processing can be explicitly retried.
+  secondary index write does not lose approved decisions. A definitive continuation
+  rejection is recorded as FAILED with its segment and can be explicitly retried;
+  an unknown start outcome requires reconciliation before another execution.
 - Added the frontend retry action and backend failure details. Unknown retry outcomes
   require refresh; mutations are never automatically replayed. Formula status is an
   intermediate processing state; only TRANSFORMATION_REVIEW_PENDING is the final gate.
@@ -749,7 +750,7 @@ in an approved configured environment to close those acceptance items.
 ### Final local verification
 
 - Frontend: 348 tests in 25 files; TypeScript, lint and production build pass.
-- Backend: 126 tests, including actual route/worker/XLSX flows for all four modes,
+- Backend: 127 tests, including actual route/worker/XLSX flows for all four modes,
   two reviews, persisted reload, output reopening, unchanged sources and downloads.
   AWS, Step Functions and Bedrock remain synthetic boundaries in these tests.
 - Deterministic component/adapter rehearsal: 41 tests in 6 files.
@@ -773,3 +774,16 @@ in an approved configured environment to close those acceptance items.
 The user's note that root settings/access exist does not provide a working local
 profile or deployed Cognito configuration. Use an approved AWS profile and the actual
 stack outputs for real-service acceptance; do not send secrets in chat.
+
+
+### Git delivery
+
+Implementation commit: `d75f573`, with a follow-up guarding unknown workflow-start
+outcomes. The integration branch is pushed to origin. Draft PR:
+[Integrate frontend reviews, Cognito auth and workflow results](https://github.com/pwaii/ntt-excelbridge/pull/7).
+No merge into main or cloud deployment was performed.
+
+A definitive StartExecution rejection permits processing retry; an unknown start
+outcome requires workflow-status reconciliation and never enables a second execution.
+The approval remains persisted in both cases. The PR remains draft pending actual
+AWS/Cognito/deployed E2E and desktop/mobile browser acceptance.

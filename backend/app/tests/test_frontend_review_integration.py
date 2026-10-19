@@ -5,6 +5,7 @@ from copy import deepcopy
 from io import BytesIO
 
 import pytest
+from botocore.exceptions import ClientError
 from fastapi.testclient import TestClient
 from openpyxl import Workbook, load_workbook
 
@@ -408,7 +409,12 @@ def test_failed_continuation_is_recoverable_without_replaying_review(api, monkey
     monkeypatch.setattr(
         workflow,
         "start_segment",
-        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("synthetic dispatcher outage")),
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            ClientError(
+                {"Error": {"Code": "AccessDeniedException", "Message": "synthetic rejection"}},
+                "StartExecution",
+            )
+        ),
     )
     response = client.post(
         f"/v1/jobs/{job_id}/reviews",
@@ -509,3 +515,25 @@ def test_formula_templates_use_final_row_positions_after_accepted_deletions():
     assert output["Data"].max_row == 5
     assert output["Data"]["D5"].value == "=B5*2"
     output.close()
+
+
+def test_unknown_start_outcome_does_not_enable_a_duplicate_execution(api, monkeypatch):
+    client, store, _storage, workflow = api
+    job_id, identity = ready_quality(api)
+    monkeypatch.setattr(
+        workflow,
+        "start_segment",
+        lambda *args, **kwargs: (_ for _ in ()).throw(TimeoutError("synthetic lost response")),
+    )
+    response = client.post(
+        f"/v1/jobs/{job_id}/reviews",
+        json={
+            "expected_revision": store.item["revision"],
+            "decisions": {identity: {"decision": "accept"}},
+        },
+    )
+    assert response.status_code == 503
+    assert store.item["status"] == "NORMALIZATION_PENDING"
+    assert store.item["error_code"] == "REVIEW_CONTINUATION_UNKNOWN"
+    assert client.post(f"/v1/jobs/{job_id}/retry").status_code == 409
+    assert report(client, store, "quality")[0]["status"] == "human_accepted"

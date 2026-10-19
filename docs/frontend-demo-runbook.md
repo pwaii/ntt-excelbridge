@@ -89,7 +89,7 @@ Run Neither, Standardize-only, Update-only and Both against actual services:
 | Persistence | Refresh the review; human decisions reload, including ignored-with-reason. A stale tab gets 409 and must reconcile. |
 | Transformation | Wait for final TRANSFORMATION_REVIEW_PENDING. Inspect formula/reference syntax, mappings and six match badges. Ambiguous targets require explicit supplied-row selection. |
 | Bulk | Verify exact filtered scope and threshold; existing drafts are preserved; ambiguous/duplicate/conflict/unmatched groups are excluded. Submission needs separate confirmation. |
-| Continuation | Review acknowledgement and actual next-segment status are checked separately. A failed continuation records approval and permits processing retry without resubmitting it. |
+| Continuation | Review acknowledgement and actual next-segment status are checked separately. A definitive rejection permits processing retry without resubmitting approval. An unknown start outcome requires execution-status reconciliation. |
 | Result | Output, audit JSON, review summary Markdown and validation downloads match published keys. Open the actual XLSX, inspect changes/formulas and verify original uploads remain unchanged. |
 | Counts | Compare updated/skipped row counts and rejected decision counts with the actual audit. No inserted rows for unmatched current records. Syntax verification is not calculation. |
 | Failure/expiry | Exercise network errors, 401/403/404/409 and expired links. Generate new links explicitly; no automatic mutation retry. |
