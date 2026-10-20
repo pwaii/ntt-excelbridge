@@ -22,16 +22,17 @@ Set `AWS_PROFILE` and `AWS_REGION` in PowerShell, then pass deployment values
 as script parameters. `.env` is used by the local Python API, not by
 PowerShell.
 
-The deployment template does not create IAM roles or policies. Before
-deploying, an administrator must provide three existing role ARNs: a
-CloudFormation service role, a Lambda execution role, and a Step Functions
-execution role. The CloudFormation service role must be trusted by
-`cloudformation.amazonaws.com`; the Lambda role must include the runtime log,
-S3, DynamoDB, Step Functions, and Bedrock permissions used by the application;
-the Step Functions role must be allowed to invoke every worker Lambda. The
-caller also needs `iam:PassRole` for the CloudFormation service role. The
-CloudFormation service role itself needs `iam:PassRole` for the Lambda and
-Step Functions execution roles.
+The deployment template does not create IAM roles or policies. The Lambda and
+Step Functions execution role ARNs are required. A CloudFormation service role
+ARN is optional: when omitted, CloudFormation uses the caller's credentials,
+which is appropriate for this demo account when the caller already has the
+required resource permissions. If supplied, the CloudFormation service role
+must be trusted by `cloudformation.amazonaws.com` and must be allowed to pass
+the Lambda and Step Functions roles. The Lambda role must include the runtime
+log, S3, DynamoDB, Step Functions, and Bedrock permissions used by the
+application; the Step Functions role must be allowed to invoke every worker
+Lambda. The deploying caller needs `iam:PassRole` for the two execution roles
+and, when a CloudFormation service role is supplied, for that service role too.
 
 The local API uses the `local-user` fallback only when Cognito is not
 configured. That fallback must not be used as a production authentication
@@ -63,14 +64,14 @@ services/models.
   -ModelId amazon.nova-lite-v1:0 `
   -HeavyModelId amazon.nova-pro-v1:0 `
   -FrontendOrigin http://localhost:5173 `
-  -CloudFormationServiceRoleArn $env:CLOUDFORMATION_SERVICE_ROLE_ARN `
   -LambdaExecutionRoleArn $env:LAMBDA_EXECUTION_ROLE_ARN `
   -StateMachineExecutionRoleArn $env:STATE_MACHINE_EXECUTION_ROLE_ARN
 ```
 
-This command passes `--role-arn` to SAM/CloudFormation and does not pass
-`CAPABILITY_IAM`, because the template contains no `AWS::IAM::*` resources and
-no SAM `Policies:` blocks.
+If `CLOUDFORMATION_SERVICE_ROLE_ARN` is set, the command passes `--role-arn`
+to SAM/CloudFormation. If it is empty, CloudFormation uses the caller's
+credentials. The command does not pass `CAPABILITY_IAM`, because the template
+contains no `AWS::IAM::*` resources and no SAM `Policies:` blocks.
 
 The stack creates a private versioned S3 bucket, on-demand DynamoDB table with
 owner/status GSIs and TTL, Cognito user-pool/client, JWT-protected HTTP API,

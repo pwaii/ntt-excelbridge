@@ -10,7 +10,7 @@ Metadata:
     must:
       - "IAM roles are managed outside this stack and supplied as ARN parameters."
       - "This template must not create IAM roles or inline/managed IAM policies."
-      - "CloudFormation must be invoked with an existing service-role ARN."
+      - "CloudFormation may use an existing service-role ARN or the caller's credentials."
 
 Parameters:
   Environment:
@@ -53,6 +53,7 @@ Resources:
   DataBucket:
     Type: AWS::S3::Bucket
     Properties:
+      BucketName: !Sub xlsx-workflow-${Environment}-${AWS::AccountId}
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
