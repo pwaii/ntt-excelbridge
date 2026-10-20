@@ -10,7 +10,7 @@ Metadata:
     must:
       - "IAM roles are managed outside this stack and supplied as ARN parameters."
       - "This template must not create IAM roles or inline/managed IAM policies."
-      - "CloudFormation must be invoked with an existing service-role ARN."
+      - "CloudFormation may use an existing service-role ARN or the caller's credentials."
 
 Parameters:
   Environment:
@@ -53,6 +53,7 @@ Resources:
   DataBucket:
     Type: AWS::S3::Bucket
     Properties:
+      BucketName: !Sub xlsx-workflow-${Environment}-${AWS::AccountId}
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
@@ -166,6 +167,7 @@ Resources:
           COGNITO_USER_POOL_ID: !Ref UserPool
           COGNITO_APP_CLIENT_ID: !Ref UserPoolClient
           COGNITO_API_TOKEN_TYPE: access
+          CORS_ORIGINS: !Sub '${FrontendOrigin},http://127.0.0.1:5173'
       Events:
         Api:
           Type: HttpApi
@@ -179,6 +181,14 @@ Resources:
             ApiId: !Ref HttpApi
             Path: /
             Method: ANY
+        Options:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
 
   InspectFunction:
     Type: AWS::Serverless::Function

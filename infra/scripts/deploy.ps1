@@ -15,7 +15,6 @@ $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 
 $roleInputs = @{
-    CloudFormationServiceRoleArn = $CloudFormationServiceRoleArn
     LambdaExecutionRoleArn = $LambdaExecutionRoleArn
     StateMachineExecutionRoleArn = $StateMachineExecutionRoleArn
 }
@@ -63,13 +62,21 @@ Push-Location $repoRoot
 try {
     Invoke-Sam validate --template-file infra/template.yaml
     Invoke-Sam build --template-file infra/template.yaml --region $Region
-    Invoke-Sam deploy --template-file .aws-sam/build/template.yaml `
-        --stack-name $StackName `
-        --region $Region `
-        --role-arn $CloudFormationServiceRoleArn `
-        --resolve-s3 `
-        --parameter-overrides Environment=$Environment BedrockModelId=$ModelId BedrockHeavyModelId=$HeavyModelId FrontendOrigin=$FrontendOrigin LambdaExecutionRoleArn=$LambdaExecutionRoleArn StateMachineExecutionRoleArn=$StateMachineExecutionRoleArn `
-        --no-fail-on-empty-changeset
+    $deploymentArguments = @(
+        "--template-file", ".aws-sam/build/template.yaml",
+        "--stack-name", $StackName,
+        "--region", $Region,
+        "--resolve-s3",
+        "--parameter-overrides", "Environment=$Environment", "BedrockModelId=$ModelId", "BedrockHeavyModelId=$HeavyModelId", "FrontendOrigin=$FrontendOrigin", "LambdaExecutionRoleArn=$LambdaExecutionRoleArn", "StateMachineExecutionRoleArn=$StateMachineExecutionRoleArn",
+        "--no-fail-on-empty-changeset"
+    )
+    if (-not [string]::IsNullOrWhiteSpace($CloudFormationServiceRoleArn)) {
+        if ($CloudFormationServiceRoleArn -notmatch '^arn:[A-Za-z0-9-]+:iam::[0-9]{12}:role/.+$') {
+            throw "CloudFormationServiceRoleArn must be an IAM role ARN, for example arn:aws:iam::123456789012:role/example"
+        }
+        $deploymentArguments += @("--role-arn", $CloudFormationServiceRoleArn)
+    }
+    Invoke-Sam deploy @deploymentArguments
 } finally {
     Pop-Location
 }

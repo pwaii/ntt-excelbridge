@@ -20,6 +20,8 @@ TERMINAL = {S.COMPLETED, S.FAILED, S.CANCELLED}
 def validate_transition(frm: S, to: S) -> None:
     """Raise ValueError if `frm -> to` is not an allowed transition."""
     if frm in TERMINAL:
+        if frm is S.FAILED and to not in TERMINAL:
+            return  # retry may re-enter the failed segment's live state
         raise ValueError(f"{frm} is terminal; no transition to {to}")
     if to == S.COMPLETED:
         if frm is not S.VALIDATING_OUTPUT:

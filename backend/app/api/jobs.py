@@ -6,6 +6,7 @@ import logging
 from pathlib import PurePosixPath
 from uuid import uuid4
 
+from botocore.exceptions import ClientError
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from app.api.dependencies import get_dynamo_store, get_s3_store, get_workflow_store
@@ -29,6 +30,46 @@ from app.workers.demo_pipeline import run_demo_pipeline
 router = APIRouter(prefix="/v1/jobs", tags=["jobs"])
 logger = logging.getLogger(__name__)
 XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+DEFINITIVE_START_FAILURES = {
+    "AccessDeniedException",
+    "InvalidArn",
+    "InvalidExecutionInput",
+    "StateMachineDeleting",
+    "StateMachineDoesNotExist",
+    "ValidationException",
+}
+
+
+def _definitive_start_failure(error: Exception) -> bool:
+    return (
+        isinstance(error, ClientError)
+        and error.response.get("Error", {}).get("Code") in DEFINITIVE_START_FAILURES
+    )
+
+
+def _record_unknown_start(dynamo: DynamoStore, job_id: str, live_status: str) -> None:
+    """Record an ambiguous StartExecution outcome without changing status.
+
+    A timeout can happen after Step Functions accepted the execution. Keeping
+    the job live prevents a client from submitting a duplicate retry; a worker
+    that did start can still advance the same job through its normal CAS path.
+    """
+
+    current = dynamo.get_job(job_id)
+    if not current or current.get("status") != live_status:
+        return
+    try:
+        dynamo.update_job(
+            job_id,
+            int(current["revision"]),
+            {
+                "error_code": "WORKFLOW_START_UNKNOWN",
+                "error_detail": "StartExecution outcome is unknown; reconcile the execution before retrying.",
+            },
+        )
+    except RevisionConflictError:
+        # A worker/API writer won the race; its state is authoritative.
+        return
 
 
 def _validate_xlsx_filename(filename: str) -> None:
@@ -180,21 +221,47 @@ def start_job(
             updates={"status": JobStatus.INSPECTING.value},
         )
         if workflow.state_machine_arn:
-            started = workflow.start_segment(job_id, 1, int(inspecting["revision"]))
             try:
-                running = dynamo.update_job(
+                started = workflow.start_segment(job_id, 1, int(inspecting["revision"]))
+            except Exception as error:
+                current = dynamo.get_job(job_id)
+                if _definitive_start_failure(error) and current:
+                    try:
+                        current = dynamo.update_job(
+                            job_id,
+                            int(current["revision"]),
+                            {
+                                "status": JobStatus.FAILED.value,
+                                "error_code": "WORKFLOW_START_FAILED",
+                                "error_detail": "The workflow was rejected before execution started.",
+                            },
+                        )
+                    except RevisionConflictError:
+                        current = dynamo.get_job(job_id) or current
+                    raise HTTPException(503, "workflow start was rejected; retry the failed job") from error
+                _record_unknown_start(dynamo, job_id, JobStatus.INSPECTING.value)
+                raise HTTPException(
+                    503,
+                    "workflow start outcome is unknown; reconcile job status before retrying",
+                ) from error
+            try:
+                # This metadata write deliberately does not consume revision.
+                running = dynamo.set_execution_metadata(
                     job_id,
-                    expected_revision=int(inspecting["revision"]),
-                    updates={"execution_arn": started["execution_arn"], "workflow_segment": 1},
+                    {"execution_arn": started["execution_arn"], "workflow_segment": 1},
                 )
-            except RevisionConflictError:
-                # A Lambda may finish before the StartExecution response is persisted.
-                running = dynamo.get_job(job_id) or inspecting
+            except Exception as error:
+                raise HTTPException(
+                    503,
+                    "workflow started; reload job status before retrying",
+                ) from error
             return JobResponse(job=_record(running), request_id=request.state.request_id)
         completed = run_demo_pipeline(job_id, expected_revision=int(inspecting["revision"]), dynamo=dynamo, s3=s3)
         return JobResponse(job=_record(completed), request_id=request.state.request_id)
     except WorkflowNotConfiguredError:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="workflow is not configured")
+    except HTTPException:
+        raise
     except RevisionConflictError as error:
         # A losing duplicate must not mark the winning execution as failed.
         raise HTTPException(409, "Job changed; refresh status before retrying") from error
@@ -262,8 +329,35 @@ def retry_job(
     status_by_segment = {1: JobStatus.INSPECTING.value, 2: JobStatus.NORMALIZATION_PENDING.value, 3: JobStatus.APPLYING.value}
     try:
         updated = dynamo.update_job(job_id, int(item["revision"]), {"status": status_by_segment.get(segment, JobStatus.INSPECTING.value), "error_code": None, "error_detail": None})
+    except RevisionConflictError as error:
+        raise HTTPException(409, "job changed; refresh before retrying") from error
+    try:
         started = workflow.start_segment(job_id, segment, int(updated["revision"]), context={"config": item.get("config", {})})
-        updated = dynamo.update_job(job_id, int(updated["revision"]), {"execution_arn": started["execution_arn"]})
     except Exception as error:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="workflow retry could not be started") from error
+        current = dynamo.get_job(job_id) or updated
+        if _definitive_start_failure(error):
+            try:
+                updated = dynamo.update_job(
+                    job_id,
+                    int(current["revision"]),
+                    {
+                        "status": JobStatus.FAILED.value,
+                        "error_code": "WORKFLOW_START_FAILED",
+                        "error_detail": "The retry workflow was rejected before execution started.",
+                    },
+                )
+            except RevisionConflictError:
+                updated = dynamo.get_job(job_id) or current
+            raise HTTPException(503, "workflow retry was rejected; job is FAILED and can be retried") from error
+        _record_unknown_start(dynamo, job_id, updated["status"])
+        raise HTTPException(
+            503,
+            "workflow retry outcome is unknown; reconcile execution status before retrying",
+        ) from error
+    try:
+        # The worker may already have consumed the retry revision. Do not CAS
+        # or increment revision just to attach the execution ARN.
+        updated = dynamo.set_execution_metadata(job_id, {"execution_arn": started["execution_arn"], "workflow_segment": segment})
+    except Exception as error:
+        raise HTTPException(503, "workflow retry started; reload job status before retrying") from error
     return JobResponse(job=_record(updated), request_id=request.state.request_id)

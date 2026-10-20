@@ -115,7 +115,13 @@ def _complete_uploaded_slot(
         if all(files[slot].get("uploaded") for slot in required_slots)
         else JobStatus.UPLOADING.value
     )
-    updates = {"files": files, "status": next_status, "configuration_confirmed": False, "workbook_selections": {}}
+    updates = {"files": files, "configuration_confirmed": False, "workbook_selections": {}}
+    # Completing the first of two required uploads legitimately leaves the job
+    # in UPLOADING. Do not send a same-status update to DynamoStore: status
+    # transitions are strictly forward, while this is only a file-manifest
+    # update. The same rule makes repeated completion calls idempotent.
+    if next_status != item.get("status"):
+        updates["status"] = next_status
     if file_info.get("sha256"):
         updates["input_hash" if payload.slot == "input" else "main_hash"] = file_info["sha256"]
 
