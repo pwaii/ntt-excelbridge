@@ -37,7 +37,7 @@ HR_ROWS = [
     ("E01", "Jane",    "Doe",   "Sales", "2023-02-01", 50000, "TRUE"),  # H2 duplicate of H1
     ("E03", "  jane ", "SMITH", "Ops",   "2023-02-03", 55000, "Yes"),   # H3 whitespace + casing noise
     ("E04", "José",    "Núñez", "Eng",   "04/02/2023", 60000, 1),       # H4 accented name, DD/MM date, int FullTime
-    ("E05", "李",      "雷",    "Eng",   "2023-02-05", 62000, "N"),     # H5 non-latin name
+    ("E05", "李",      "雷",    "Eng",   "2023-02-05", "Confidential", "N"),  # H5 non-latin name, non-numeric Salary
     ("E06", "Bob",     "Lee",   "Sales", "2023-02-06", "N/A", "Yes"),   # H6 Salary "N/A" (type mismatch)
     (None,  None,      None,    None,    None,         None,  None),    # H8 completely blank row (interior)
     ("E07", "Amy",     "Fox",   "Ops",   "2023-13-45", None,  "Yes"),   # H7 invalid date + Salary blank, anchors blank row
@@ -51,9 +51,9 @@ INVENTORY_ROWS = [
     (9001,    "Gadget",             "12",           15, 12.50,   None),  # I3 numeric SKU + text StockQty
     ("00046", "Gizmo",              None,           10, 4.50,    None),  # I4 StockQty blank
     ("00047", "Doohickey",          -5,             10, 3.50,    None),  # I5 negative StockQty
-    ("00048", "Thingamajig",        1_000_000_000,   5, "$9.99", None),  # I6 huge StockQty + currency-text Price
+    (9002,    "Thingamajig",        1_000_000_000,   5, "$9.99", None),  # I6 numeric SKU, huge StockQty, currency-text Price
     (None,    None,                 None,         None, None,    None),  # I8 completely blank row (interior)
-    ("00049", "=cmd|' /c calc'!A1", 50,              5, 7.50,    None),  # I7 injection string, anchors blank row
+    ("00049", "=cmd|' /c calc'!A1", "50",            5, 7.50,    None),  # I7 injection string + text StockQty, anchors blank row
 ]
 
 SAMPLES = [
