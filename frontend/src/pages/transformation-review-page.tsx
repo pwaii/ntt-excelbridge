@@ -5,6 +5,7 @@ import { createJobServices } from "@/api/job-services";
 import { createQualityReviewFlow } from "@/quality/controller";
 import { createBackendQualityAdapter, createQualityReportSource } from "@/quality/backend-adapter";
 import { QualityReviewWorkspace } from "@/components/job/quality-review-workspace";
+import { PageHeader } from "@/components/layout/page-header";
 
 export function TransformationReviewPage() {
   const { id } = useParams();
@@ -14,10 +15,7 @@ export function TransformationReviewPage() {
   const ready = auth?.state.status === "authenticated" && !auth.configurationIssues.length && (auth.mode === "local-development" || Boolean(import.meta.env.VITE_COGNITO_API_TOKEN_TYPE));
   const flow = useMemo(() => id && ready && services.api ? createQualityReviewFlow(id, createBackendQualityAdapter(services.api, createQualityReportSource(services.api, "transformation"), "Transformation"), "transformation") : undefined, [id, ready, services]);
   return <section className="mx-auto max-w-6xl">
-    <div className="flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-3xl font-semibold tracking-tight">Transformation review</h1>
-      <p className="mt-3 max-w-2xl text-sm text-muted-foreground">Review formula syntax, standardization mappings and update matches before approved changes can be applied.</p></div>
-      {id && <Link className="text-sm font-medium underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-ring" to={`/jobs/${encodeURIComponent(id)}`}>Back to job progress</Link>}
-    </div>
-    {flow && id ? <QualityReviewWorkspace key={id} flow={flow} jobId={id} /> : <p role="note" className="mt-6 rounded-2xl border bg-card p-6 text-sm text-muted-foreground">Sign in and configure the backend API and authentication token type to load transformation review. No sample findings are shown.</p>}
+    <PageHeader title="Transformation review" description="Review formulas, value mappings, and row matches before approving changes to your workbook." actions={id && <Link className="rounded-md py-2 text-sm font-medium text-primary underline underline-offset-4" to={`/jobs/${encodeURIComponent(id)}`}>Back to job progress</Link>} />
+    {flow && id ? <QualityReviewWorkspace key={id} flow={flow} jobId={id} /> : <p role="note" className="notice mt-6 text-muted-foreground">Sign in and configure the backend API and authentication token type to load transformation review. No sample findings are shown.</p>}
   </section>;
 }

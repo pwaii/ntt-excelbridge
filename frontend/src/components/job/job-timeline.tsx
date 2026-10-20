@@ -14,26 +14,25 @@ const stages = [
 ];
 export function JobTimeline({ job, observed }: { job: BackendJob; observed: readonly string[] }) {
   const terminalError = ["FAILED", "CANCELLED", "COST_GUARD_REACHED"].includes(job.status);
-  return <section aria-labelledby="workflow-timeline" className="space-y-4 rounded-2xl border bg-background p-5">
+  return <section aria-labelledby="workflow-timeline" className="panel space-y-4 p-5 sm:p-6">
     <div><h3 id="workflow-timeline" className="font-semibold">Workflow progress</h3>
       <p className="mt-1 text-xs text-muted-foreground">Only statuses received from the backend are marked observed. No intermediate steps are inferred.</p></div>
-    <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-      {stages.map((stage) => {
+    <ol className="divide-y">
+      {stages.map((stage, index) => {
         const current = stage.states.includes(job.status);
         const seen = stage.states.some((status) => observed.includes(status));
-        return <li key={stage.name} aria-current={current ? "step" : undefined} className={`rounded-xl border p-3 ${current ? "border-primary bg-accent" : "border-border"}`}>
-          <div className="flex items-start gap-2"><CircleDot aria-hidden="true" className={`mt-0.5 size-4 shrink-0 ${current ? "text-primary" : "text-muted-foreground"}`} />
-            <div><p className="text-sm font-medium">{stage.name}</p><p className="mt-1 text-xs text-muted-foreground">{current ? "Current backend phase" : seen ? "Observed in this visit" : "Not observed in this visit"}</p></div></div>
+        return <li key={stage.name} aria-current={current ? "step" : undefined} className={`flex items-center gap-3 px-3 py-3 ${current ? "bg-accent" : ""}`}>
+          <span aria-hidden="true" className={`stage-number ${current ? "border-primary bg-primary text-primary-foreground" : "text-muted-foreground"}`}>{current ? <CircleDot className="size-3.5" /> : index + 1}</span>
+          <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-4 gap-y-1"><p className={`text-sm ${current ? "font-semibold text-primary" : "font-medium"}`}>{stage.name}</p><p className="text-xs text-muted-foreground">{current ? "Current backend phase" : seen ? "Observed in this visit" : "Not observed in this visit"}</p></div>
         </li>;
       })}
     </ol>
-    {terminalError && <p role="status" className="rounded-xl border border-destructive/30 p-3 text-sm">Backend status: {job.status}. Processing is stopped. Detailed failure information is not supplied by the current job contract.</p>}
-    {job.status === "QUALITY_REVIEW_PENDING" && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-accent p-4">
+    {terminalError && <p role="status" className="notice notice-error">Backend status: {job.status}. Processing is stopped. Check the job details before retrying.</p>}
+    {job.status === "QUALITY_REVIEW_PENDING" && <div className="notice flex flex-wrap items-center justify-between gap-3 border-primary/20 bg-accent p-4">
       <p className="text-sm font-medium">Your quality review is required before processing can continue.</p>
       <Button asChild><Link to={`/jobs/${encodeURIComponent(job.job_id)}/quality-review`}><ListChecks aria-hidden="true" />Review data quality</Link></Button>
     </div>}
     {job.status === "TRANSFORMATION_REVIEW_PENDING" && <Button asChild><Link to={`/jobs/${encodeURIComponent(job.job_id)}/transformation-review`}>Review transformations</Link></Button>}
     {job.status === "COMPLETED" && <Button asChild><Link to={`/jobs/${encodeURIComponent(job.job_id)}/result`}>View result and downloads</Link></Button>}
-    <p className="text-xs text-muted-foreground">Issue counts and processing history are unavailable until the backend publishes its quality report and history contracts.</p>
   </section>;
 }
