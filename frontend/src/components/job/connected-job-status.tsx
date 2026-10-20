@@ -9,6 +9,8 @@ import { createMetadataFlow } from "@/metadata/controller";
 import { createBackendMetadataAdapter } from "@/metadata/backend-adapter";
 import { PostUploadConfiguration } from "./post-upload-configuration";
 import { JobTimeline } from "./job-timeline";
+import { JobStatusBadge } from "./job-status-badge";
+import { RefreshCw } from "lucide-react";
 
 // Real status reconciliation with capped polling and observed-only phase history.
 export function ConnectedJobStatus({ jobId }: { jobId: string }) {
@@ -67,22 +69,24 @@ export function ConnectedJobStatus({ jobId }: { jobId: string }) {
       if (!controller.signal.aborted) setLoading(false);
     }
   }
-  return <section aria-labelledby="backend-job-status" className="mt-5 space-y-3 rounded-2xl border bg-card p-5">
-    <h2 id="backend-job-status" className="text-lg font-semibold">Backend job status</h2>
-    <p className="break-all text-xs text-muted-foreground">Job ID: {jobId}</p>
+  return <section aria-labelledby="backend-job-status" className="mt-5 min-w-0 space-y-5">
+    <div className="panel p-5 sm:p-6">
+    <div className="flex flex-wrap items-center justify-between gap-3"><h2 id="backend-job-status" className="text-base font-semibold">Job details</h2>{job && <JobStatusBadge status={job.status} />}</div>
+    <p className="mt-2 break-all text-xs text-muted-foreground">Job ID: {jobId}</p>
     {!ready && <p role="note" className="text-sm text-muted-foreground">Configure Cognito and the backend JWT type, then sign in to load this job.</p>}
-    {loading && <p role="status" className="text-sm">Loading backend job status…</p>}
-    {error && <p role="alert" className="break-words text-sm text-destructive">{error}</p>}
-    {job && <dl className="grid gap-3 text-sm sm:grid-cols-2">
+    {loading && <p role="status" className="mt-4 text-sm text-muted-foreground">Loading backend job status…</p>}
+    {error && <p role="alert" className="notice notice-error mt-4 break-words">{error}</p>}
+    {job && <dl className="mt-5 grid gap-x-6 gap-y-4 border-t pt-4 text-sm sm:grid-cols-2">
       <div><dt className="text-muted-foreground">Status reported by backend</dt><dd className="mt-1 break-words font-medium">{job.status}</dd></div>
       <div><dt className="text-muted-foreground">Server revision</dt><dd className="mt-1 font-medium">{job.revision}</dd></div>
       {Object.entries(job.files ?? {}).map(([slot, file]) => <div key={slot}><dt className="text-muted-foreground">{slot === "input" ? "Current workbook" : "Main workbook"}</dt><dd className="mt-1 break-all">{file.filename} — {file.uploaded ? "Backend-confirmed upload" : "Upload not confirmed"}</dd></div>)}
     </dl>}
-    <Button type="button" variant="outline" disabled={!ready || !services.api || loading} aria-busy={loading} onClick={() => { void load(); }}>Refresh job status</Button>
-    {job?.status === "FAILED" && <Button type="button" variant="outline" disabled={!ready || !services.api || loading || Boolean(error)} onClick={() => { void retry(); }}>Retry failed processing</Button>}
-    {job?.error_code && <p role="note" className="break-words text-sm text-destructive">{job.error_code}{job.error_detail ? `: ${job.error_detail}` : ""}</p>}
-    <p className="text-xs text-muted-foreground">This reads backend state only. It does not create a job or replay Start. Incomplete uploads may require file reselection and fresh backend upload instructions.</p>
-    {job && ["COMPLETED", "FAILED", "CANCELLED", "COST_GUARD_REACHED"].includes(job.status) && <p role="status" className="text-sm">Workflow finished with backend status: {job.status}. Automatic polling stopped.</p>}
+    <div className="action-buttons mt-5"><Button type="button" variant="outline" disabled={!ready || !services.api || loading} aria-busy={loading} onClick={() => { void load(); }}><RefreshCw aria-hidden="true" />Refresh job status</Button>
+    {job?.status === "FAILED" && <Button type="button" variant="outline" disabled={!ready || !services.api || loading || Boolean(error)} onClick={() => { void retry(); }}>Retry failed processing</Button>}</div>
+    {job?.error_code && <p role="note" className="notice notice-error mt-4 break-words">{job.error_code}{job.error_detail ? `: ${job.error_detail}` : ""}</p>}
+    {job && ["DRAFT", "UPLOADING"].includes(job.status) && <p className="notice mt-4 text-xs text-muted-foreground">Upload is incomplete. Returning to this page does not restore selected files or issue new upload links.</p>}
+    {job && ["COMPLETED", "FAILED", "CANCELLED", "COST_GUARD_REACHED"].includes(job.status) && <p role="status" className="mt-4 text-xs text-muted-foreground">Workflow finished with backend status: {job.status}. Automatic polling stopped.</p>}
+    </div>
     {job && <JobTimeline job={job} observed={observed} />}
     {resumeFlow && <PostUploadConfiguration flow={resumeFlow} onStarted={() => { void load(); }} />}
   </section>;
