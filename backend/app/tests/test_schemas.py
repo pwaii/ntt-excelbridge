@@ -24,6 +24,13 @@ def test_failure_reachable_from_live_state():
     validate_transition(S.INSPECTING, S.FAILED)
 
 
+def test_failed_job_can_reenter_a_live_retry_state_but_not_complete():
+    validate_transition(S.FAILED, S.INSPECTING)
+    validate_transition(S.FAILED, S.NORMALIZATION_PENDING)
+    with pytest.raises(ValueError):
+        validate_transition(S.FAILED, S.COMPLETED)
+
+
 def test_output_policy_and_main_file_requirement():
     assert JobConfig(comment_name="x", standardize=True, update=True, key_column="CustomerID").output_policy().value == "both"
     assert JobConfig(comment_name="x").requires_main_file() is False

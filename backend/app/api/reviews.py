@@ -153,13 +153,16 @@ def submit_review(
             ) from error
         execution_arn = started["execution_arn"]
         try:
-            updated = dynamo.update_job(
-                job_id,
-                int(updated["revision"]),
-                {"execution_arn": execution_arn, "workflow_segment": segment},
+            # The first worker can advance revision before StartExecution's
+            # response is persisted. Metadata is not a workflow transition.
+            updated = dynamo.set_execution_metadata(
+                job_id, {"execution_arn": execution_arn, "workflow_segment": segment}
             )
-        except RevisionConflictError:
-            updated = dynamo.get_job(job_id) or updated
+        except Exception as error:
+            raise HTTPException(
+                503,
+                "Review was recorded and workflow started; reload job status before retrying",
+            ) from error
     return ReviewResponse(
         job=JobRecord.from_item(updated),
         review_id=review_id,

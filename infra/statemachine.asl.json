@@ -35,7 +35,7 @@
     "Tool2": {
       "Type": "Task",
       "Resource": "${BedrockWorkerArn}",
-      "Parameters": { "job_id.$": "$.job_id", "tool": "tool2" },
+      "Parameters": { "job_id.$": "$.job_id", "tool": "tool2", "segment.$": "$.segment", "expected_revision.$": "$.expected_revision" },
       "Retry": [{ "ErrorEquals": ["States.Timeout", "Lambda.ServiceException"], "IntervalSeconds": 3, "MaxAttempts": 2, "BackoffRate": 2 }],
       "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed" }],
       "ResultPath": "$.tool2_result",
@@ -44,7 +44,7 @@
     "Semantic": {
       "Type": "Task",
       "Resource": "${BedrockWorkerArn}",
-      "Parameters": { "job_id.$": "$.job_id", "tool": "tool1" },
+      "Parameters": { "job_id.$": "$.job_id", "tool": "tool1", "segment.$": "$.segment", "expected_revision.$": "$.expected_revision" },
       "Retry": [{ "ErrorEquals": ["States.Timeout", "Lambda.ServiceException"], "IntervalSeconds": 3, "MaxAttempts": 2, "BackoffRate": 2 }],
       "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed" }],
       "ResultPath": "$.semantic_result",
@@ -61,7 +61,7 @@
     "Tool3": {
       "Type": "Task",
       "Resource": "${BedrockWorkerArn}",
-      "Parameters": { "job_id.$": "$.job_id", "tool": "tool3" },
+      "Parameters": { "job_id.$": "$.job_id", "tool": "tool3", "segment.$": "$.segment", "expected_revision.$": "$.expected_revision" },
       "Retry": [{ "ErrorEquals": ["States.Timeout", "Lambda.ServiceException"], "IntervalSeconds": 3, "MaxAttempts": 2, "BackoffRate": 2 }],
       "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed" }],
       "ResultPath": "$.tool3_result",
@@ -75,7 +75,7 @@
     "Tool4": {
       "Type": "Task",
       "Resource": "${BedrockWorkerArn}",
-      "Parameters": { "job_id.$": "$.job_id", "tool": "tool4" },
+      "Parameters": { "job_id.$": "$.job_id", "tool": "tool4", "segment.$": "$.segment", "expected_revision.$": "$.expected_revision" },
       "Retry": [{ "ErrorEquals": ["States.Timeout", "Lambda.ServiceException"], "IntervalSeconds": 3, "MaxAttempts": 2, "BackoffRate": 2 }],
       "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed" }],
       "ResultPath": "$.tool4_result",
@@ -89,7 +89,7 @@
     "Tool5": {
       "Type": "Task",
       "Resource": "${BedrockWorkerArn}",
-      "Parameters": { "job_id.$": "$.job_id", "tool": "tool5" },
+      "Parameters": { "job_id.$": "$.job_id", "tool": "tool5", "segment.$": "$.segment", "expected_revision.$": "$.expected_revision" },
       "Retry": [{ "ErrorEquals": ["States.Timeout", "Lambda.ServiceException"], "IntervalSeconds": 3, "MaxAttempts": 2, "BackoffRate": 2 }],
       "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed" }],
       "ResultPath": "$.tool5_result",

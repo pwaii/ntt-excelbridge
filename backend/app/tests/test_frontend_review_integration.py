@@ -432,6 +432,104 @@ def test_failed_continuation_is_recoverable_without_replaying_review(api, monkey
     assert workflow.started == [2]
 
 
+def test_start_metadata_does_not_clobber_worker_status_race(api, monkeypatch):
+    client, store, _storage, workflow = api
+    job_id = prepare(api)
+
+    def start_and_race(*args, **kwargs):
+        store.item["status"] = "DETECTED"
+        store.item["revision"] += 1
+        return {"execution_arn": "arn:synthetic:execution:race"}
+
+    monkeypatch.setattr(workflow, "start_segment", start_and_race)
+    response = client.post(
+        f"/v1/jobs/{job_id}/start", params={"expected_revision": store.item["revision"]}
+    )
+    assert response.status_code == 200, response.text
+    assert store.item["status"] == "DETECTED"
+    assert store.item["execution_arn"] == "arn:synthetic:execution:race"
+
+
+def test_review_metadata_does_not_clobber_worker_status_race(api, monkeypatch):
+    client, store, _storage, workflow = api
+    job_id, identity = ready_quality(api)
+
+    def start_and_race(*args, **kwargs):
+        store.item["status"] = "FORMULA_REVIEW_PENDING"
+        store.item["revision"] += 1
+        return {"execution_arn": "arn:synthetic:execution:review-race"}
+
+    monkeypatch.setattr(workflow, "start_segment", start_and_race)
+    response = client.post(
+        f"/v1/jobs/{job_id}/reviews",
+        json={
+            "expected_revision": store.item["revision"],
+            "decisions": {identity: {"decision": "accept"}},
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert store.item["status"] == "FORMULA_REVIEW_PENDING"
+    assert store.item["execution_arn"] == "arn:synthetic:execution:review-race"
+
+
+def test_retry_started_before_metadata_write_is_not_reported_as_failed(api, monkeypatch):
+    client, store, _storage, workflow = api
+    job_id, _identity = ready_quality(api)
+    store.item.update(status="FAILED", workflow_segment=2, error_code="OLD_FAILURE")
+
+    def start_and_race(*args, **kwargs):
+        store.item["status"] = "FORMULA_REVIEW_PENDING"
+        store.item["revision"] += 1
+        return {"execution_arn": "arn:synthetic:execution:retry-race"}
+
+    monkeypatch.setattr(workflow, "start_segment", start_and_race)
+    response = client.post(f"/v1/jobs/{job_id}/retry")
+    assert response.status_code == 200, response.text
+    assert store.item["status"] == "FORMULA_REVIEW_PENDING"
+    assert store.item["execution_arn"] == "arn:synthetic:execution:retry-race"
+
+
+def test_retry_unknown_start_is_not_retried_as_a_new_execution(api, monkeypatch):
+    client, store, _storage, workflow = api
+    job_id, _identity = ready_quality(api)
+    store.item.update(status="FAILED", workflow_segment=2, error_code="OLD_FAILURE")
+    calls = 0
+
+    def unknown_start(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        raise TimeoutError("response lost after StartExecution")
+
+    monkeypatch.setattr(workflow, "start_segment", unknown_start)
+    response = client.post(f"/v1/jobs/{job_id}/retry")
+    assert response.status_code == 503
+    assert store.item["status"] == "NORMALIZATION_PENDING"
+    assert store.item["error_code"] == "WORKFLOW_START_UNKNOWN"
+    assert client.post(f"/v1/jobs/{job_id}/retry").status_code == 409
+    assert calls == 1
+
+
+def test_retry_definitive_start_failure_marks_job_failed(api, monkeypatch):
+    client, store, _storage, workflow = api
+    job_id, _identity = ready_quality(api)
+    store.item.update(status="FAILED", workflow_segment=2, error_code="OLD_FAILURE")
+    rejection = ClientError(
+        {"Error": {"Code": "AccessDeniedException", "Message": "denied"}},
+        "StartExecution",
+    )
+    monkeypatch.setattr(
+        workflow,
+        "start_segment",
+        lambda *args, **kwargs: (_ for _ in ()).throw(rejection),
+    )
+
+    response = client.post(f"/v1/jobs/{job_id}/retry")
+
+    assert response.status_code == 503
+    assert store.item["status"] == "FAILED"
+    assert store.item["error_code"] == "WORKFLOW_START_FAILED"
+
+
 def test_formula_approval_is_blocked_when_output_column_positions_differ(api):
     client, store, storage, _ = api
     job_id = prepare(api, update=True)

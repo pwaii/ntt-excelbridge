@@ -69,6 +69,10 @@ class FakeDynamo:
         self.item["revision"] += 1
         return deepcopy(self.item)
 
+    def set_execution_metadata(self, job_id, updates):
+        self.item.update(deepcopy(updates))
+        return deepcopy(self.item)
+
     def get_job(self, job_id):
         return deepcopy(self.item) if job_id == self.item["job_id"] else None
 
