@@ -23,15 +23,15 @@ def normalize_key(value: Any) -> str:
     return "".join(normalize_text(value).casefold().split())
 
 
-def load_canonical_rows(source: bytes, sheet_name: str | None = None) -> list[dict[str, Any]]:
+def load_canonical_rows(source: bytes, sheet_name: str | None = None, header_row: int = 1) -> list[dict[str, Any]]:
     workbook = load_workbook(BytesIO(source), read_only=True, data_only=False)
     try:
         worksheet = workbook[sheet_name] if sheet_name else workbook.worksheets[0]
         rows = list(worksheet.iter_rows(values_only=True))
         if not rows:
             return []
-        headers = [normalize_text(value) or f"Column_{i + 1}" for i, value in enumerate(rows[0])]
-        return [{"row_id": f"{worksheet.title}!{number}", **{headers[i]: row[i] if i < len(row) else None for i in range(len(headers))}} for number, row in enumerate(rows[1:], start=2)]
+        headers = [normalize_text(value) or f"Column_{i + 1}" for i, value in enumerate(rows[header_row - 1])]
+        return [{"row_id": f"{worksheet.title}!{number}", **{headers[i]: row[i] if i < len(row) else None for i in range(len(headers))}} for number, row in enumerate(rows[header_row:], start=header_row + 1)]
     finally:
         workbook.close()
 

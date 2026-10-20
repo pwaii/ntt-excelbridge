@@ -25,7 +25,7 @@ describe("jobs API using FastAPI-exported synthetic contract fixtures", () => {
     const receipt = await api.createAdapter.create(metadataForm(), signal());
     const [url, options] = fetcher.mock.calls[0];
     expect(url).toBe("https://api.example.invalid/v1/jobs");
-    expect(JSON.parse(options!.body as string)).toEqual({ config: { comment_name: "Profit", output_header: "profit", standardize: false, update: false }, input_filename: "current.xlsx" });
+    expect(JSON.parse(options!.body as string)).toEqual({ config: { comment_name: "Profit", output_header: "profit", standardize: false, update: false, conflict_policy: "reject_all" }, input_filename: "current.xlsx" });
     expect(options!.headers).toMatchObject({ Authorization: "Bearer mock-test-token" });
     expect(receipt.jobId).toBe(current.job.job_id);
     expect(receipt.uploadInstructions.current).toMatchObject({ method: "PUT", url: current.uploads[0].url, headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" } });

@@ -10,8 +10,9 @@ export function createJobServices(env: Record<string, string | undefined>, getVa
     const localDevelopment = localDevelopmentAllowed(env, window.location.origin, development);
     if (env.VITE_AUTH_MODE === "local-development" && !localDevelopment) throw new Error();
     const client = createApiClient({ baseUrl: env.VITE_API_BASE_URL ?? "", getValidToken, development, localDevelopment });
-    const api = createJobsApi(client, origins);
-    for (const origin of origins) {
+    const downloadOrigins = (env.VITE_S3_DOWNLOAD_ORIGINS?.trim() || env.VITE_S3_UPLOAD_ORIGINS || "").split(",").map((value) => value.trim()).filter(Boolean);
+    const api = createJobsApi(client, origins, downloadOrigins);
+    for (const origin of [...origins, ...downloadOrigins]) {
       const url = new URL(origin);
       if (url.protocol !== "https:" || url.origin !== origin) throw new Error();
     }

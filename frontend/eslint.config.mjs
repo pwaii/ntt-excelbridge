@@ -2,7 +2,7 @@ import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist/**", "node_modules/**", "coverage/**", "src/api/generated/backend.ts"] },
+  { ignores: ["dist/**", "node_modules/**", "coverage/**", "src/api/generated/backend.ts", "vite.config.ts.timestamp-*.mjs"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

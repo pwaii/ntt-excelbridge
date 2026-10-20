@@ -10,10 +10,11 @@ from typing import Any
 from openpyxl import load_workbook
 
 from app.main import _api_gateway_base_path, app
+from app.services.review_report import all_children
 from app.settings import settings
 from app.storage.dynamo_store import DynamoStore
 from app.storage.s3_store import S3Store
-from app.workers.apply_changes import apply_accepted_changes, apply_accepted_updates
+from app.workers.apply_changes import apply_accepted_changes, apply_accepted_updates, apply_workbook_changes
 from app.workers.bedrock_worker import run_tool_segment
 from app.workers.inspect_workbook import inspect_bytes, manifest_json
 from app.workers.matching import build_tool5_inputs, load_canonical_rows
@@ -38,7 +39,7 @@ def inspect_handler(event: dict[str, Any], context) -> dict[str, Any]:
     if not item:
         raise ValueError("job not found")
     source = s3.get_bytes(item["files"]["input"]["key"])
-    manifest = inspect_bytes(source)
+    manifest = inspect_bytes(source, sheet_name=item.get("config", {}).get("input_sheet"), header_row=item.get("config", {}).get("input_header_row"))
     manifest.update({"job_id": job_id, "input_sha256": sha256(source).hexdigest()})
     key = s3.artifact_key(job_id, "inspection", "manifest.json")
     if not s3.object_exists(key):
@@ -56,7 +57,7 @@ def quality_handler(event: dict[str, Any], context) -> dict[str, Any]:
     if not item:
         raise ValueError("job not found")
     source = s3.get_bytes(item["files"]["input"]["key"])
-    manifest = inspect_bytes(source)
+    manifest = inspect_bytes(source, sheet_name=item.get("config", {}).get("input_sheet"), header_row=item.get("config", {}).get("input_header_row"))
     report = run_quality_rules(source, manifest)
     key = s3.artifact_key(job_id, "quality", "quality-report.json")
     if not s3.object_exists(key):
@@ -110,7 +111,7 @@ def bedrock_handler(event: dict[str, Any], context) -> dict[str, Any]:
         "tool5": "UPDATE_PENDING",
     }
     if tool in status_by_tool:
-        dynamo.update_job(job_id, int(item["revision"]), {"status": status_by_tool[tool]})
+        dynamo.update_job(job_id, int(item["revision"]), {"status": status_by_tool[tool], "error_code": None, "error_detail": None})
     return proposal
 
 
@@ -126,7 +127,7 @@ def quality_gate_handler(event: dict[str, Any], context) -> dict[str, Any]:
 
 def _tool_inputs(item: dict[str, Any], s3: S3Store, tool: str) -> dict[str, Any]:
     source = s3.get_bytes(item["files"]["input"]["key"])
-    manifest = inspect_bytes(source)
+    manifest = inspect_bytes(source, sheet_name=item.get("config", {}).get("input_sheet"), header_row=item.get("config", {}).get("input_header_row"))
     first_sheet = manifest["sheets"][0] if manifest["sheets"] else {"headers": [], "columns": []}
     if tool == "tool1":
         return {
@@ -176,7 +177,7 @@ def _tool_inputs(item: dict[str, Any], s3: S3Store, tool: str) -> dict[str, Any]
         }
     if tool == "tool4":
         main_file = item.get("files", {}).get("main")
-        main_rows = load_canonical_rows(s3.get_bytes(main_file["key"])) if main_file else []
+        main_rows = load_canonical_rows(s3.get_bytes(main_file["key"]), item.get("config", {}).get("main_sheet"), item.get("config", {}).get("main_header_row") or 1) if main_file else []
         candidates = sorted({str(value) for row in main_rows for value in row.values() if value is not None})
         source_values = sorted({str(value) for column in first_sheet.get("columns", []) for value in column.get("samples", [])})
         return {"source_values": source_values, "canonical_candidates": candidates, "samples": first_sheet.get("columns", [])}
@@ -184,11 +185,14 @@ def _tool_inputs(item: dict[str, Any], s3: S3Store, tool: str) -> dict[str, Any]
         main_file = item.get("files", {}).get("main")
         if not main_file:
             raise ValueError("main workbook is required for Tool #5")
-        current_rows = load_canonical_rows(s3.get_bytes(item["files"]["input"]["key"]), item.get("config", {}).get("input_sheet"))
-        main_rows = load_canonical_rows(s3.get_bytes(main_file["key"]), item.get("config", {}).get("main_sheet"))
+        current_rows = load_canonical_rows(s3.get_bytes(item["files"]["input"]["key"]), item.get("config", {}).get("input_sheet"), item.get("config", {}).get("input_header_row") or 1)
+        main_rows = load_canonical_rows(s3.get_bytes(main_file["key"]), item.get("config", {}).get("main_sheet"), item.get("config", {}).get("main_header_row") or 1)
         key_column = item.get("config", {}).get("key_column")
         if not key_column:
             raise ValueError("key_column is required for Tool #5")
+        main_key = item.get("config", {}).get("main_key_column") or key_column
+        if main_key != key_column:
+            main_rows = [{**row, key_column: row.get(main_key)} for row in main_rows]
         return build_tool5_inputs(current_rows, main_rows, key_column, settings.max_candidate_matches)
     raise ValueError(f"unsupported tool input: {tool}")
 
@@ -222,12 +226,14 @@ def apply_handler(event: dict[str, Any], context) -> dict[str, Any]:
     main_source = s3.get_bytes(main_file["key"]) if main_file else None
     decisions: dict[str, Any] = {}
     quality_report: dict[str, Any] = {}
-    review_records = dynamo.list_children(event["job_id"], "REVIEW#")
+    review_records = all_children(dynamo, event["job_id"], "REVIEW#")
     review_records.sort(key=lambda record: int(record.get("revision", 0)))
     for review_record in review_records:
         review_key = review_record.get("artifact_key")
         if review_key:
             decisions.update(json.loads(s3.get_bytes(review_key)).get("decisions", {}))
+    for reference in sorted(item.get("review_artifacts", {}).values(), key=lambda entry: int(entry["revision"])):
+        decisions.update(json.loads(s3.get_bytes(reference["key"])).get("decisions", {}))
     if not review_records and item.get("last_review_key"):
         decisions = json.loads(s3.get_bytes(item["last_review_key"])).get("decisions", {})
     quality_artifact = item.get("artifacts", {}).get("quality", {})
@@ -240,7 +246,7 @@ def apply_handler(event: dict[str, Any], context) -> dict[str, Any]:
     formula = None
     decision_audit: list[dict[str, Any]] = []
 
-    for proposal in dynamo.list_children(event["job_id"], "PROPOSAL#"):
+    for proposal in all_children(dynamo, event["job_id"], "PROPOSAL#"):
         proposal_id = str(proposal.get("proposal_id"))
         decision_value, edited_value = _review_decision(decisions, proposal_id)
         decision_audit.append({
@@ -260,23 +266,26 @@ def apply_handler(event: dict[str, Any], context) -> dict[str, Any]:
             workbook = load_workbook(BytesIO(source), data_only=False)
             try:
                 worksheet = workbook[config.get("input_sheet")] if config.get("input_sheet") else workbook.worksheets[0]
-                headers = [cell.value for cell in worksheet[1]]
+                headers = [cell.value for cell in worksheet[config.get("input_header_row") or 1]]
                 target_header = payload.get("target_header") or config.get("output_header") or config.get("comment_name")
                 target_column = headers.index(target_header) + 1 if target_header in headers else (worksheet.max_column or 0) + 1
                 formula = {
                     "formula_template": edited_value if decision_value == "edit" and edited_value else payload.get("formula_template", ""),
                     "target_header": target_header,
                     "target_column": target_column,
-                    "start_row": 2,
+                    "start_row": (config.get("input_header_row") or 1) + 1,
                     "end_row": worksheet.max_row or 2,
                 }
             finally:
                 workbook.close()
         elif tool == "tool4":
-            for mapping in payload.get("mappings", []):
+            mappings_payload = payload.get("mappings", [])
+            mapping_index = proposal.get("proposal_index")
+            selected_mappings = [mappings_payload[int(mapping_index)]] if mapping_index is not None else mappings_payload
+            for mapping in selected_mappings:
                 mapping = dict(mapping)
                 mapping["proposal_id"] = proposal_id
-                if decision_value == "edit" and edited_value:
+                if decision_value == "edit" and edited_value is not None:
                     mapping["canonical_value"] = edited_value
                 mappings.append(mapping)
         elif tool == "tool2":
@@ -326,8 +335,9 @@ def apply_handler(event: dict[str, Any], context) -> dict[str, Any]:
             decisions=decisions,
             type_rules=type_rules,
             standardization_mappings=mappings if standardize else [],
-            formula=formula,
+            formula=formula if not update else None,
             sheet_name=config.get("input_sheet"),
+            header_row=config.get("input_header_row") or 1,
             include_quality_deletions=policy != "both",
         )
         audit.extend(stage_audit)
@@ -345,11 +355,27 @@ def apply_handler(event: dict[str, Any], context) -> dict[str, Any]:
             update_matches,
             decisions,
             key_column=config["key_column"],
+            main_key_column=config.get("main_key_column"),
+            current_header_row=config.get("input_header_row") or 1,
+            main_header_row=config.get("main_header_row") or 1,
             main_sheet=config.get("main_sheet"),
             current_sheet=config.get("input_sheet"),
             conflict_policy=config.get("conflict_policy", "reject_all"),
         )
         audit.extend(update_audit)
+        if formula:
+            # Generated formulas belong to the final main-derived output, including Update-only.
+            output_book = load_workbook(BytesIO(output), read_only=True, data_only=False)
+            try:
+                sheet = output_book[config["main_sheet"]] if config.get("main_sheet") else output_book.worksheets[0]
+                header_row = config.get("main_header_row") or 1
+                headers = [cell.value for cell in sheet[header_row]]
+                target = formula["target_header"]
+                output_formula = {**formula, "target_column": headers.index(target) + 1 if target in headers else sheet.max_column + 1, "start_row": header_row + 1, "end_row": sheet.max_row}
+            finally:
+                output_book.close()
+            output, formula_audit = apply_workbook_changes(output, sheet_name=config.get("main_sheet"), formula=output_formula, header_row=header_row)
+            audit.extend(formula_audit)
     else:
         output = input_stage
 
@@ -403,7 +429,13 @@ def apply_handler(event: dict[str, Any], context) -> dict[str, Any]:
     updated = dynamo.update_job(
         event["job_id"],
         int(item["revision"]),
-        {"status": "VALIDATING_OUTPUT", "artifacts": artifacts},
+        {"status": "VALIDATING_OUTPUT", "artifacts": artifacts, "error_code": None, "error_detail": None, "result_summary": {
+            "updated_rows": sum(record.get("action") == "updated" for record in audit),
+            "skipped_rows": sum(record.get("action") == "skipped" for record in audit),
+            "rejected_decisions": sum(record.get("decision") == "reject" for record in decision_audit + quality_decision_audit),
+            "formula_cells_verified": sum(record.get("syntax_verified") is True for record in audit),
+            "execution_mode": "reviewed-workflow",
+        }},
     )
     return {"job_id": event["job_id"], "revision": updated["revision"], "output_key": output_key}
 

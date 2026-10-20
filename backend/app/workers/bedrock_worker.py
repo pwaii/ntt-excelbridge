@@ -65,6 +65,8 @@ def run_tool_segment(job_id: str, tool: str, inputs: dict[str, Any], dynamo: Dyn
         payload_items = payload.get("rules", [])
     elif tool == "tool5":
         payload_items = payload.get("matches", [])
+    elif tool == "tool4":
+        payload_items = payload.get("mappings", [])
 
     if payload_items:
         item_ids = []

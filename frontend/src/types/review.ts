@@ -1,12 +1,15 @@
-// Temporary frontend display vocabulary. Server enum mapping awaits BE OpenAPI.
+import type { components } from "@/api/generated/backend";
+
+// Display labels follow the published review report vocabulary.
 export type OutputPolicy = "standardize_only" | "update_only" | "both" | "neither";
-export type ReviewDecision = "accept" | "reject" | "edit" | "ignore";
-export type ProposalStatus = "proposed" | "human_accepted" | "human_edited" | "human_rejected";
-export type MatchType = "exact" | "normalized" | "ambiguous" | "duplicate" | "conflict" | "unmatched";
+export type ReviewDecision = components["schemas"]["ReviewDecision"];
+export type ProposalStatus = NonNullable<components["schemas"]["ReportItem"]["status"]>;
+export type MatchType = components["schemas"]["MatchEvidence"]["type"];
 
 export const proposalStatusLabels = {
   proposed: "Proposed", human_accepted: "Human accepted",
   human_edited: "Human edited", human_rejected: "Human rejected",
+  human_ignored: "Human ignored",
 } as const satisfies Record<ProposalStatus, string>;
 
 // Server-owned; the browser must never increment this. Token format is provisional.
