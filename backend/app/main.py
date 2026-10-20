@@ -18,8 +18,8 @@ from fastapi.responses import JSONResponse
 
 from app.api.artifacts import router as artifacts_router
 from app.api.jobs import router as jobs_router
-from app.api.reviews import router as reviews_router
 from app.api.review_reports import router as review_reports_router
+from app.api.reviews import router as reviews_router
 from app.api.uploads import router as uploads_router
 from app.api.workbooks import router as workbooks_router
 from app.settings import settings

@@ -14,7 +14,11 @@ from app.services.review_report import all_children
 from app.settings import settings
 from app.storage.dynamo_store import DynamoStore
 from app.storage.s3_store import S3Store
-from app.workers.apply_changes import apply_accepted_changes, apply_accepted_updates, apply_workbook_changes
+from app.workers.apply_changes import (
+    apply_accepted_changes,
+    apply_accepted_updates,
+    apply_workbook_changes,
+)
 from app.workers.bedrock_worker import run_tool_segment
 from app.workers.inspect_workbook import inspect_bytes, manifest_json
 from app.workers.matching import build_tool5_inputs, load_canonical_rows
