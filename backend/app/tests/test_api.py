@@ -122,7 +122,7 @@ def test_main_file_is_required_for_update():
     with pytest.raises(HTTPException) as raised:
         create_job(
             CreateJobRequest(
-                config=JobConfig(comment_name="Status", update=True),
+                config=JobConfig(comment_name="Status", update=True, key_column="CustomerID"),
                 input_filename="input.xlsx",
             ),
             _request(),

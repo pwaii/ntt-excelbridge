@@ -72,7 +72,10 @@ _EMPTY_CASES = [
     (run_tool3, {"meaning": "m", "source_headers": [], "allowed_functions": [],
                  "samples": [], "expected_type": "number"}),
     (run_tool4, {"source_values": [], "canonical_candidates": [], "samples": []}),
-    (run_tool5, {"current_rows": [], "candidate_rows": [], "match_key": "k"}),
+    # A completely resolved update intentionally skips Bedrock. Keep one
+    # unresolved row here so this test exercises the model-response parser.
+    (run_tool5, {"current_rows": [{"current_row_id": "c1", "candidate_main_row_ids": ["m1"]}],
+                 "candidate_rows": [{"main_row_id": "m1"}], "match_key": "k"}),
 ]
 
 

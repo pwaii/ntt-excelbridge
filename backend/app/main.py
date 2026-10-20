@@ -8,6 +8,7 @@ from botocore.exceptions import (
     EndpointConnectionError,
     NoCredentialsError,
     PartialCredentialsError,
+    ProfileNotFound,
     RefreshWithMFAUnsupportedError,
     TokenRetrievalError,
 )
@@ -15,10 +16,12 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.downloads import router as downloads_router
+from app.api.artifacts import router as artifacts_router
 from app.api.jobs import router as jobs_router
 from app.api.reviews import router as reviews_router
+from app.api.review_reports import router as review_reports_router
 from app.api.uploads import router as uploads_router
+from app.api.workbooks import router as workbooks_router
 from app.settings import settings
 
 app = FastAPI(title="XLSX Workflow API")
@@ -72,6 +75,15 @@ for _credential_error in AWS_CREDENTIAL_ERRORS:
     app.add_exception_handler(_credential_error, aws_credentials_error)
 
 
+@app.exception_handler(ProfileNotFound)
+async def missing_aws_profile(request: Request, error: ProfileNotFound) -> JSONResponse:
+    return JSONResponse(status_code=503, content={
+        "detail": "The configured AWS profile is unavailable in the backend environment",
+        "request_id": getattr(request.state, "request_id", str(uuid4())),
+        "error_code": "AWS_PROFILE_NOT_FOUND",
+    })
+
+
 @app.exception_handler(ClientError)
 async def aws_client_error(request: Request, error: ClientError) -> JSONResponse:
     request_id = getattr(request.state, "request_id", str(uuid4()))
@@ -96,9 +108,11 @@ async def configuration_error(request: Request, error: ValueError) -> JSONRespon
     )
 
 app.include_router(jobs_router)
+app.include_router(workbooks_router)
 app.include_router(uploads_router)
-app.include_router(downloads_router)
+app.include_router(artifacts_router)
 app.include_router(reviews_router)
+app.include_router(review_reports_router)
 
 
 @app.middleware("http")

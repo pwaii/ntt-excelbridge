@@ -1,4 +1,8 @@
-import type { CreateJobResponse, JobResponse, PresignedUpload } from "../types";
+import type { CreateJobResponse, JobResponse, PresignedUpload } from "./legacy-types";
+
+// Historical, unrouted demo client. It is not authenticated or OpenAPI-generated.
+// Do not activate it for Day 2; new integration must use http-client.ts plus a
+// BE-schema-backed endpoint adapter. Existing legacy behavior is preserved.
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
 const XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";

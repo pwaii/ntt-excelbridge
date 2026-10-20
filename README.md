@@ -32,13 +32,19 @@ the API:
 Invoke-RestMethod http://127.0.0.1:8000/health
 ```
 
-The backend now includes a demo AWS round trip: after an input upload is
-confirmed, `POST /v1/jobs/{job_id}/start` reads the workbook from S3, validates
-it with OpenPyXL, writes `jobs/<job_id>/output/final.xlsx` and an inspection
-manifest back to S3, updates DynamoDB to `COMPLETED`, and
-`GET /v1/jobs/{job_id}/artifacts/output` returns a short-lived download URL.
-This is a pass-through validation path; Step Functions, Bedrock proposals, and
-the full transformation workers will replace it later.
+The backend now includes the segmented workflow path. After an input upload is
+confirmed, `POST /v1/jobs/{job_id}/start` starts segment 1, which creates the
+inspection and quality artifacts and invokes Tool #1 plus Tool #2 when type
+mismatches exist. A winning quality review starts segment 2 for formula,
+standardization, and optional Tool #5 matching. A winning transformation review
+starts segment 3, which applies accepted changes to a new output object and
+validates it. The local no-`STATE_MACHINE_ARN` path remains a synchronous
+deterministic fallback.
+
+Artifact downloads use `GET /v1/jobs/{job_id}/artifacts/{artifact_type}` and
+return short-lived URLs after ownership checks. Source workbooks are never
+overwritten. Tool #5 skips unmatched rows in the demo, and OpenPyXL reports
+formula syntax verification rather than calculated results.
 
 For a simple local/frontend upload, send the workbook as multipart form data
 after creating the job:
@@ -72,3 +78,19 @@ npm run dev
 Open `http://localhost:5173/jobs/new`. The S3 bucket must include the CORS
 configuration in `infra/template.yaml` (or an equivalent rule) for the
 frontend origin; otherwise the browser will block the direct `PUT` request.
+
+## Backend Days 1–7 progress
+
+The backend includes deterministic workbook inspection and quality reporting,
+server-side upload hashing, formula verification, safe copy-and-apply helpers,
+canonical exact matching, review artifacts, and three short Step Functions
+segments. Human reviews are execution boundaries: segment 1 ends at
+`QUALITY_REVIEW_PENDING`, a winning review starts segment 2, and the
+transformation review starts segment 3. There are no task tokens or paused
+executions.
+
+Completion decisions are recorded in
+[`docs/decisions/0002-backend-days5-7-completion.md`](docs/decisions/0002-backend-days5-7-completion.md).
+
+Deployment and verification steps are in
+[`docs/backend-deployment.md`](docs/backend-deployment.md).

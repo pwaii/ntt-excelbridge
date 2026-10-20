@@ -25,6 +25,9 @@ def test_failure_reachable_from_live_state():
 
 
 def test_output_policy_and_main_file_requirement():
-    assert JobConfig(comment_name="x", standardize=True, update=True).output_policy().value == "both"
+    assert JobConfig(comment_name="x", standardize=True, update=True, key_column="CustomerID").output_policy().value == "both"
     assert JobConfig(comment_name="x").requires_main_file() is False
-    assert JobConfig(comment_name="x", update=True).requires_main_file() is True
+    assert JobConfig(comment_name="x", update=True, key_column="CustomerID").requires_main_file() is True
+    assert JobConfig(comment_name="x", update=True, key_column="CustomerID").conflict_policy == "reject_all"
+    # Keys are chosen from actual metadata after upload and enforced at Start.
+    assert JobConfig(comment_name="x", update=True).key_column is None

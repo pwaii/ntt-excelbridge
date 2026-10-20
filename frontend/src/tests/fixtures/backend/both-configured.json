@@ -1,0 +1,64 @@
+{
+  "job": {
+    "job_id": "11111111-1111-4111-8111-111111111111",
+    "owner_id": "contract-fixture-user",
+    "status": "UPLOADED",
+    "revision": 4,
+    "config": {
+      "comment_name": "Profit",
+      "output_header": "profit",
+      "standardize": true,
+      "update": true,
+      "input_sheet": "Data",
+      "main_sheet": "Data",
+      "key_column": "A",
+      "input_header_row": 3,
+      "main_header_row": 3,
+      "main_key_column": "A",
+      "conflict_policy": "reject_all"
+    },
+    "configuration_confirmed": true,
+    "workbook_selections": {
+      "input": {
+        "sheet_name": "Data",
+        "header_row": 3,
+        "header_confirmed": true,
+        "key_column": "A",
+        "workbook_version": "ce337e5d1056ba7e700bccb5a1a90b068ce1d6ae63ff005d94bc6db9271ec810"
+      },
+      "main": {
+        "sheet_name": "Data",
+        "header_row": 3,
+        "header_confirmed": true,
+        "key_column": "A",
+        "workbook_version": "2c2dc1796011a4601a6936bda2649b615ac55f9711713c995c25bc773e09e985"
+      }
+    },
+    "files": {
+      "input": {
+        "filename": "current.xlsx",
+        "key": "jobs/11111111-1111-4111-8111-111111111111/input/input/current.xlsx",
+        "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "size_bytes": 4890,
+        "etag": "ce337e5d1056ba7e700bccb5a1a90b068ce1d6ae63ff005d94bc6db9271ec810",
+        "uploaded": true
+      },
+      "main": {
+        "filename": "main.xlsx",
+        "key": "jobs/11111111-1111-4111-8111-111111111111/input/main/main.xlsx",
+        "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "size_bytes": 4888,
+        "etag": "2c2dc1796011a4601a6936bda2649b615ac55f9711713c995c25bc773e09e985",
+        "uploaded": true
+      }
+    },
+    "artifacts": {},
+    "input_hash": null,
+    "main_hash": null,
+    "output_hash": null,
+    "created_at": "2026-10-15T00:00:00Z",
+    "updated_at": "2026-10-15T00:00:00Z",
+    "expires_at": 1800000000
+  },
+  "request_id": "eeeb838a-5dba-4f02-9344-92d25e8e3457"
+}

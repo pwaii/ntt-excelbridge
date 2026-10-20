@@ -43,9 +43,7 @@ def _apply_guardrails(payload: Tool4Output) -> None:
     for m in payload.mappings:
         by_source.setdefault(m.source_value, set()).add(m.canonical_value)
     for m in payload.mappings:
-        if len(by_source[m.source_value]) > 1:
-            m.action = "ambiguous"
-        elif m.action == "safe" and m.confidence < CONFIDENCE_FLOOR:
+        if len(by_source[m.source_value]) > 1 or m.action == "safe" and m.confidence < CONFIDENCE_FLOOR:
             m.action = "ambiguous"
 
 

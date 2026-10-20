@@ -2,15 +2,44 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
+import json
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from decimal import Decimal
 from time import time
 from typing import Any
 
 from boto3.dynamodb.conditions import Attr, Key
 
+from app.domain.enums import JobStatus
+from app.domain.state_machine import validate_transition
 from app.settings import settings
 from app.storage.aws_session import get_dynamodb_resource
+
+
+def _to_dynamo(value):
+    if isinstance(value, float):
+        number = Decimal(str(value))
+        if not number.is_finite():
+            raise ValueError("Non-finite metadata numbers are unsupported")
+        return number
+    if isinstance(value, dict):
+        return {key: _to_dynamo(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_to_dynamo(item) for item in value]
+    return value
+
+
+def _from_dynamo(value):
+    if isinstance(value, Decimal):
+        return int(value) if value == value.to_integral_value() else float(value)
+    if isinstance(value, dict):
+        return {key: _from_dynamo(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_from_dynamo(item) for item in value]
+    return value
 
 
 class JobAlreadyExistsError(RuntimeError):
@@ -71,7 +100,7 @@ class DynamoStore:
 
         try:
             self.table.put_item(
-                Item=item,
+                Item=_to_dynamo(item),
                 ConditionExpression=Attr("PK").not_exists(),
             )
         except self.table.meta.client.exceptions.ConditionalCheckFailedException as error:
@@ -83,7 +112,18 @@ class DynamoStore:
             Key=self.job_key(job_id),
             ConsistentRead=True,
         )
-        return response.get("Item")
+        return _from_dynamo(response.get("Item"))
+
+    def get_child(self, job_id: str, sort_key: str) -> dict[str, Any] | None:
+        """Read one issue/proposal/review/event by its exact sort key."""
+
+        if not sort_key or "/" in sort_key or "\\" in sort_key:
+            raise ValueError("sort_key must be a non-empty single identifier")
+        response = self.table.get_item(
+            Key={"PK": f"JOB#{job_id}", "SK": sort_key},
+            ConsistentRead=True,
+        )
+        return _from_dynamo(response.get("Item"))
 
     def update_job(
         self,
@@ -95,6 +135,12 @@ class DynamoStore:
 
         if not updates:
             raise ValueError("updates must contain at least one field")
+        if "status" in updates:
+            current = self.get_job(job_id)
+            if current and current.get("status"):
+                from_status = JobStatus(current["status"])
+                to_status = JobStatus(getattr(updates["status"], "value", updates["status"]))
+                validate_transition(from_status, to_status)
         names = {"#revision": "revision", "#updated_at": "updated_at"}
         values: dict[str, Any] = {
             ":one": 1,
@@ -129,7 +175,7 @@ class DynamoStore:
                 Key=self.job_key(job_id),
                 UpdateExpression="SET " + ", ".join(assignments),
                 ExpressionAttributeNames=names,
-                ExpressionAttributeValues=values,
+                ExpressionAttributeValues=_to_dynamo(values),
                 ConditionExpression=Attr("revision").eq(expected_revision),
                 ReturnValues="ALL_NEW",
             )
@@ -137,7 +183,7 @@ class DynamoStore:
             raise RevisionConflictError(
                 f"stale revision for job {job_id}; expected {expected_revision}"
             ) from error
-        return response["Attributes"]
+        return _from_dynamo(response["Attributes"])
 
     def list_jobs_for_owner(self, owner_id: str, limit: int = 50) -> list[dict[str, Any]]:
         """List jobs through the owner GSI, newest first."""
@@ -148,7 +194,7 @@ class DynamoStore:
             Limit=max(1, min(limit, 100)),
             ScanIndexForward=False,
         )
-        return response.get("Items", [])
+        return _from_dynamo(response.get("Items", []))
 
     def put_child(self, job_id: str, sort_key: str, item: Mapping[str, Any]) -> dict[str, Any]:
         """Write an issue/proposal/review/event under a job partition."""
@@ -161,8 +207,40 @@ class DynamoStore:
             "expires_at": int(time()) + settings.job_ttl_days * 86400,
             **dict(item),
         }
-        self.table.put_item(Item=child)
+        self.table.put_item(Item=_to_dynamo(child))
         return child
+
+    def list_children(self, job_id: str, prefix: str, limit: int = 100) -> list[dict[str, Any]]:
+        items, _ = self.list_children_page(job_id, prefix, limit=limit)
+        return items
+
+    def list_children_page(
+        self,
+        job_id: str,
+        prefix: str,
+        *,
+        limit: int = 100,
+        cursor: str | None = None,
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        query: dict[str, Any] = {
+            "KeyConditionExpression": Key("PK").eq(f"JOB#{job_id}") & Key("SK").begins_with(prefix),
+            "Limit": max(1, min(limit, 100)),
+            "ScanIndexForward": True,
+            "ConsistentRead": True,
+        }
+        if cursor:
+            try:
+                decoded = base64.urlsafe_b64decode(cursor.encode("ascii")).decode("utf-8")
+                query["ExclusiveStartKey"] = json.loads(decoded)
+            except (ValueError, UnicodeDecodeError, json.JSONDecodeError, binascii.Error) as error:
+                raise ValueError("invalid DynamoDB pagination cursor") from error
+        response = self.table.query(**query)
+        last_key = response.get("LastEvaluatedKey")
+        next_cursor = None
+        if last_key:
+            encoded = json.dumps(last_key, separators=(",", ":")).encode("utf-8")
+            next_cursor = base64.urlsafe_b64encode(encoded).decode("ascii")
+        return _from_dynamo(response.get("Items", [])), next_cursor
 
 
 def utc_now() -> str:

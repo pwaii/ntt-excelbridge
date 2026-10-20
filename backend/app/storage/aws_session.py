@@ -41,3 +41,8 @@ def get_s3_client():
 @lru_cache(maxsize=1)
 def get_dynamodb_resource():
     return get_session().resource("dynamodb", config=get_client_config())
+
+
+@lru_cache(maxsize=1)
+def get_stepfunctions_client():
+    return get_session().client("stepfunctions", config=get_client_config())

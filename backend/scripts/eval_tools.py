@@ -30,7 +30,11 @@ from app.ai.tool3_formulas import run_tool3
 from app.ai.tool4_standardize import run_tool4
 from app.ai.tool5_update import run_tool5
 from app.domain.schemas import (
-    Tool1Output, Tool2Output, Tool3Output, Tool4Output, Tool5Output,
+    Tool1Output,
+    Tool2Output,
+    Tool3Output,
+    Tool4Output,
+    Tool5Output,
 )
 from app.settings import settings
 from scripts.preflight import main as preflight_main

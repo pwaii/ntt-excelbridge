@@ -6,6 +6,25 @@ from app.storage.dynamo_store import DynamoStore
 from app.storage.s3_store import S3Store
 
 
+def test_metadata_numbers_round_trip_through_the_real_dynamo_serializer():
+    import json
+    from decimal import Decimal
+
+    from boto3.dynamodb.types import TypeSerializer
+
+    table = FakeTable()
+    store = DynamoStore(table=table)
+    store.put_child("synthetic", "PROPOSAL#synthetic", {"summary": {"confidence": 0.95}})
+    # Boto3 rejects native float values. The actual serializer must accept this.
+    TypeSerializer().serialize(table.item)
+    assert table.item["summary"]["confidence"] == Decimal("0.95")
+    table.item["config"] = {"input_header_row": Decimal(3)}
+    recovered = store.get_child("synthetic", "PROPOSAL#synthetic")
+    assert isinstance(recovered["config"]["input_header_row"], int)
+    assert isinstance(recovered["summary"]["confidence"], float)
+    assert json.loads(json.dumps(recovered))["config"]["input_header_row"] == 3
+
+
 class FakeS3Client:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict]] = []
