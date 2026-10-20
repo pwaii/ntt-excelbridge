@@ -89,3 +89,36 @@ def test_hr_unicode_and_nonlatin_names(books):
     firsts = {r[1] for r in _rows(books["hr.xlsx"]["Employees"]) if r[1]}
     assert "José" in firsts                                        # accented
     assert "李" in firsts                                          # non-latin
+
+
+# --- inventory.xlsx / Products ---
+
+def test_inventory_duplicate_and_blank_row(books):
+    rows = _rows(books["inventory.xlsx"]["Products"])
+    assert rows[0] == rows[1]                                      # I1 == I2
+    assert sum(1 for r in rows if all(c is None for c in r)) == 1  # one blank row
+
+
+def test_inventory_sku_type_mismatch(books):
+    skus = [r[0] for r in _rows(books["inventory.xlsx"]["Products"]) if r[0] is not None]
+    assert any(isinstance(s, str) and s.startswith("0") for s in skus)  # leading-zero text
+    assert any(isinstance(s, int) for s in skus)                        # numeric SKU
+
+
+def test_inventory_stockqty_edges(books):
+    qty = [r[2] for r in _rows(books["inventory.xlsx"]["Products"])]
+    present = [q for q in qty if q is not None]
+    assert None in qty                                             # blank
+    assert any(isinstance(q, int) and q < 0 for q in present)      # negative
+    assert any(isinstance(q, str) for q in present)                # text "12"
+    assert 1_000_000_000 in present                                # huge
+
+
+def test_inventory_discontinued_is_blank_column(books):
+    rows = _rows(books["inventory.xlsx"]["Products"])
+    assert all(r[5] is None for r in rows)                         # Discontinued (index 5)
+
+
+def test_inventory_injection_cell_stored_as_text(books):
+    cells = _formula_text_cells(books["inventory.xlsx"]["Products"])
+    assert cells and all(c.data_type == "s" for c in cells)

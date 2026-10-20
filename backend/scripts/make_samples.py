@@ -43,6 +43,19 @@ HR_ROWS = [
     ("E07", "Amy",     "Fox",   "Ops",   "2023-13-45", None,  "Yes"),   # H7 invalid date + Salary blank, anchors blank row
 ]
 
+INVENTORY_HEADERS = ["SKU", "ProductName", "StockQty",
+                     "ReorderPoint", "Price", "Discontinued"]
+INVENTORY_ROWS = [
+    ("00045", "Widget",             100,            20, 9.99,    None),  # I1 leading-zero SKU, baseline
+    ("00045", "Widget",             100,            20, 9.99,    None),  # I2 duplicate of I1
+    (9001,    "Gadget",             "12",           15, 12.50,   None),  # I3 numeric SKU + text StockQty
+    ("00046", "Gizmo",              None,           10, 4.50,    None),  # I4 StockQty blank
+    ("00047", "Doohickey",          -5,             10, 3.50,    None),  # I5 negative StockQty
+    ("00048", "Thingamajig",        1_000_000_000,   5, "$9.99", None),  # I6 huge StockQty + currency-text Price
+    (None,    None,                 None,         None, None,    None),  # I8 completely blank row (interior)
+    ("00049", "=cmd|' /c calc'!A1", 50,              5, 7.50,    None),  # I7 injection string, anchors blank row
+]
+
 SAMPLES = [
     {"filename": "finance.xlsx", "sheet": "Invoices",
      "headers": FINANCE_HEADERS, "rows": FINANCE_ROWS,
@@ -52,6 +65,10 @@ SAMPLES = [
      "headers": HR_HEADERS, "rows": HR_ROWS,
      "prompt": "Add a DisplayName column: last name uppercased, comma, first name",
      "output_header": "DisplayName"},
+    {"filename": "inventory.xlsx", "sheet": "Products",
+     "headers": INVENTORY_HEADERS, "rows": INVENTORY_ROWS,
+     "prompt": "Add a Reorder column: Yes when StockQty is below ReorderPoint",
+     "output_header": "Reorder"},
 ]
 
 
