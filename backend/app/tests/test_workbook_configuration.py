@@ -7,10 +7,11 @@ import pytest
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
 
-from app.api.dependencies import get_dynamo_store, get_s3_store
+from app.api.dependencies import get_dynamo_store, get_s3_store, get_workflow_store
 from app.auth import current_user_id
 from app.main import app
 from app.storage.dynamo_store import RevisionConflictError
+from app.storage.sfn_store import WorkflowStore
 from app.tests.test_api import FakeDynamo, FakeS3
 
 
@@ -55,6 +56,7 @@ def api():
     store, storage = FakeDynamo(), WorkbookS3()
     app.dependency_overrides[get_dynamo_store] = lambda: store
     app.dependency_overrides[get_s3_store] = lambda: storage
+    app.dependency_overrides[get_workflow_store] = lambda: WorkflowStore(state_machine_arn="")
     app.dependency_overrides[current_user_id] = lambda: "local-user"
     with TestClient(app) as client:
         yield client, store, storage

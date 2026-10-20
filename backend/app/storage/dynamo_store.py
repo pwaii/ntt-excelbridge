@@ -185,6 +185,43 @@ class DynamoStore:
             ) from error
         return _from_dynamo(response["Attributes"])
 
+    def set_execution_metadata(
+        self, job_id: str, updates: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """Persist Step Functions metadata without changing workflow revision.
+
+        ``StartExecution`` can return after the first Lambda in the segment has
+        already performed a revision-checked status update. Execution metadata
+        is bookkeeping, not a workflow transition, so it must not increment
+        ``revision`` or require a stale revision condition. Only the two
+        orchestration fields are allowed here; status and revision changes must
+        continue through :meth:`update_job`.
+        """
+
+        if not updates:
+            return self.get_job(job_id) or {}
+        allowed = {"execution_arn", "workflow_segment"}
+        invalid = set(updates) - allowed
+        if invalid:
+            raise ValueError(
+                "only execution_arn and workflow_segment may be set as metadata"
+            )
+        names: dict[str, str] = {}
+        values: dict[str, Any] = {}
+        assignments: list[str] = []
+        for index, (field, value) in enumerate(updates.items()):
+            names[f"#metadata_{index}"] = field
+            values[f":metadata_{index}"] = value
+            assignments.append(f"#metadata_{index} = :metadata_{index}")
+        response = self.table.update_item(
+            Key=self.job_key(job_id),
+            UpdateExpression="SET " + ", ".join(assignments),
+            ExpressionAttributeNames=names,
+            ExpressionAttributeValues=_to_dynamo(values),
+            ReturnValues="ALL_NEW",
+        )
+        return _from_dynamo(response["Attributes"])
+
     def list_jobs_for_owner(self, owner_id: str, limit: int = 50) -> list[dict[str, Any]]:
         """List jobs through the owner GSI, newest first."""
 

@@ -9,12 +9,18 @@ from typing import Any
 
 from openpyxl import load_workbook
 
-from app.main import app
+from app.domain.enums import JobStatus
+from app.domain.state_machine import ORDER
+from app.main import _api_gateway_base_path, app
 from app.services.review_report import all_children
 from app.settings import settings
-from app.storage.dynamo_store import DynamoStore
+from app.storage.dynamo_store import DynamoStore, RevisionConflictError
 from app.storage.s3_store import S3Store
-from app.workers.apply_changes import apply_accepted_changes, apply_accepted_updates, apply_workbook_changes
+from app.workers.apply_changes import (
+    apply_accepted_changes,
+    apply_accepted_updates,
+    apply_workbook_changes,
+)
 from app.workers.bedrock_worker import run_tool_segment
 from app.workers.inspect_workbook import inspect_bytes, manifest_json
 from app.workers.matching import build_tool5_inputs, load_canonical_rows
@@ -25,7 +31,7 @@ from app.workers.validate_output import validate_output
 def api_handler(event, context):
     from mangum import Mangum
 
-    return Mangum(app)(event, context)
+    return Mangum(app, api_gateway_base_path=_api_gateway_base_path(event))(event, context)
 
 
 def _stores() -> tuple[DynamoStore, S3Store]:
@@ -88,6 +94,9 @@ def bedrock_handler(event: dict[str, Any], context) -> dict[str, Any]:
     item = dynamo.get_job(job_id)
     if not item:
         raise ValueError("job not found")
+    # Keep the pre-AI snapshot only for input selection. The model call can be
+    # slow enough for an API or another worker to advance the job revision.
+    initial_revision = int(item["revision"])
     tool = event["tool"]
     if tool == "tool2" and not event.get("inputs"):
         batch = _tool_inputs(item, s3, tool)
@@ -111,7 +120,61 @@ def bedrock_handler(event: dict[str, Any], context) -> dict[str, Any]:
         "tool5": "UPDATE_PENDING",
     }
     if tool in status_by_tool:
-        dynamo.update_job(job_id, int(item["revision"]), {"status": status_by_tool[tool], "error_code": None, "error_detail": None})
+        target = JobStatus(status_by_tool[tool])
+        latest = dynamo.get_job(job_id)
+        if not latest:
+            raise ValueError("job not found after AI processing")
+        latest_revision = int(latest["revision"])
+        revision_changed = latest_revision != initial_revision
+        expected_segment = event.get("segment")
+        current_segment = latest.get("workflow_segment")
+        same_segment = (
+            expected_segment is None
+            or current_segment is None
+            or int(current_segment) == int(expected_segment)
+        )
+        predecessors = {
+            "tool3": {JobStatus.NORMALIZATION_PENDING},
+            "tool4": {JobStatus.FORMULA_REVIEW_PENDING},
+            "tool5": {
+                JobStatus.FORMULA_REVIEW_PENDING,
+                JobStatus.STANDARDIZATION_PENDING,
+            },
+        }
+        current_status = JobStatus(latest["status"])
+        status_order = {status: index for index, status in enumerate(ORDER)}
+        target_index = status_order[target]
+        # A later status means another worker already won the race. Never move
+        # it backward merely because this invocation used an older snapshot.
+        already_advanced = status_order.get(current_status, -1) >= target_index
+        if same_segment and not already_advanced and current_status in predecessors[tool]:
+            # A changed revision is expected when another worker/API write won
+            # the race. The latest revision is the one used for the CAS below.
+            expected_write_revision = latest_revision if revision_changed else initial_revision
+            try:
+                dynamo.update_job(
+                    job_id,
+                    expected_write_revision,
+                    {
+                        "status": target.value,
+                        "error_code": None,
+                        "error_detail": None,
+                    },
+                )
+            except RevisionConflictError:
+                # Reconcile once. A concurrent winner is success; a different
+                # live step must not be overwritten by this stale AI call.
+                reconciled = dynamo.get_job(job_id)
+                if not reconciled:
+                    raise ValueError("job disappeared after AI processing")
+                reconciled_status = JobStatus(reconciled["status"])
+                if not (
+                    reconciled_status == target
+                    or status_order.get(reconciled_status, -1) > target_index
+                ):
+                    raise
+        # ``initial_revision`` is intentionally not reused for the write:
+        # latest revision + step checks above are the concurrency boundary.
     return proposal
 
 

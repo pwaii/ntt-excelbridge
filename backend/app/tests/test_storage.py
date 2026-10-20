@@ -68,6 +68,12 @@ class FakeTable:
         return {"Item": self.item} if self.item else {}
 
     def update_item(self, **kwargs):
+        if kwargs.get("ConditionExpression") is None:
+            values = kwargs["ExpressionAttributeValues"]
+            for name, field in kwargs["ExpressionAttributeNames"].items():
+                suffix = name.removeprefix("#metadata_")
+                self.item[field] = values[f":metadata_{suffix}"]
+            return {"Attributes": self.item}
         assert ":expected_revision" not in kwargs["ExpressionAttributeValues"]
         assert kwargs["ConditionExpression"] is not None
         self.item = {
@@ -103,3 +109,16 @@ def test_dynamo_store_creates_and_revision_updates_job():
     updated = store.update_job("job-1", 0, {"status": "UPLOADING"})
     assert updated["status"] == "UPLOADING"
     assert updated["revision"] == 1
+
+
+def test_execution_metadata_does_not_increment_revision_or_change_status():
+    store = DynamoStore(table=FakeTable())
+    store.create_job("job-1", "user-1", {"comment_name": "segment"})
+    updated = store.update_job("job-1", 0, {"status": "UPLOADING"})
+    result = store.set_execution_metadata(
+        "job-1", {"execution_arn": "arn:execution:1", "workflow_segment": 1}
+    )
+    assert result["execution_arn"] == "arn:execution:1"
+    assert result["workflow_segment"] == 1
+    assert result["status"] == updated["status"]
+    assert result["revision"] == updated["revision"]
