@@ -33,6 +33,18 @@ function Get-StackOutput {
     return $output.OutputValue
 }
 
+function Get-S3PresignedOrigin {
+    param([string]$Bucket, [string]$AwsRegion)
+
+    # boto3 uses the legacy global virtual-hosted endpoint for S3 in
+    # us-east-1. The browser allowlist must match the origin in the signed
+    # URL exactly; other regions use the regional virtual-hosted endpoint.
+    if ($AwsRegion -eq "us-east-1") {
+        return "https://$Bucket.s3.amazonaws.com"
+    }
+    return "https://$Bucket.s3.$AwsRegion.amazonaws.com"
+}
+
 if ([string]::IsNullOrWhiteSpace($LambdaExecutionRoleArn) -or [string]::IsNullOrWhiteSpace($StateMachineExecutionRoleArn)) {
     throw "Set LAMBDA_EXECUTION_ROLE_ARN and STATE_MACHINE_EXECUTION_ROLE_ARN before deploying."
 }
@@ -75,12 +87,13 @@ try {
     $authority = Get-StackOutput $BackendStackName "CognitoAuthority"
     $cognitoDomain = Get-StackOutput $BackendStackName "CognitoHostedUi"
     $dataBucket = Get-StackOutput $BackendStackName "DataBucketName"
+    $s3PresignedOrigin = Get-S3PresignedOrigin $dataBucket $Region
 
     $productionEnv = @(
         "VITE_API_BASE_URL=$apiBaseUrl",
         "VITE_AUTH_MODE=cognito",
-        "VITE_S3_UPLOAD_ORIGINS=https://$dataBucket.s3.$Region.amazonaws.com",
-        "VITE_S3_DOWNLOAD_ORIGINS=https://$dataBucket.s3.$Region.amazonaws.com",
+        "VITE_S3_UPLOAD_ORIGINS=$s3PresignedOrigin",
+        "VITE_S3_DOWNLOAD_ORIGINS=$s3PresignedOrigin",
         "VITE_COGNITO_AUTHORITY=$authority",
         "VITE_COGNITO_DOMAIN=$cognitoDomain",
         "VITE_COGNITO_CLIENT_ID=$clientId",
