@@ -30,7 +30,8 @@ def _validate_against_inputs(payload: Tool4Output, inputs: dict) -> None:
     candidate."""
     allowed = set(inputs.get("canonical_candidates", []))
     for m in payload.mappings:
-        if m.cardinality == "unmapped" and m.canonical_value == "":
+        if m.cardinality == "unmapped":
+            m.canonical_value = ""  # an unmapped row carries no canonical; Nova sometimes emits "unmapped"/"none" instead of blank
             continue
         if m.canonical_value not in allowed:
             raise ValueError(f"canonical_value {m.canonical_value!r} not in candidates")

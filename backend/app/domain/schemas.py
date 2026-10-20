@@ -4,7 +4,7 @@ these and rejected if it doesn't fit (§10). Keep in sync with prompts/ and fron
 """
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.enums import MatchType, OutputPolicy, ReviewDecision
 
@@ -105,6 +105,8 @@ class Tool3Output(BaseModel):
 
 # --- Tool #4: standardization mapping (§10.5) ---
 class Tool4Mapping(BaseModel):
+    # Excel cells are often numeric; accept model-emitted numbers as string values.
+    model_config = ConfigDict(coerce_numbers_to_str=True)
     source_field: str
     source_value: str
     canonical_field: str
@@ -121,6 +123,8 @@ class Tool4Output(BaseModel):
 
 # --- Tool #5: update matching (§10.6) ---
 class Tool5Match(BaseModel):
+    # Row ids derived from numeric key columns may arrive as numbers.
+    model_config = ConfigDict(coerce_numbers_to_str=True)
     current_row_id: str
     candidate_main_row_ids: list[str]
     selected_main_row_id: str | None = None

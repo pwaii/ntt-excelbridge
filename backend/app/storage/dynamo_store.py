@@ -185,6 +185,33 @@ class DynamoStore:
             ) from error
         return _from_dynamo(response["Attributes"])
 
+    def set_execution_metadata(self, job_id: str, updates: Mapping[str, Any]) -> dict[str, Any]:
+        """Set orchestration metadata (execution_arn, workflow_segment) without a
+        revision CAS or bump. These attributes are written only by the orchestrator
+        after StartExecution; a bare SET cannot clobber a worker's status update and,
+        crucially, does not advance revision — so it never invalidates the in-flight
+        first Lambda of the segment (which CAS-updates status on the pre-start revision).
+        """
+        if not updates:
+            return self.get_job(job_id) or {}
+        names: dict[str, str] = {}
+        values: dict[str, Any] = {}
+        assignments: list[str] = []
+        for index, (field, value) in enumerate(updates.items()):
+            if field in {"PK", "SK", "revision", "status", "updated_at"}:
+                raise ValueError(f"field cannot be set without a transition: {field}")
+            names[f"#f{index}"] = field
+            values[f":v{index}"] = value
+            assignments.append(f"#f{index} = :v{index}")
+        response = self.table.update_item(
+            Key=self.job_key(job_id),
+            UpdateExpression="SET " + ", ".join(assignments),
+            ExpressionAttributeNames=names,
+            ExpressionAttributeValues=_to_dynamo(values),
+            ReturnValues="ALL_NEW",
+        )
+        return _from_dynamo(response["Attributes"])
+
     def list_jobs_for_owner(self, owner_id: str, limit: int = 50) -> list[dict[str, Any]]:
         """List jobs through the owner GSI, newest first."""
 

@@ -101,3 +101,24 @@ Spec: `docs/superpowers/specs/2026-10-16-ai-day7-design.md` · Plan: `docs/super
 - **Region-locked access** — cross-region inference profiles (`us.*`/`apac.*`) hit an org SCP deny; only bare us-east-1 Nova ids work here.
 
 **Still open (not AI-day work):** `CONFIDENCE_FLOOR`/pricing placeholders stay until real tuning + Nova pricing land; BE integration — no worker calls `run_toolN` yet.
+
+## 2026-10-20 — live end-to-end run against the deployed stack (Tool #4 hardening)
+
+Drove the real workflow (local FastAPI → deployed Step Functions + Lambda + Bedrock, us-east-1) to confirm the chain before demo. **Outdated note corrected:** a worker *does* call `run_toolN` now — `workers/bedrock_worker.run_tool_segment` is invoked by the deployed `lambda_handlers.bedrock_handler` for tools 1–5.
+
+**Confirmed working end-to-end:** the formula-only ("neither") path — upload → both human gates → apply → validate → `COMPLETED` → presigned download of output/audit/summary/validation. Tool #1 and Tool #3 ran against real Nova.
+
+**Tool #4 robustness fixes (AI-owned, shipped + tested + redeployed):** real Nova output on live data tripped the Tool #4 trust boundary. Two genuine bugs fixed:
+- `tool4_standardize.py::_validate_against_inputs` — an `unmapped` mapping now normalizes `canonical_value` to `""` instead of reject-whole (Nova emits the literal `"unmapped"`/`"none"` rather than blank). Test: `test_run_tool4_unmapped_nonblank_value_coerced_to_blank`.
+- `schemas.py::Tool4Mapping` + `Tool5Match` — `model_config = ConfigDict(coerce_numbers_to_str=True)`; Excel cells are often numeric and Nova emits them as JSON numbers against `str` fields. Test: `test_run_tool4_numeric_source_value_coerced_to_str`. (Added to Tool5 pre-emptively; update path still untested.)
+- All tool4/tool5 unit tests green (24 passed).
+
+**Deploy method (no SAM/CFN):** `CLOUDFORMATION_SERVICE_ROLE_ARN` is unset and the Lambda exec role is externally provisioned, so full `sam deploy` wasn't viable. Patched the live `xlsx-workflow-demo-BedrockFunction-*` via `lambda update-function-code`, overlaying current `backend/app/**.py` onto the *downloaded deployed zip* (keeps the Linux binary deps — pydantic-core etc. — intact). This is a live-only change; a future `sam deploy` from source supersedes it.
+
+**UNRESOLVED — standardize path still fails on this fixture (model quality, NOT a code bug):** after both fixes, Tool #4 still rejects because the *same deterministic* Nova response (temp 0) carries a third defect — a mapping with `canonical_value: "unmapped"` but `cardinality != "unmapped"`, i.e. a row claiming to map to an invented candidate. The reject-whole guard is *correct* here (invariant #1); coercing it away would accept hallucinated mappings. Root cause is **unsuitable data**: Tool #4 is asked to map Invoices cell values (dates/quantities/prices) against a *customer* master — nothing to standardize, so Nova flails.
+
+**Recommendations (not yet done):**
+1. **Fixtures:** a source column whose values are categorical variants of the master's canonicals (e.g. `Country`: "USA"/"US" → "United States"). Prompt tuning alone won't fix mismatched data.
+2. **Design:** a legitimately reject-whole Tool #4/#5 response should **demote to the human gate**, not `raise` → segment `FAILED`. Today any rejection nukes the run; the invariants say rejected proposals surface for review. Scope this deliberately (handler + ASL + UI), don't patch the trust boundary.
+
+**Cross-ref (backend-owned fixes made same session to get the chain running):** `state_machine.validate_transition` now allows non-terminal self-transitions (two-file upload confirm) and `FAILED→live` (retry); `dynamo_store.set_execution_metadata` (no-CAS) removes a segment-start revision race; ASL `Catch` blocks got `ResultPath: "$.error"` so failures reach `MarkFailed` with `job_id`; Lambda role gained `s3:ListBucket` (HeadObject-on-missing-key returned 403, not 404). See SESSION_BACKEND.md.

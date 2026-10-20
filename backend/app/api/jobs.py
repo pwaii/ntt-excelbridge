@@ -181,15 +181,11 @@ def start_job(
         )
         if workflow.state_machine_arn:
             started = workflow.start_segment(job_id, 1, int(inspecting["revision"]))
-            try:
-                running = dynamo.update_job(
-                    job_id,
-                    expected_revision=int(inspecting["revision"]),
-                    updates={"execution_arn": started["execution_arn"], "workflow_segment": 1},
-                )
-            except RevisionConflictError:
-                # A Lambda may finish before the StartExecution response is persisted.
-                running = dynamo.get_job(job_id) or inspecting
+            # No-CAS write: a revision bump here would race the Inspect Lambda's
+            # status update on the pre-start revision.
+            running = dynamo.set_execution_metadata(
+                job_id, {"execution_arn": started["execution_arn"], "workflow_segment": 1}
+            )
             return JobResponse(job=_record(running), request_id=request.state.request_id)
         completed = run_demo_pipeline(job_id, expected_revision=int(inspecting["revision"]), dynamo=dynamo, s3=s3)
         return JobResponse(job=_record(completed), request_id=request.state.request_id)
@@ -263,7 +259,7 @@ def retry_job(
     try:
         updated = dynamo.update_job(job_id, int(item["revision"]), {"status": status_by_segment.get(segment, JobStatus.INSPECTING.value), "error_code": None, "error_detail": None})
         started = workflow.start_segment(job_id, segment, int(updated["revision"]), context={"config": item.get("config", {})})
-        updated = dynamo.update_job(job_id, int(updated["revision"]), {"execution_arn": started["execution_arn"]})
+        updated = dynamo.set_execution_metadata(job_id, {"execution_arn": started["execution_arn"]})
     except Exception as error:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="workflow retry could not be started") from error
     return JobResponse(job=_record(updated), request_id=request.state.request_id)

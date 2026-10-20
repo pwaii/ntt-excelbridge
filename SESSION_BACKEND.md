@@ -152,3 +152,68 @@ metadata now feeds matching/apply workers; approved output formulas and row dele
 ordering have integration coverage. DynamoDB numbers are normalized at the storage
 boundary. See SESSION_FRONTEND.md for the current scope, checks and environment blockers.
 No cloud deployment or real Cognito/Bedrock run was performed by this follow-up.
+
+
+## 2026-10-20 — first live end-to-end run against the deployed stack
+
+Ran the local FastAPI backend against the **deployed** AWS resources (S3 bucket
+`xlsx-workflow-demo-453995432289`, DynamoDB `xlsx-workflow-demo`, Step Functions
+`WorkflowStateMachine-gXTO4BWYgnGe`, Bedrock Nova, us-east-1) for the first time.
+Local `.env` runs with `ENVIRONMENT=demo` and **no Cognito**, so the loopback
+`X-User-Id` fallback (`auth.py`) authenticates; the frontend points at
+`http://127.0.0.1:8000`. `STATE_MACHINE_ARN` is set, so Start runs the deployed
+segmented workflow (real Bedrock), not the local copy pipeline.
+
+**Confirmed:** the formula-only ("neither") policy ran fully — upload → both
+human gates → apply → validate → `COMPLETED` → presigned download of
+output/audit/summary/validation. Uploads use the real presigned-PUT path; the
+bucket's signed origin is `https://<bucket>.s3.amazonaws.com` (no region) and the
+frontend `VITE_S3_UPLOAD_ORIGINS` must match that exact form.
+
+### Bugs found and fixed (backend-owned, code + tests)
+
+1. **Two-file upload confirm (`state_machine.py`).** Confirming the first of two
+   slots legitimately stays `UPLOADING`, but `validate_transition` rejected
+   `UPLOADING→UPLOADING` as "not forward" → 503 on `/uploads/complete`. Now a
+   non-terminal self-transition is allowed (idempotent re-entry, consistent with
+   the dup-execution design); terminal self-transitions still blocked.
+2. **Segment-start revision race (`dynamo_store.set_execution_metadata`).** The
+   orchestrator persisted `execution_arn`/`workflow_segment` with a revision-CAS
+   bump *after* `StartExecution`; that bump raced the segment's first Lambda,
+   which CAS-updates status on the pre-start revision →
+   `RevisionConflictError` → segment `FAILED`. New no-CAS setter writes those
+   attributes without touching/incrementing `revision`. Wired into
+   `reviews.py` (gate continuation) and `jobs.py` (segment-1 start + retry).
+3. **Retry could not leave `FAILED` (`state_machine.py`).** `validate_transition`
+   treated `FAILED` as terminal with no exit, so `/retry` always 503'd. Now
+   `FAILED→<live state>` is permitted (retry); `COMPLETED`/`CANCELLED` stay
+   terminal.
+4. **ASL failure handler lost `job_id` (`infra/statemachine.asl.json` + deployed
+   state machine).** On a task failure the error object replaced the state
+   input, so `MarkFailed`'s `job_id.$: $.job_id` could not resolve → the job hung
+   at its last status instead of flipping to `FAILED`. Added
+   `ResultPath: "$.error"` to all 11 `Catch` blocks (patched the file **and** the
+   live state machine via `update-state-machine`).
+5. **Lambda role missing `s3:ListBucket` (deployed IAM).** `HeadObject` on a
+   not-yet-written key returns `403` (not `404`) without `ListBucket`, and
+   `s3_store.object_exists` only swallows `404` → `inspect_handler` crashed on the
+   first step. Added `s3:ListBucket` on the bucket ARN to role
+   `xlsx-workflow-demo-lambda`. **Live-only** — the inline policy has no IaC
+   source in the repo (not in `template.yaml`); a redeploy that recreates it must
+   re-add this grant.
+
+Tests: `test_schemas.py` (self-transition + retry transition) and
+`test_storage.py` green.
+
+### Known gaps / risks
+
+- **Orchestrator fixes (1–3) live only in the local backend.** The deployed API
+  Gateway Lambda still runs the pre-fix code; demo via the local backend (or
+  redeploy the API) to avoid the segment-start race.
+- **Standardize path still fails** on the sample fixtures — a Tool #4 model-quality
+  / data-suitability issue, not backend orchestration. See SESSION_AI.md
+  (2026-10-20). A reject-whole AI response currently crashes the segment; it
+  should demote to the human gate (design change, not yet done).
+- **Update-only (Tool #5) path untested** end-to-end.
+- Full `pytest`/Ruff and a browser UI click-through were not run; verification was
+  API-level against real AWS.

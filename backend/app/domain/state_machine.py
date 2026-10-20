@@ -20,7 +20,11 @@ TERMINAL = {S.COMPLETED, S.FAILED, S.CANCELLED}
 def validate_transition(frm: S, to: S) -> None:
     """Raise ValueError if `frm -> to` is not an allowed transition."""
     if frm in TERMINAL:
+        if frm is S.FAILED and to not in TERMINAL:
+            return  # retry: a failed job may re-enter a live state
         raise ValueError(f"{frm} is terminal; no transition to {to}")
+    if frm == to:
+        return  # idempotent re-entry: partial-upload confirms keep status UPLOADING
     if to == S.COMPLETED:
         if frm is not S.VALIDATING_OUTPUT:
             raise ValueError(f"COMPLETED only reachable from VALIDATING_OUTPUT, not {frm}")

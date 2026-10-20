@@ -157,6 +157,29 @@ def test_run_tool4_rejects_hallucinated_canonical():
         run_tool4(T4_FIXTURE, client=_client(resp))
 
 
+def test_run_tool4_unmapped_nonblank_value_coerced_to_blank():
+    # Nova sometimes emits the word "unmapped" (or "none") instead of a blank
+    # canonical_value; an unmapped row must normalize to "" rather than reject-whole.
+    resp = (
+        '{"mappings": [{"source_field": "Country", "source_value": "XX", '
+        '"canonical_field": "Country", "canonical_value": "unmapped", "reason": "x", '
+        '"confidence": 0.1, "cardinality": "unmapped", "action": "safe"}]}'
+    )
+    result = run_tool4(T4_FIXTURE, client=_client(resp))
+    assert result.payload.mappings[0].canonical_value == ""
+
+
+def test_run_tool4_numeric_source_value_coerced_to_str():
+    # Nova may emit numeric Excel values as JSON numbers; accept as strings.
+    resp = (
+        '{"mappings": [{"source_field": "Country", "source_value": 2, '
+        '"canonical_field": "Country", "canonical_value": "", "reason": "x", '
+        '"confidence": 0.1, "cardinality": "unmapped", "action": "safe"}]}'
+    )
+    result = run_tool4(T4_FIXTURE, client=_client(resp))
+    assert result.payload.mappings[0].source_value == "2"
+
+
 def test_run_tool4_one_to_many_demoted_to_ambiguous():
     resp = (
         '{"mappings": ['

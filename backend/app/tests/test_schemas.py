@@ -24,6 +24,21 @@ def test_failure_reachable_from_live_state():
     validate_transition(S.INSPECTING, S.FAILED)
 
 
+def test_non_terminal_self_transition_ok():
+    validate_transition(S.UPLOADING, S.UPLOADING)  # partial-upload confirm stays UPLOADING
+    with pytest.raises(ValueError):
+        validate_transition(S.COMPLETED, S.COMPLETED)  # terminal self still blocked
+
+
+def test_retry_reenters_live_state_from_failed():
+    validate_transition(S.FAILED, S.NORMALIZATION_PENDING)  # retry segment 2
+    validate_transition(S.FAILED, S.INSPECTING)             # retry segment 1
+    with pytest.raises(ValueError):
+        validate_transition(S.FAILED, S.COMPLETED)          # cannot retry straight to terminal
+    with pytest.raises(ValueError):
+        validate_transition(S.CANCELLED, S.INSPECTING)      # cancelled stays terminal
+
+
 def test_output_policy_and_main_file_requirement():
     assert JobConfig(comment_name="x", standardize=True, update=True, key_column="CustomerID").output_policy().value == "both"
     assert JobConfig(comment_name="x").requires_main_file() is False
