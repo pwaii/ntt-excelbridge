@@ -30,11 +30,28 @@ FINANCE_ROWS = [
     ("INV006", "2023-01-15", "Umbrella", 1, 8.25,       0.07, '=WEBSERVICE("http://x")',   None),  # F6 formula-as-data, anchors blank row
 ]
 
+HR_HEADERS = ["EmpID", "FirstName", "LastName", "Department",
+              "HireDate", "Salary", "FullTime"]
+HR_ROWS = [
+    ("E01", "Jane",    "Doe",   "Sales", "2023-02-01", 50000, "TRUE"),  # H1 baseline
+    ("E01", "Jane",    "Doe",   "Sales", "2023-02-01", 50000, "TRUE"),  # H2 duplicate of H1
+    ("E03", "  jane ", "SMITH", "Ops",   "2023-02-03", 55000, "Yes"),   # H3 whitespace + casing noise
+    ("E04", "José",    "Núñez", "Eng",   "04/02/2023", 60000, 1),       # H4 accented name, DD/MM date, int FullTime
+    ("E05", "李",      "雷",    "Eng",   "2023-02-05", 62000, "N"),     # H5 non-latin name
+    ("E06", "Bob",     "Lee",   "Sales", "2023-02-06", "N/A", "Yes"),   # H6 Salary "N/A" (type mismatch)
+    (None,  None,      None,    None,    None,         None,  None),    # H8 completely blank row (interior)
+    ("E07", "Amy",     "Fox",   "Ops",   "2023-13-45", None,  "Yes"),   # H7 invalid date + Salary blank, anchors blank row
+]
+
 SAMPLES = [
     {"filename": "finance.xlsx", "sheet": "Invoices",
      "headers": FINANCE_HEADERS, "rows": FINANCE_ROWS,
      "prompt": "Add a Total column = Quantity * UnitPrice * (1 + TaxRate), rounded to 2 decimals",
      "output_header": "Total"},
+    {"filename": "hr.xlsx", "sheet": "Employees",
+     "headers": HR_HEADERS, "rows": HR_ROWS,
+     "prompt": "Add a DisplayName column: last name uppercased, comma, first name",
+     "output_header": "DisplayName"},
 ]
 
 
