@@ -126,6 +126,28 @@ async def request_id_middleware(request, call_next):
 def health(request: Request) -> dict:
     return {"status": "ok", "request_id": request.state.request_id}
 
+
+def _api_gateway_base_path(event: dict) -> str:
+    """Return the stage prefix when API Gateway included it in ``rawPath``.
+
+    HTTP API payloads can expose a named stage as part of ``rawPath``.  FastAPI
+    routes are intentionally stage-agnostic, so Mangum must remove that prefix
+    before dispatching the request.  Local ASGI requests and ``$default``
+    stages have no prefix to remove.
+    """
+
+    request_context = event.get("requestContext") or {}
+    stage = str(request_context.get("stage") or "").strip("/")
+    raw_path = str(event.get("rawPath") or "")
+    if not stage or stage == "$default":
+        return "/"
+
+    stage_path = f"/{stage}"
+    if raw_path == stage_path or raw_path.startswith(f"{stage_path}/"):
+        return stage_path
+    return "/"
+
+
 _lambda_handler = None
 
 
@@ -140,5 +162,5 @@ def handler(event, context):
     if _lambda_handler is None:
         from mangum import Mangum
 
-        _lambda_handler = Mangum(app)
+        _lambda_handler = Mangum(app, api_gateway_base_path=_api_gateway_base_path(event))
     return _lambda_handler(event, context)

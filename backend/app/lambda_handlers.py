@@ -9,7 +9,7 @@ from typing import Any
 
 from openpyxl import load_workbook
 
-from app.main import app
+from app.main import _api_gateway_base_path, app
 from app.settings import settings
 from app.storage.dynamo_store import DynamoStore
 from app.storage.s3_store import S3Store
@@ -24,7 +24,7 @@ from app.workers.validate_output import validate_output
 def api_handler(event, context):
     from mangum import Mangum
 
-    return Mangum(app)(event, context)
+    return Mangum(app, api_gateway_base_path=_api_gateway_base_path(event))(event, context)
 
 
 def _stores() -> tuple[DynamoStore, S3Store]:

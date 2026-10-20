@@ -47,6 +47,7 @@ def _job_item() -> dict:
 class FakeDynamo:
     def __init__(self) -> None:
         self.item = _job_item()
+        self.updates = []
 
     def create_job(self, job_id, owner_id, config, files, **kwargs):
         self.item = _job_item()
@@ -63,6 +64,7 @@ class FakeDynamo:
     def update_job(self, job_id, expected_revision, updates):
         if expected_revision != self.item["revision"]:
             raise RevisionConflictError("stale")
+        self.updates.append(deepcopy(updates))
         self.item.update(deepcopy(updates))
         self.item["revision"] += 1
         return deepcopy(self.item)
@@ -147,3 +149,26 @@ def test_upload_completion_moves_job_to_uploaded():
     )
     assert response.job.status.value == "UPLOADED"
     assert response.job.files["input"].uploaded is True
+
+
+def test_first_of_two_uploads_can_remain_uploading():
+    dynamo = FakeDynamo()
+    dynamo.item["files"]["main"] = {
+        "filename": "main.xlsx",
+        "key": "jobs/job-1/input/main/main.xlsx",
+        "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "uploaded": False,
+    }
+    s3 = FakeS3()
+
+    response = complete_upload(
+        "job-1",
+        UploadCompleteRequest(slot="input"),
+        _request(),
+        "local-user",
+        dynamo,
+        s3,
+    )
+
+    assert response.job.status.value == "UPLOADING"
+    assert "status" not in dynamo.updates[-1]
