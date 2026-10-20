@@ -167,6 +167,7 @@ Resources:
           COGNITO_USER_POOL_ID: !Ref UserPool
           COGNITO_APP_CLIENT_ID: !Ref UserPoolClient
           COGNITO_API_TOKEN_TYPE: access
+          CORS_ORIGINS: !Sub '${FrontendOrigin},http://127.0.0.1:5173'
       Events:
         Api:
           Type: HttpApi
@@ -180,6 +181,14 @@ Resources:
             ApiId: !Ref HttpApi
             Path: /
             Method: ANY
+        Options:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
 
   InspectFunction:
     Type: AWS::Serverless::Function
