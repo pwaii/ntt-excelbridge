@@ -13,6 +13,8 @@ is always kept.
 - preservation constraints: {constraints}
 
 ## Rules
+- target_type must be one of string | integer | number | date | datetime | boolean.
+  Use these exact names (integer, not int; boolean, not bool).
 - Group the representative values into distinct patterns (e.g. "DD/MM/YYYY", "D-Mon-YY").
   Return one rule per pattern, not one per value. Do not invent patterns not present in the samples.
 - Any loss of precision, leading zeros, timezone, or meaning -> status "reject" (manual review).

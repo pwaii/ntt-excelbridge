@@ -42,6 +42,15 @@ async function click(text: string) {
 }
 
 describe("authentication routing and UI", () => {
+  it("introduces the product with a standard sign-in action and keeps provider details off the welcome page", async () => {
+    await renderAt("/login", adapter());
+    expect(container.textContent).toContain("XLSX Data Workflow");
+    expect(container.textContent).toContain("review proposed changes");
+    expect(container.textContent).not.toContain("Cognito");
+    expect(container.querySelector("aside")).toBeNull();
+    expect(container.querySelector('a[href="#sign-in"]')).not.toBeNull();
+    expect([...container.querySelectorAll("button")].find((item) => item.textContent === "Sign in")?.disabled).toBe(false);
+  });
   it.each(["/jobs/new", "/jobs/id", "/jobs/id/quality-review", "/jobs/id/transformation-review", "/jobs/id/result"])("protects %s without calling the backend", async (path) => {
     await renderAt(path, adapter());
     expect(window.location.pathname).toBe("/login");
@@ -71,7 +80,7 @@ describe("authentication routing and UI", () => {
   it("signs in with a safe return path and reports redirect failure", async () => {
     const auth = adapter({ login: vi.fn(async () => { throw new Error("private SDK response"); }) });
     await renderAt("/jobs/id/result", auth);
-    await click("Sign in with Cognito");
+    await click("Sign in");
     expect(auth.login).toHaveBeenCalledWith("/jobs/id/result");
     expect(container.querySelector('[role="alert"]')?.textContent).toContain("Unable to sign in");
     expect(container.textContent).not.toContain("private SDK");
@@ -105,7 +114,7 @@ describe("authentication routing and UI", () => {
     const auth = createUnavailableAuthAdapter(settings.issues);
     await renderAt("/jobs/new", auth);
     expect(window.location.pathname).toBe("/login");
-    expect([...container.querySelectorAll("button")].find((item) => item.textContent === "Sign in with Cognito")?.disabled).toBe(true);
+    expect([...container.querySelectorAll("button")].find((item) => item.textContent === "Sign in")?.disabled).toBe(true);
     expect(container.textContent).toContain("Missing VITE_COGNITO_AUTHORITY");
     await expect(auth.getValidToken()).rejects.toThrow("not configured");
   });

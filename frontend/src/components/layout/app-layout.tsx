@@ -52,6 +52,7 @@ function Navigation({ jobId, onNavigate }: { jobId?: string; onNavigate?: () => 
 
 export function AppLayout() {
   const { pathname } = useLocation();
+  const publicPage = pathname === "/login";
   const [mobileOpen, setMobileOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
   const { id: jobId } = useParams<"id">();
@@ -64,20 +65,20 @@ export function AppLayout() {
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-lg focus:bg-card focus:p-4">
         Skip to content
       </a>
-      <aside className="workspace-sidebar fixed inset-y-0 left-0 hidden w-56 flex-col border-r lg:flex" aria-label="Sidebar">
+      {!publicPage && <aside className="workspace-sidebar fixed inset-y-0 left-0 hidden w-56 flex-col border-r lg:flex" aria-label="Sidebar">
         <div className="flex h-18 items-center border-b px-5"><Branding /></div>
         <nav aria-label="Desktop navigation" className="flex-1 overflow-y-auto px-3 py-3"><Navigation jobId={jobId} /></nav>
-      </aside>
-      <div className="flex min-h-svh min-w-0 flex-col lg:pl-56">
+      </aside>}
+      <div className={cn("flex min-h-svh min-w-0 flex-col", !publicPage && "lg:pl-56")}>
         <header className="border-b bg-card" onKeyDown={(event) => {
           if (mobileOpen && event.key === "Escape") {
             setMobileOpen(false);
             menuButton.current?.focus();
           }
         }}>
-          <div className="flex min-h-16 items-center justify-between gap-4 px-4 sm:px-8">
-            <div className="lg:hidden"><Branding /></div>
-            <div className="hidden items-center gap-3 text-sm lg:flex">
+          <div className={cn("flex min-h-16 items-center justify-between gap-4 px-4 sm:px-8", publicPage && "mx-auto w-full max-w-7xl")}>
+            <div className={publicPage ? "py-3" : "lg:hidden"}><Branding /></div>
+            {publicPage ? <a href="#sign-in" className="rounded-md px-3 py-2 text-sm font-medium text-primary underline-offset-4 hover:underline">Sign in</a> : <><div className="hidden items-center gap-3 text-sm lg:flex">
               <span className="text-muted-foreground">Workspace</span>
               <ChevronRight className="size-3.5 text-muted-foreground" aria-hidden="true" />
               <span className="font-medium">{pageTitle}</span>
@@ -93,16 +94,16 @@ export function AppLayout() {
               onClick={() => setMobileOpen((open) => !open)}
             >
               {mobileOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
-            </Button>
+            </Button></>}
           </div>
-          <nav
+          {!publicPage && <nav
             id="mobile-navigation"
             aria-label="Mobile navigation"
             hidden={!mobileOpen}
             className="max-h-[70svh] overflow-y-auto border-t px-5 py-5 lg:hidden"
           >
             <Navigation jobId={jobId} onNavigate={() => setMobileOpen(false)} />
-          </nav>
+          </nav>}
         </header>
         <main id="main-content" tabIndex={-1} className="mx-auto w-full min-w-0 max-w-7xl flex-1 px-4 py-6 focus:outline-none sm:px-8 sm:py-8">
           <Outlet />

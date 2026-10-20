@@ -59,14 +59,14 @@ export function PostUploadConfiguration({ flow, onStarted }: { flow: MetadataFlo
             {sheet.dataRowCount !== undefined ? <p className="text-xs tabular-nums text-muted-foreground">Backend row count: {sheet.dataRowCount.toLocaleString()}</p> : <p className="text-xs text-muted-foreground">Row count not provided by the backend.</p>}
             <LargeFileWarning metadata={sheet} label={role === "current" ? "Current workbook" : "Main workbook"} />
             {sheet.headerRowBounds ? <HeaderRowConfirmation key={`${role}-${choice.sheetName}`} id={`${role}-metadata-header`} label={role === "current" ? "Current workbook" : "Main workbook"} metadata={sheet} confirmation={choice.header} onChange={(header) => flow.setHeader(role, header)} /> : <p className="text-xs text-muted-foreground">Header bounds and indexing await the backend contract. Confirmation is unavailable.</p>}
-            <div>
+            {flow.configuration.update && <div>
               <label htmlFor={`${role}-metadata-key`} className="mb-1 block text-xs font-medium">Key column {workbook?.keyRule === "required" && "(required)"}</label>
               <select id={`${role}-metadata-key`} value={choice.keyColumnId ?? ""} disabled={busy || !columnsReady || !sheet.columns?.length || workbook?.keyRule === "not-applicable" || workbook?.keyRule === "unknown"} onChange={(event) => flow.selectKey(role, event.target.value || null)} className="field-control max-w-xl">
                 <option value="">{workbook?.keyRule === "not-applicable" ? "Key selection not required by backend" : "Select a backend-provided column"}</option>
                 {columnsReady && sheet.columns?.map((column) => <option key={column.id} value={column.id}>{column.label}</option>)}
               </select>
               {!columnsReady && workbook?.keyRule !== "not-applicable" && <p className="mt-1 text-xs text-muted-foreground">Confirm the header, then reload backend metadata if the columns belong to a different header row.</p>}
-            </div>
+            </div>}
           </>}
         </section>;
       })}

@@ -101,6 +101,18 @@ def test_run_tool2_rejects_bad_target_type():
         run_tool2(FIXTURE, client=_client(resp))
 
 
+@pytest.mark.parametrize("alias,canonical", [("int", "integer"), ("bool", "boolean")])
+def test_run_tool2_canonicalizes_inspection_labels(alias, canonical):
+    response = json.dumps({"column_id": "Amount", "target_type": alias, "rules": []})
+    client = _client(response)
+    inputs = {**FIXTURE, "target_type": alias}
+    result = run_tool2(inputs, client=client)
+    assert result.payload.target_type == canonical
+    sent = client._client.calls[0]["messages"][0]["content"][0]["text"]
+    assert f"target type (proposed by the rule engine): {canonical}" in sent
+    assert inputs["target_type"] == alias
+
+
 def test_safe_below_floor_demoted_to_ambiguous():
     resp = (
         '{"column_id": "OrderDate", "target_type": "date", "rules": ['

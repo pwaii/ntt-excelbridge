@@ -16,6 +16,8 @@ let root: Root;
 
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  vi.stubEnv("VITE_API_BASE_URL", "");
+  vi.stubEnv("VITE_COGNITO_API_TOKEN_TYPE", "");
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
   vi.stubGlobal("fetch", vi.fn());
   container = document.createElement("div");
@@ -29,6 +31,7 @@ afterEach(() => {
   container.remove();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 function renderAt(path: string) {
@@ -91,7 +94,7 @@ describe("application routing", () => {
   });
 
   it("opens mobile navigation and closes it after a client-side route change", () => {
-    renderAt("/login");
+    renderAt("/jobs/job-42");
     const menu = container.querySelector<HTMLButtonElement>('[aria-controls="mobile-navigation"]');
     const navigation = container.querySelector<HTMLElement>("#mobile-navigation");
     expect(navigation?.hidden).toBe(true);
