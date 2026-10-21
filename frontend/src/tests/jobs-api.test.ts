@@ -37,6 +37,19 @@ describe("jobs API using FastAPI-exported synthetic contract fixtures", () => {
     await expect(api.createAdapter.create({ ...metadataForm(), comment_name: "x".repeat(201) }, signal())).rejects.toThrow("at most 200");
     expect(fetcher).not.toHaveBeenCalled();
   });
+  it("maps optional supporting workbooks to attachment upload slots", async () => {
+    const attachment = { filename: "history.xlsx", key: "jobs/job-1/input/attachment_1/history.xlsx", uploaded: false };
+    const payload = {
+      ...current,
+      job: { ...current.job, files: { ...current.job.files, attachment_1: attachment } },
+      uploads: [...current.uploads, { slot: "attachment_1", filename: "history.xlsx", key: attachment.key, url: `${origin}/job-1/attachment_1`, expires_in: 300 }],
+    };
+    const { api, fetcher } = setup(payload);
+    const configuration = { ...metadataForm(), additionalFiles: [new File(["history"], "history.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })] };
+    const receipt = await api.createAdapter.create(configuration, signal());
+    expect(JSON.parse(fetcher.mock.calls[0][1]!.body as string).additional_filenames).toEqual(["history.xlsx"]);
+    expect(receipt.uploadInstructions.attachment_1).toMatchObject({ method: "PUT", url: `${origin}/job-1/attachment_1` });
+  });
   it.each(["slot", "origin", "identity", "config"])("rejects invalid %s without trusting upload instructions", async (kind) => {
     const payload = structuredClone(current);
     if (kind === "slot") payload.uploads.push(payload.uploads[0]);

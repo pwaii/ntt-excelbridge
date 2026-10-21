@@ -109,7 +109,10 @@ def _complete_uploaded_slot(
         file_info["version_id"] = head["VersionId"]
     files[payload.slot] = file_info
 
-    required_slots = {"input"} | ({"main"} if "main" in files else set())
+    # Every file returned by create-job must be server-confirmed. Supporting
+    # workbooks are retained as attachments; input/main remain the AI pipeline
+    # roles and keep their existing workflow semantics.
+    required_slots = set(files)
     next_status = (
         JobStatus.UPLOADED.value
         if all(files[slot].get("uploaded") for slot in required_slots)
@@ -158,7 +161,7 @@ async def upload_workbook(
     body bypasses the API server entirely.
     """
 
-    if slot not in {"input", "main"}:
+    if slot not in {"input", "main"} and not slot.startswith("attachment_"):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="slot must be input or main")
     filename = _validate_upload_filename(file.filename)
     item = dynamo.get_job(job_id)

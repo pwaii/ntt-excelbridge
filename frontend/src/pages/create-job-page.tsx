@@ -7,13 +7,14 @@ import { ArrowRightLeft, Check, ChevronDown, Layers3, ShieldCheck, Sparkles } fr
 import { FormSection } from "@/components/job/form-section";
 import { JobFormActions } from "@/components/job/job-form-actions";
 import { WorkbookFilePicker } from "@/components/job/workbook-file-picker";
+import { SupportingWorkbookPicker } from "@/components/job/supporting-workbook-picker";
 import { HeaderRowConfirmation } from "@/components/job/header-row-confirmation";
 import { LargeFileWarning } from "@/components/job/large-file-warning";
 import { jobCreationSchema, type JobFormInput, type JobFormValues } from "@/schemas/job-creation";
 import type { HeaderConfirmation } from "@/types/workbook";
 import { getOutputPolicy, outputPolicies } from "@/lib/output-policy";
 
-const defaults: JobFormInput = { currentFile: null, mainFile: null, comment_name: "", outputHeader: "", standardize: false, update: false };
+const defaults: JobFormInput = { currentFile: null, additionalFiles: [], mainFile: null, comment_name: "", outputHeader: "", standardize: false, update: false };
 const fieldClass = "w-full rounded-lg border bg-background/40 px-3 py-2.5 text-sm placeholder:text-muted-foreground/80 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground";
 
 export function CreateJobPage() {
@@ -23,7 +24,7 @@ export function CreateJobPage() {
     defaultValues: defaults, resolver: zodResolver(jobCreationSchema), mode: "onTouched",
   });
   const values = watch();
-  const { comment_name, outputHeader, currentFile, mainFile } = values;
+  const { comment_name, outputHeader, currentFile, mainFile, additionalFiles = [] } = values;
   const standardize = values.standardize ?? false;
   const update = values.update ?? false;
   const createAction = useRef<(() => Promise<void>)>();
@@ -72,6 +73,10 @@ export function CreateJobPage() {
         <div className="divide-y">
           <FormSection id="current-workbook" title="Current workbook" required>
             <WorkbookFilePicker key={`current-${resetVersion}`} id="current-file" label="Current workbook" file={currentFile} onChange={(file) => changeFile("currentFile", file)} validationError={errors.currentFile?.message} onSelectionError={(message) => setSelectionErrors((previous) => ({ ...previous, current: message }))} />
+          </FormSection>
+          <FormSection id="supporting-workbooks" title="Supporting workbooks">
+            <p className="mb-3 text-xs leading-relaxed text-muted-foreground">These files are uploaded and verified with the job for reference. The current workbook remains the primary AI input; the master workbook is used for standardization or updates.</p>
+            <SupportingWorkbookPicker id="supporting-files" files={additionalFiles} onChange={(files) => setValue("additionalFiles", files, { shouldDirty: true, shouldTouch: true, shouldValidate: true })} error={errors.additionalFiles?.message} />
           </FormSection>
           <FormSection id="output-configuration" title="Column to add" required>
             <div className="ai-composer overflow-hidden rounded-2xl">

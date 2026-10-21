@@ -1512,6 +1512,14 @@
             "minLength": 1,
             "title": "Input Filename"
           },
+          "additional_filenames": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Additional Filenames"
+          },
           "main_filename": {
             "anyOf": [
               {
@@ -1688,8 +1696,8 @@
             "anyOf": [
               {
                 "type": "integer",
-                "maximum": 20.0,
-                "minimum": 1.0
+                "maximum": 20,
+                "minimum": 1
               },
               {
                 "type": "null"
@@ -1701,8 +1709,8 @@
             "anyOf": [
               {
                 "type": "integer",
-                "maximum": 20.0,
-                "minimum": 1.0
+                "maximum": 20,
+                "minimum": 1
               },
               {
                 "type": "null"
@@ -1764,7 +1772,7 @@
           },
           "revision": {
             "type": "integer",
-            "minimum": 0.0,
+            "minimum": 0,
             "title": "Revision"
           },
           "config": {
@@ -2154,8 +2162,8 @@
             "anyOf": [
               {
                 "type": "number",
-                "maximum": 1.0,
-                "minimum": 0.0
+                "maximum": 1,
+                "minimum": 0
               },
               {
                 "type": "null"
@@ -2359,7 +2367,7 @@
         "properties": {
           "expected_revision": {
             "type": "integer",
-            "minimum": 0.0,
+            "minimum": 0,
             "title": "Expected Revision"
           },
           "decisions": {
@@ -2426,7 +2434,7 @@
         "properties": {
           "expected_revision": {
             "type": "integer",
-            "minimum": 0.0,
+            "minimum": 0,
             "title": "Expected Revision"
           },
           "selections": {
@@ -2475,7 +2483,7 @@
             "anyOf": [
               {
                 "type": "integer",
-                "minimum": 0.0
+                "minimum": 0
               },
               {
                 "type": "null"
@@ -2534,10 +2542,7 @@
         "properties": {
           "slot": {
             "type": "string",
-            "enum": [
-              "input",
-              "main"
-            ],
+            "pattern": "^(input|main|attachment_[1-8])$",
             "title": "Slot"
           },
           "sha256": {
@@ -2716,8 +2721,8 @@
           },
           "header_row": {
             "type": "integer",
-            "maximum": 20.0,
-            "minimum": 1.0,
+            "maximum": 20,
+            "minimum": 1,
             "title": "Header Row"
           },
           "header_confirmed": {

@@ -4,7 +4,7 @@ these and rejected if it doesn't fit (§10). Keep in sync with prompts/ and fron
 """
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.enums import MatchType, OutputPolicy, ReviewDecision
 
@@ -52,11 +52,12 @@ class ReviewRequest(BaseModel):
 class CreateJobRequest(BaseModel):
     config: JobConfig
     input_filename: str = Field(min_length=1, max_length=255)
+    additional_filenames: list[str] = Field(default_factory=list, max_length=8)
     main_filename: str | None = Field(default=None, max_length=255)
 
 
 class UploadCompleteRequest(BaseModel):
-    slot: Literal["input", "main"]
+    slot: str = Field(pattern=r"^(input|main|attachment_[1-8])$")
     sha256: str | None = Field(default=None, min_length=64, max_length=64, pattern=r"^[0-9a-fA-F]{64}$")
 
 
@@ -105,6 +106,8 @@ class Tool3Output(BaseModel):
 
 # --- Tool #4: standardization mapping (§10.5) ---
 class Tool4Mapping(BaseModel):
+    # Excel cells may be numeric even when the logical field is text.
+    model_config = ConfigDict(coerce_numbers_to_str=True)
     source_field: str
     source_value: str
     canonical_field: str
@@ -121,6 +124,8 @@ class Tool4Output(BaseModel):
 
 # --- Tool #5: update matching (§10.6) ---
 class Tool5Match(BaseModel):
+    # Business keys and row IDs can arrive from Excel as numbers.
+    model_config = ConfigDict(coerce_numbers_to_str=True)
     current_row_id: str
     candidate_main_row_ids: list[str]
     selected_main_row_id: str | None = None

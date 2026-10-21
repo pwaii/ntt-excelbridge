@@ -15,7 +15,7 @@
       "Type": "Task",
       "Resource": "${InspectWorkerArn}",
       "Retry": [{ "ErrorEquals": ["States.Timeout", "Lambda.ServiceException", "Lambda.TooManyRequestsException"], "IntervalSeconds": 2, "MaxAttempts": 3, "BackoffRate": 2 }],
-      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed" }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "MarkFailed" }],
       "ResultPath": "$.inspect_result",
       "Next": "Quality"
     },
@@ -23,7 +23,7 @@
       "Type": "Task",
       "Resource": "${QualityWorkerArn}",
       "Retry": [{ "ErrorEquals": ["States.Timeout", "Lambda.ServiceException", "Lambda.TooManyRequestsException"], "IntervalSeconds": 2, "MaxAttempts": 3, "BackoffRate": 2 }],
-      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed" }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "MarkFailed" }],
       "ResultPath": "$.quality_result",
       "Next": "TypeMismatchChoice"
     },
@@ -37,7 +37,7 @@
       "Resource": "${BedrockWorkerArn}",
       "Parameters": { "job_id.$": "$.job_id", "tool": "tool2", "segment.$": "$.segment", "expected_revision.$": "$.expected_revision" },
       "Retry": [{ "ErrorEquals": ["States.Timeout", "Lambda.ServiceException"], "IntervalSeconds": 3, "MaxAttempts": 2, "BackoffRate": 2 }],
-      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed" }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "MarkFailed" }],
       "ResultPath": "$.tool2_result",
       "Next": "Semantic"
     },
@@ -46,7 +46,7 @@
       "Resource": "${BedrockWorkerArn}",
       "Parameters": { "job_id.$": "$.job_id", "tool": "tool1", "segment.$": "$.segment", "expected_revision.$": "$.expected_revision" },
       "Retry": [{ "ErrorEquals": ["States.Timeout", "Lambda.ServiceException"], "IntervalSeconds": 3, "MaxAttempts": 2, "BackoffRate": 2 }],
-      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed" }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "MarkFailed" }],
       "ResultPath": "$.semantic_result",
       "Next": "QualityGate"
     },
@@ -54,7 +54,7 @@
       "Type": "Task",
       "Resource": "${QualityGateWorkerArn}",
       "Parameters": { "job_id.$": "$.job_id" },
-      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed" }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "MarkFailed" }],
       "ResultPath": "$.quality_gate_result",
       "End": true
     },
@@ -63,7 +63,7 @@
       "Resource": "${BedrockWorkerArn}",
       "Parameters": { "job_id.$": "$.job_id", "tool": "tool3", "segment.$": "$.segment", "expected_revision.$": "$.expected_revision" },
       "Retry": [{ "ErrorEquals": ["States.Timeout", "Lambda.ServiceException"], "IntervalSeconds": 3, "MaxAttempts": 2, "BackoffRate": 2 }],
-      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed" }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "MarkFailed" }],
       "ResultPath": "$.tool3_result",
       "Next": "Tool4Choice"
     },
@@ -77,7 +77,7 @@
       "Resource": "${BedrockWorkerArn}",
       "Parameters": { "job_id.$": "$.job_id", "tool": "tool4", "segment.$": "$.segment", "expected_revision.$": "$.expected_revision" },
       "Retry": [{ "ErrorEquals": ["States.Timeout", "Lambda.ServiceException"], "IntervalSeconds": 3, "MaxAttempts": 2, "BackoffRate": 2 }],
-      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed" }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "MarkFailed" }],
       "ResultPath": "$.tool4_result",
       "Next": "Tool5Choice"
     },
@@ -91,7 +91,7 @@
       "Resource": "${BedrockWorkerArn}",
       "Parameters": { "job_id.$": "$.job_id", "tool": "tool5", "segment.$": "$.segment", "expected_revision.$": "$.expected_revision" },
       "Retry": [{ "ErrorEquals": ["States.Timeout", "Lambda.ServiceException"], "IntervalSeconds": 3, "MaxAttempts": 2, "BackoffRate": 2 }],
-      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed" }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "MarkFailed" }],
       "ResultPath": "$.tool5_result",
       "Next": "MarkTransformationReview"
     },
@@ -99,7 +99,7 @@
       "Type": "Task",
       "Resource": "${QualityGateWorkerArn}",
       "Parameters": { "job_id.$": "$.job_id", "gate": "transformation" },
-      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed" }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "MarkFailed" }],
       "ResultPath": "$.transformation_gate_result",
       "End": true
     },
@@ -107,7 +107,7 @@
       "Type": "Task",
       "Resource": "${ApplyWorkerArn}",
       "Retry": [{ "ErrorEquals": ["States.Timeout", "Lambda.ServiceException"], "IntervalSeconds": 2, "MaxAttempts": 2, "BackoffRate": 2 }],
-      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed" }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "MarkFailed" }],
       "ResultPath": "$.apply_result",
       "Next": "Validate"
     },
@@ -115,7 +115,7 @@
       "Type": "Task",
       "Resource": "${ValidateWorkerArn}",
       "Retry": [{ "ErrorEquals": ["States.Timeout", "Lambda.ServiceException"], "IntervalSeconds": 2, "MaxAttempts": 2, "BackoffRate": 2 }],
-      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed" }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "MarkFailed" }],
       "ResultPath": "$.validate_result",
       "End": true
     },
