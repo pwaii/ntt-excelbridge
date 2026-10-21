@@ -101,6 +101,12 @@ def test_run_tool2_rejects_bad_target_type():
         run_tool2(FIXTURE, client=_client(resp))
 
 
+def test_run_tool2_normalizes_unambiguous_target_type_alias():
+    resp = '{"column_id": "OrderDate", "target_type": "int", "rules": []}'
+    result = run_tool2(FIXTURE, client=_client(resp))
+    assert result.payload.target_type == "integer"
+
+
 def test_safe_below_floor_demoted_to_ambiguous():
     resp = (
         '{"column_id": "OrderDate", "target_type": "date", "rules": ['

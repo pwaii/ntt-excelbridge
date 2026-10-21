@@ -4,6 +4,9 @@ forbidden function. The authoritative function allowlist + in-range check stay o
 this is a thin caution guard. Labeled 'syntax verified,' never 'calculated.'"""
 import json
 import logging
+import re
+
+from openpyxl.utils import get_column_letter
 
 from app.ai.adapter import render_prompt, sha256_hex
 from app.ai.bedrock_client import BedrockClient
@@ -24,6 +27,29 @@ FORBIDDEN_TOKENS = frozenset(
 )
 
 _log = logging.getLogger(__name__)
+
+
+def _normalize_formula_references(payload: Tool3Output, inputs: dict) -> None:
+    """Convert model header references into ordinary row-relative A1 formulas.
+
+    Plain worksheets do not support Excel table references such as
+    ``[@Quantity]``. Converting only headers explicitly supplied to the model
+    keeps the formula deterministic while preserving the formula allowlist and
+    range checks performed later by the review gate.
+    """
+    headers = [str(header) for header in inputs.get("source_headers", [])]
+    formula = payload.formula_template
+    for index, header in sorted(enumerate(headers, start=1), key=lambda item: len(item[1]), reverse=True):
+        column = get_column_letter(index)
+        escaped = re.escape(header)
+        formula = re.sub(rf"\[@{escaped}\]", f"{column}{{row}}", formula, flags=re.IGNORECASE)
+        formula = re.sub(
+            rf"(?<![A-Za-z0-9_]){escaped}(?![A-Za-z0-9_])",
+            f"{column}{{row}}",
+            formula,
+            flags=re.IGNORECASE,
+        )
+    payload.formula_template = formula
 
 
 def _validate_against_inputs(payload: Tool3Output, inputs: dict) -> None:
@@ -52,6 +78,7 @@ def run_tool3(
         model_id, prompt, MAX_OUTPUT_TOKENS, settings.bedrock_temperature
     )
     payload = Tool3Output(**data)  # trust boundary: reject anything off-shape
+    _normalize_formula_references(payload, inputs)
     _validate_against_inputs(payload, inputs)  # reject hallucinated header / forbidden formula
 
     meta = AuditMeta(

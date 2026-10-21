@@ -85,6 +85,29 @@ def test_candidate_generation_is_bounded_and_keeps_row_ids():
     assert all(item.startswith("Main!") for item in inputs["deterministic_matches"][0]["candidate_main_row_ids"])
 
 
+def test_tool4_inputs_are_limited_to_shared_fields(tmp_path):
+    current_path, main_path = write_fixtures(tmp_path)
+
+    class FixtureS3:
+        def get_bytes(self, key):
+            return current_path.read_bytes() if key == "current" else main_path.read_bytes()
+
+    from app.lambda_handlers import _tool_inputs
+
+    inputs = _tool_inputs(
+        {
+            "config": {"input_sheet": "Customers", "main_sheet": "CanonicalCustomers"},
+            "files": {"input": {"key": "current"}, "main": {"key": "main"}},
+        },
+        FixtureS3(),
+        "tool4",
+    )
+    fields = {item["field"] for item in inputs["source_values"]}
+    assert fields == {"CustomerID", "FullName", "Country"}
+    assert {item["value"] for item in inputs["source_values"]} >= {"United States", "U.S.A."}
+    assert all(column["name"] in fields for column in inputs["samples"])
+
+
 def test_apply_accepted_updates_copies_values_and_skips_duplicate_destinations():
     from openpyxl import Workbook
 
