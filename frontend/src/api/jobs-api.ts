@@ -32,10 +32,10 @@ const jobSchema = z.object({
 });
 const responseSchema = z.object({ job: jobSchema, request_id: text });
 const createSchema = responseSchema.extend({ uploads: z.array(z.object({ slot: text, filename: text, key: text, url: z.url(), expires_in: z.number().int().positive() })) });
-const completeSchema = responseSchema.extend({ uploaded_slot: z.enum(["input", "main"]) });
+const completeSchema = responseSchema.extend({ uploaded_slot: z.string().regex(/^(input|input_[2-8]|main)$/) });
 const metadataSchema = z.object({ job_id: text, slot: z.enum(["input", "main"]), workbook_version: text, size_bytes: z.number().int().nonnegative(), header_min: z.number().int(), header_max: z.number().int(), index_base: z.literal(1), key_required: z.boolean(), sheets: z.array(z.object({ name: text, detected_header_row: z.number().int().nullable(), header_row: z.number().int().nullable(), data_row_count: z.number().int().nonnegative(), columns: z.array(z.object({ id: text, label: text })), errors: z.array(z.string()).default([]) })), request_id: text });
 const xlsxContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-const slotFor = (role: WorkbookRole) => role === "current" ? "input" : role === "main" ? "main" : role;
+const slotFor = (role: WorkbookRole) => role === "current" ? "input" : role === "main" ? "main" : role.replace("current_", "input_");
 function jobPath(id: string) {
   if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new ApiError("configuration", "Invalid backend job identity.");
   return `/v1/jobs/${id}`;
@@ -54,13 +54,13 @@ export function createJobsApi(client: ReturnType<typeof createApiClient>, allowe
   }
   const createAdapter: CreateJobAdapter<UploadInstructions> = {
     async create(configuration, signal) {
-      const additionalFiles = configuration.additionalFiles ?? [];
-      const roles: WorkbookRole[] = ["current", ...additionalFiles.map((_, index) => `attachment_${index + 1}` as const)];
+      const currentFiles = configuration.currentFiles?.length ? configuration.currentFiles : [configuration.currentFile!];
+      const roles: WorkbookRole[] = ["current", ...currentFiles.slice(1).map((_, index) => `current_${index + 2}` as const)];
       if (configuration.standardize || configuration.update) roles.push("main");
       const files: Partial<Record<WorkbookRole, File | null>> = {
-        current: configuration.currentFile!,
+        current: currentFiles[0],
         main: configuration.mainFile,
-        ...Object.fromEntries(additionalFiles.map((file, index) => [`attachment_${index + 1}`, file])),
+        ...Object.fromEntries(currentFiles.slice(1).map((file, index) => [`current_${index + 2}`, file])),
       };
       for (const role of roles) {
         if (/[\\/]/.test(files[role]!.name) || files[role]!.name.length > 255) throw new ApiError("configuration", "Use workbook filenames of at most 255 characters without path separators.");
@@ -68,7 +68,7 @@ export function createJobsApi(client: ReturnType<typeof createApiClient>, allowe
       const body: CreateRequest = {
         config: { comment_name: configuration.comment_name, output_header: configuration.outputHeader, standardize: configuration.standardize, update: configuration.update, conflict_policy: "reject_all" },
         input_filename: files.current!.name,
-        ...(additionalFiles.length ? { additional_filenames: additionalFiles.map((file) => file.name) } : {}),
+        ...(currentFiles.length > 1 ? { input_filenames: currentFiles.map((file) => file.name) } : {}),
         ...(roles.includes("main") ? { main_filename: files.main!.name } : {}),
       };
       if (body.config.comment_name.length > 200) throw new ApiError("configuration", "Prompt must contain at most 200 characters, as required by the backend.");

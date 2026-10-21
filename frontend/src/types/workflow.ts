@@ -16,7 +16,7 @@ export interface WorkbookSelectionViewModel {
 
 export interface JobConfigurationViewModel {
   // Reuse validated local fields. Prompt is the UI name for Comment Name.
-  readonly form: Omit<JobFormValues, "currentFile" | "mainFile">;
+  readonly form: Omit<JobFormValues, "currentFile" | "currentFiles" | "mainFile">;
   readonly current: WorkbookSelectionViewModel;
   readonly main: WorkbookSelectionViewModel;
   readonly outputPolicy: OutputPolicy;

@@ -17,7 +17,7 @@ export function UploadProgressPanel<T>({ state, onCancel, onRetry, canRetry }: {
       const label = file.phase === "uploaded" ? "Uploaded — confirmed by backend" : file.phase === "awaiting-confirmation" ? "Transfer complete — awaiting backend confirmation" : file.phase.charAt(0).toUpperCase() + file.phase.slice(1);
       return <div key={file.role} className="min-w-0 rounded-lg border bg-background/50 p-3">
         <p className="break-all text-sm font-medium">{file.filename}</p>
-        <p className="mt-1 text-xs text-muted-foreground">{file.role === "current" ? "Current workbook" : file.role === "main" ? "Main workbook" : "Supporting workbook"} · {formatFileSize(file.size)}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{file.role === "main" ? "Master workbook" : "Current workbook"} · {formatFileSize(file.size)}</p>
         <p role="status" className="mt-2 text-xs">{label}</p>
         {file.phase === "uploading" && <>
           <progress aria-label={`${file.role} workbook transfer`} max={100} value={percent} className="mt-2 h-2 w-full accent-primary" />

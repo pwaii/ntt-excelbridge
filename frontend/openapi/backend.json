@@ -1507,18 +1507,25 @@
             "$ref": "#/components/schemas/JobConfig"
           },
           "input_filename": {
-            "type": "string",
-            "maxLength": 255,
-            "minLength": 1,
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Input Filename"
           },
-          "additional_filenames": {
+          "input_filenames": {
             "items": {
               "type": "string"
             },
             "type": "array",
             "maxItems": 8,
-            "title": "Additional Filenames"
+            "title": "Input Filenames"
           },
           "main_filename": {
             "anyOf": [
@@ -1535,8 +1542,7 @@
         },
         "type": "object",
         "required": [
-          "config",
-          "input_filename"
+          "config"
         ],
         "title": "CreateJobRequest"
       },
@@ -2542,7 +2548,7 @@
         "properties": {
           "slot": {
             "type": "string",
-            "pattern": "^(input|main|attachment_[1-8])$",
+            "pattern": "^(input|input_[2-8]|main)$",
             "title": "Slot"
           },
           "sha256": {

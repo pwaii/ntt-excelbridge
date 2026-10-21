@@ -1,4 +1,4 @@
-export type WorkbookRole = "current" | "main" | `attachment_${number}`;
+export type WorkbookRole = "current" | "main" | `current_${number}`;
 
 // INTERNAL adapter output, not the missing backend/OpenAPI presigned schema.
 // The schema-backed adapter must supply the exact method/headers and a reliable

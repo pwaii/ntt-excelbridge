@@ -45,7 +45,7 @@ export function ConnectedCreateFlow({ configuration, canCreate, onLockedChange, 
     return () => {
       mounted.current = false;
       controller.cancel();
-      activeUpload.current?.cancel("current");
+      activeUpload.current?.getSnapshot().files.filter((file) => file.role !== "main").forEach((file) => activeUpload.current?.cancel(file.role));
       activeUpload.current?.cancel("main");
     };
   }, [controller]);

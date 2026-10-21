@@ -51,13 +51,15 @@ class ReviewRequest(BaseModel):
 
 class CreateJobRequest(BaseModel):
     config: JobConfig
-    input_filename: str = Field(min_length=1, max_length=255)
-    additional_filenames: list[str] = Field(default_factory=list, max_length=8)
+    # `input_filename` remains accepted for older clients. New clients send
+    # the complete current-workbook selection in `input_filenames`.
+    input_filename: str | None = Field(default=None, min_length=1, max_length=255)
+    input_filenames: list[str] = Field(default_factory=list, max_length=8)
     main_filename: str | None = Field(default=None, max_length=255)
 
 
 class UploadCompleteRequest(BaseModel):
-    slot: str = Field(pattern=r"^(input|main|attachment_[1-8])$")
+    slot: str = Field(pattern=r"^(input|input_[2-8]|main)$")
     sha256: str | None = Field(default=None, min_length=64, max_length=64, pattern=r"^[0-9a-fA-F]{64}$")
 
 

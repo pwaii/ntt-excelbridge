@@ -13,13 +13,13 @@ export function createUploadWorkflow<T>({ jobId, configuration, instructions, up
 }) {
   const parsed = jobCreationSchema.parse(configuration);
   if (!jobId.trim()) throw new UploadError("configuration", "A real backend job identity is required before upload.");
-  const additionalFiles = parsed.additionalFiles ?? [];
-  const roles: WorkbookRole[] = ["current", ...additionalFiles.map((_, index) => `attachment_${index + 1}` as const)];
+  const currentFiles = parsed.currentFiles?.length ? parsed.currentFiles : [parsed.currentFile!];
+  const roles: WorkbookRole[] = ["current", ...currentFiles.slice(1).map((_, index) => `current_${index + 2}` as const)];
   if (parsed.standardize || parsed.update) roles.push("main");
   const files: Partial<Record<WorkbookRole, File | null>> = {
-    current: parsed.currentFile!,
+    current: currentFiles[0],
     main: parsed.mainFile,
-    ...Object.fromEntries(additionalFiles.map((file, index) => [`attachment_${index + 1}`, file])),
+    ...Object.fromEntries(currentFiles.slice(1).map((file, index) => [`current_${index + 2}`, file])),
   };
   let state: UploadWorkflowState<T> = {
     jobId, confirmation: "waiting",

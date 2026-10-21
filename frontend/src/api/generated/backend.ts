@@ -313,9 +313,9 @@ export interface components {
         CreateJobRequest: {
             config: components["schemas"]["JobConfig"];
             /** Input Filename */
-            input_filename: string;
-            /** Additional Filenames */
-            additional_filenames?: string[];
+            input_filename?: string | null;
+            /** Input Filenames */
+            input_filenames?: string[];
             /** Main Filename */
             main_filename?: string | null;
         };
