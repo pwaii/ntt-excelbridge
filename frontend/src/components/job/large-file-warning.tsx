@@ -11,7 +11,7 @@ export function LargeFileWarning({ metadata, label = "Workbook" }: { metadata?: 
       <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
       {rejected
         ? `${label} exceeds 50,000 data rows and cannot be processed.`
-        : `${label}: large file — top issues only. The demo is optimized for approximately 2,000 rows; this is a warning, not a rejection.`}
+        : `${label}: large file — top issues only. Workbooks above approximately 2,000 rows may take longer; this is a warning, not a rejection.`}
     </p>
   );
 }

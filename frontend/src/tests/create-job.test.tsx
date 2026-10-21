@@ -138,13 +138,13 @@ describe("job creation UI", () => {
   it("never invents workbook metadata", async () => {
     await click('input[name="update"]');
     const selectors = [...container.querySelectorAll("select")];
-    expect(selectors).toHaveLength(3);
-    expect(selectors.every((select) => select.disabled)).toBe(true);
-    expect(selectors.every((select) => select.options.length === 1)).toBe(true);
+    expect(selectors).toHaveLength(0);
+    expect(container.textContent).toContain("Worksheet selection becomes available after upload");
+    expect(container.querySelector('input[type="number"]')).toBeNull();
     expect(container.textContent).toContain("No workbook has been inspected");
   });
 
-  it("discloses advanced fields without losing an entered output header", async () => {
+  it("explains worksheet setup after upload without losing an entered output header", async () => {
     const advanced = get<HTMLDetailsElement>("#advanced-settings");
     expect(advanced.open).toBe(false);
     await click("#advanced-settings > summary");
@@ -158,7 +158,8 @@ describe("job creation UI", () => {
     await click('input[name="standardize"]');
     await click("#advanced-settings > summary");
     expect(header.value).toBe("profit");
-    expect(get<HTMLSelectElement>("#main-sheet").disabled).toBe(true);
+    expect(advanced.textContent).toContain("current workbook and master workbook");
+    expect(advanced.querySelector("select")).toBeNull();
   });
 
   it("keeps the policy summary compact and exposes the exact behavior on demand", async () => {
@@ -214,9 +215,9 @@ describe("job creation UI", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("keeps creation focused on the form without a workflow timeline or step navigation", async () => {
+  it("shows the current setup step without inventing processing progress", async () => {
     expect(container.querySelector('[aria-labelledby="workflow-preview-title"]')).toBeNull();
-    expect(container.querySelector('[aria-label="Workflow setup"]')).toBeNull();
+    expect(container.querySelector('[aria-label="Job setup steps"] [aria-current="step"]')?.textContent).toContain("Configure job");
     expect(container.querySelector("aside")).toBeNull();
     await selectFile("current-file", "current.xlsx");
     await enterPrompt("Profit");

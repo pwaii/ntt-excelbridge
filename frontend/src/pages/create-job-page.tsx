@@ -3,23 +3,23 @@ import { AuthContext } from "@/auth/context";
 import { ConnectedCreateFlow } from "@/components/job/connected-create-flow";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowRightLeft, Check, ChevronDown, Layers3, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRightLeft, Check, ChevronDown, FileText, Layers3, ShieldCheck } from "lucide-react";
+import { PageHeader } from "@/components/layout/page-header";
+import { WorkflowSteps } from "@/components/job/workflow-steps";
 import { FormSection } from "@/components/job/form-section";
 import { JobFormActions } from "@/components/job/job-form-actions";
 import { WorkbookFilePicker } from "@/components/job/workbook-file-picker";
-import { CurrentWorkbookPicker } from "@/components/job/current-workbook-picker";
-import { HeaderRowConfirmation } from "@/components/job/header-row-confirmation";
 import { LargeFileWarning } from "@/components/job/large-file-warning";
 import { jobCreationSchema, type JobFormInput, type JobFormValues } from "@/schemas/job-creation";
-import type { HeaderConfirmation } from "@/types/workbook";
 import { getOutputPolicy, outputPolicies } from "@/lib/output-policy";
 
-const defaults: JobFormInput = { currentFile: null, currentFiles: [], mainFile: null, comment_name: "", outputHeader: "", standardize: false, update: false };
-const fieldClass = "w-full rounded-lg border bg-background/40 px-3 py-2.5 text-sm placeholder:text-muted-foreground/80 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground";
+const defaults: JobFormInput = { currentFile: null, mainFile: null, comment_name: "", outputHeader: "", standardize: false, update: false };
+const fieldClass = "field-control";
 
 export function CreateJobPage() {
   const auth = useContext(AuthContext);
   const [integrationLocked, setIntegrationLocked] = useState(false);
+  const [setupStep, setSetupStep] = useState(0);
   const { register, watch, reset, handleSubmit, setValue, setFocus, formState: { errors } } = useForm<JobFormInput, unknown, JobFormValues>({
     defaultValues: defaults, resolver: zodResolver(jobCreationSchema), mode: "onTouched",
   });
@@ -31,8 +31,6 @@ export function CreateJobPage() {
   const [backendAvailable, setBackendAvailable] = useState(false);
   const [resetVersion, setResetVersion] = useState(0);
   const [selectionErrors, setSelectionErrors] = useState<{ current: string | null; main: string | null }>({ current: null, main: null });
-  const [currentHeader, setCurrentHeader] = useState<HeaderConfirmation | null>(null);
-  const [mainHeader, setMainHeader] = useState<HeaderConfirmation | null>(null);
   const requiresMain = standardize || update;
   const policy = outputPolicies[getOutputPolicy(standardize, update)];
   const localFormValid = jobCreationSchema.safeParse(values).success && !selectionErrors.current && !selectionErrors.main;
@@ -41,7 +39,6 @@ export function CreateJobPage() {
 
   function changeFile(field: "currentFile" | "mainFile", file: File | null) {
     setValue(field, file, { shouldDirty: true, shouldTouch: true, shouldValidate: true });
-    if (field === "currentFile") setCurrentHeader(null); else setMainHeader(null);
     setSelectionErrors((previous) => ({ ...previous, [field === "currentFile" ? "current" : "main"]: null }));
   }
 
@@ -56,25 +53,22 @@ export function CreateJobPage() {
     if (!requiresMain) {
       setValue("mainFile", null, { shouldValidate: true });
       setSelectionErrors((previous) => previous.main ? { ...previous, main: null } : previous);
-      setMainHeader(null);
     }
   }, [requiresMain, setValue]);
 
   function resetForm() {
     reset(defaults);
     setSelectionErrors({ current: null, main: null });
-    setCurrentHeader(null);
-    setMainHeader(null);
     setResetVersion((version) => version + 1);
   }
 
   return (
-    <section aria-labelledby="page-title" className="mx-auto w-full max-w-[820px]">
-      <header className="mb-5">
-        <h1 id="page-title" className="text-2xl leading-tight font-semibold tracking-[-0.035em] sm:text-[28px]">Create <span className="workflow-title-accent">workflow</span></h1>
-        <p className="mt-1.5 text-sm text-muted-foreground">Choose a workbook and describe the column to add.</p>
-      </header>
-      <form noValidate onSubmit={handleSubmit(() => { if (localFormValid && backendAvailable) void createAction.current?.(); })} className="workflow-builder min-w-0 rounded-[20px] border bg-card">
+    <section aria-labelledby="page-title" className="mx-auto w-full max-w-4xl">
+      <PageHeader title="Create workflow" description="Upload your workbook, define the changes, then review and approve the results." />
+      <WorkflowSteps current={setupStep} />
+      <form noValidate onSubmit={handleSubmit(() => { if (localFormValid && backendAvailable) void createAction.current?.(); })} className="workflow-builder min-w-0 rounded-lg border bg-card">
+        <details open={!integrationLocked}>
+        <summary hidden={!integrationLocked} className="configuration-summary">Job configuration<span className="text-xs font-normal text-muted-foreground">View submitted settings</span><ChevronDown className="size-4 shrink-0" aria-hidden="true" /></summary>
         <fieldset disabled={integrationLocked} className="min-w-0">
         <legend className="sr-only">Job configuration</legend>
         <div className="divide-y">
@@ -82,8 +76,8 @@ export function CreateJobPage() {
             <CurrentWorkbookPicker key={`current-${resetVersion}`} id="current-file" files={currentFiles} onChange={changeCurrentFiles} validationError={errors.currentFile?.message} onSelectionError={(message) => setSelectionErrors((previous) => ({ ...previous, current: message }))} />
           </FormSection>
           <FormSection id="output-configuration" title="Column to add" required>
-            <div className="ai-composer overflow-hidden rounded-2xl">
-              <div className="flex items-center gap-2 px-3.5 pt-2.5 text-xs font-medium text-[var(--workflow-violet)]"><Sparkles className="size-3.5" aria-hidden="true" />Column prompt</div>
+            <div className="ai-composer overflow-hidden rounded-md">
+              <div className="flex items-center gap-2 px-3.5 pt-3 text-xs font-medium text-muted-foreground"><FileText className="size-3.5" aria-hidden="true" />Column prompt</div>
               <label htmlFor="prompt" className="sr-only">Prompt (required)</label>
               <textarea id="prompt" {...register("comment_name")} required aria-invalid={Boolean(errors.comment_name)} aria-describedby={errors.comment_name ? "prompt-error" : "prompt-hint"} rows={2} className="block min-h-16 w-full resize-y bg-transparent px-3.5 py-2 text-base leading-relaxed tracking-tight placeholder:text-muted-foreground/80 focus-visible:outline-none" placeholder="What column would you like to add?" />
               <div className="flex flex-wrap gap-1.5 px-3 pb-2.5" role="group" aria-label="Example column prompts">
@@ -92,7 +86,7 @@ export function CreateJobPage() {
                 ))}
               </div>
             </div>
-            {errors.comment_name ? <p id="prompt-error" role="alert" className="mt-2 text-xs text-destructive">{errors.comment_name.message}</p> : <p id="prompt-hint" className="mt-2 text-[11px] text-muted-foreground">A name or short instruction. Interpretation happens later.</p>}
+            {errors.comment_name ? <p id="prompt-error" role="alert" className="mt-2 text-xs text-destructive">{errors.comment_name.message}</p> : <p id="prompt-hint" className="mt-2 text-xs text-muted-foreground">Describe the column or calculation you need. Up to 200 characters.</p>}
             <div className="mt-4">
               <label htmlFor="output-header" className="mb-1.5 block text-xs font-medium">Output column header <span className="text-primary" aria-hidden="true">*</span></label>
               <input id="output-header" {...register("outputHeader")} required aria-invalid={Boolean(errors.outputHeader)} className={fieldClass} aria-describedby={errors.outputHeader ? "output-header-error" : "output-header-hint"} placeholder="Exact name for the new column" />
@@ -106,10 +100,10 @@ export function CreateJobPage() {
                 { name: "standardize", title: "Standardize data", hint: "Align headers and values to your master.", icon: Layers3 },
                 { name: "update", title: "Update using master workbook", hint: "Merge approved values into matched rows.", icon: ArrowRightLeft },
               ] as const).map(({ name, title, hint, icon: Icon }) => (
-                <label key={name} className={`processing-card flex cursor-pointer items-start gap-2 rounded-xl border p-3 transition-[border-color,background-color,box-shadow] duration-150 motion-reduce:transition-none ${watch(name) ? "border-primary/55 bg-accent/60" : "hover:border-primary/40 hover:bg-muted/60"}`}>
+                <label key={name} className={`processing-card flex cursor-pointer items-start gap-3 rounded-md border p-4 transition-colors duration-150 motion-reduce:transition-none ${watch(name) ? "border-primary bg-accent/60" : "hover:border-input hover:bg-muted/50"}`}>
                   <input type="checkbox" {...register(name)} className="sr-only" aria-describedby={`${name}-hint`} />
-                  <span className={`flex size-7 shrink-0 items-center justify-center rounded-lg ${watch(name) ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}><Icon className="size-3.5" aria-hidden="true" /></span>
-                  <span className="min-w-0 flex-1"><span className="block text-xs leading-snug font-semibold">{title}</span><span id={`${name}-hint`} className="mt-1 block text-[11px] leading-relaxed text-muted-foreground">{hint}</span></span>
+                  <span className={`flex size-7 shrink-0 items-center justify-center rounded-md ${watch(name) ? "text-primary" : "text-muted-foreground"}`}><Icon className="size-4" aria-hidden="true" /></span>
+                  <span className="min-w-0 flex-1"><span className="block text-sm leading-snug font-medium">{title}</span><span id={`${name}-hint`} className="mt-1 block text-xs leading-relaxed text-muted-foreground">{hint}</span></span>
                   <span aria-hidden="true" className={`mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[5px] border ${watch(name) ? "border-primary bg-primary text-primary-foreground" : "border-input bg-background"}`}>{watch(name) && <Check className="size-3" />}</span>
                 </label>
               ))}
@@ -127,30 +121,18 @@ export function CreateJobPage() {
           <details className="workflow-disclosure group" id="advanced-settings">
             <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 px-5 py-3 text-sm font-medium transition-colors hover:bg-muted/60 sm:px-6 [&::-webkit-details-marker]:hidden">
               <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
-              Advanced settings
+              Worksheet settings
               <span className="ml-auto hidden text-xs font-normal text-muted-foreground sm:inline">Sheets, headers &amp; matching</span>
             </summary>
             <div className="space-y-4 px-5 pb-5 pt-1 sm:px-6">
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <label htmlFor="source-sheet" className="mb-1.5 block text-xs font-medium">Source sheet</label>
-                  <select id="source-sheet" disabled className={fieldClass} aria-describedby="metadata-hint"><option>Awaiting metadata</option></select>
-                </div>
-                {requiresMain && <div>
-                  <label htmlFor="main-sheet" className="mb-1.5 block text-xs font-medium">Master sheet</label>
-                  <select id="main-sheet" disabled className={fieldClass} aria-describedby="metadata-hint"><option>Awaiting metadata</option></select>
-                </div>}
-                <div>
-                  <label htmlFor="key-column" className="mb-1.5 block text-xs font-medium">Business key column</label>
-                  <select id="key-column" disabled className={fieldClass} aria-describedby="metadata-hint"><option>{update ? "Awaiting metadata" : "For update matching"}</option></select>
-                </div>
-              </div>
-              <div className="space-y-3">
-                <HeaderRowConfirmation id="current-header" label="Current workbook" confirmation={currentHeader} onChange={setCurrentHeader} />
-                {requiresMain && <HeaderRowConfirmation id="main-header" label="Master workbook" confirmation={mainHeader} onChange={setMainHeader} />}
-              </div>
-              <p id="metadata-hint" className="text-xs text-muted-foreground">No workbook has been inspected. Sheet and key selection awaits backend metadata.</p>
+              <p className="text-sm text-muted-foreground">Worksheet selection becomes available after upload. You will confirm the header row before processing starts.</p>
+              <ul className="list-disc space-y-2 pl-4 text-sm text-muted-foreground">
+                <li>Select a worksheet from the uploaded current workbook{requiresMain ? " and master workbook" : ""}.</li>
+                <li>Check the detected header row and confirm or correct it.</li>
+                {update && <li>Choose the key columns used to match rows between workbooks.</li>}
+              </ul>
+              <p id="metadata-hint" className="text-xs text-muted-foreground">No workbook has been inspected. Awaiting workbook metadata after upload.</p>
             </div>
           </details>
         </div>
@@ -175,8 +157,9 @@ export function CreateJobPage() {
         <p id="real-job-readiness" className="border-t px-4 py-3 text-xs leading-relaxed text-muted-foreground sm:px-5">After upload, select the worksheet and confirm its header row before starting. No workbook has been inspected yet.</p>
         {!integrationLocked && <JobFormActions canStart={Boolean(localFormValid) && backendAvailable} onReset={resetForm} missingRequirements={missingRequirements} />}
         </fieldset>
+        </details>
       </form>
-      {auth && <ConnectedCreateFlow configuration={values} canCreate={Boolean(localFormValid)} onLockedChange={setIntegrationLocked} actionRef={createAction} onAvailabilityChange={setBackendAvailable} />}
+      {auth && <ConnectedCreateFlow configuration={values} canCreate={Boolean(localFormValid)} onLockedChange={setIntegrationLocked} actionRef={createAction} onAvailabilityChange={setBackendAvailable} onStageChange={setSetupStep} />}
     </section>
   );
 }

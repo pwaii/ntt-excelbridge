@@ -27,15 +27,16 @@ function HeaderEditor({ id, label, metadata, confirmation, onChange }: HeaderRow
   const valid = draft.trim() !== "" && validHeaderRow(row, bounds);
   const confirmed = headerConfirmed(metadata, confirmation) && confirmation?.row === row;
   return (
-    <div className="rounded-lg border p-3">
-      <label htmlFor={`${id}-row`} className="block text-xs font-medium">{label} header row</label>
+    <div className="rounded-md bg-muted/50 p-4">
+      <label htmlFor={`${id}-row`} className="block text-sm font-medium">{label} header row</label>
       <p id={`${id}-hint`} className="mt-1 text-xs text-muted-foreground">{metadata.detectedHeaderRow == null ? "No detected header row was provided. Select the correct row." : `Detected header row: ${metadata.detectedHeaderRow}. Confirm it or correct the row number.`} {bounds.indexBase === 0 && "The backend uses zero-based row indices."}</p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        <input id={`${id}-row`} type="number" min={bounds.min} max={bounds.max} step={1} value={draft} aria-invalid={edited && !valid} aria-describedby={`${id}-hint${edited && !valid ? ` ${id}-error` : ""}`} className="w-24 rounded-lg border px-3 py-2 text-sm" onChange={(event) => { setDraft(event.target.value); setEdited(true); onChange(null); }} />
+        <input id={`${id}-row`} type="number" min={bounds.min} max={bounds.max} step={1} value={draft} aria-invalid={edited && !valid} aria-describedby={`${id}-hint${edited && !valid ? ` ${id}-error` : ""}`} className="field-control max-w-24" onChange={(event) => { setDraft(event.target.value); setEdited(true); onChange(null); }} />
         <Button size="sm" variant="outline" disabled={!valid || confirmed} onClick={() => onChange({ metadataKey: metadataKey(metadata), row })}>{confirmed ? "Header confirmed" : "Confirm header row"}</Button>
       </div>
       {edited && !valid && <p id={`${id}-error`} role="alert" className="mt-2 text-xs text-destructive">Enter a whole row number from {bounds.min} to {bounds.max}.</p>}
-      {confirmed && <p role="status" className="mt-2 text-xs text-primary">Row {row} confirmed for this workbook version and sheet.</p>}
+      {metadata.columnsHeaderRow === row && metadata.columns?.length ? <p className="mt-3 break-words text-xs leading-relaxed text-muted-foreground">Columns: {metadata.columns.map((column) => column.label).join(" · ")}</p> : null}
+      {confirmed && <p role="status" className="mt-2 text-xs text-[var(--success)]">Row {row} confirmed for this workbook version and sheet.</p>}
     </div>
   );
 }

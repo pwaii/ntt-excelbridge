@@ -42,7 +42,7 @@ describe("post-upload UI with synthetic normalized metadata only", () => {
     expect(button("Start workflow").disabled).toBe(true);
   });
   it("loads real selector options from supplied metadata, confirms a header and starts only after key selection", async () => {
-    const flow = createMetadataFlow("mock-job", metadataForm(), mockMetadataAdapter()); await render(flow);
+    const flow = createMetadataFlow("mock-job", metadataForm(true), mockMetadataAdapter()); await render(flow);
     expect(container.querySelector<HTMLSelectElement>("#current-metadata-sheet")?.value).toBe("");
     await select("current-metadata-sheet", mockSheet.sheetName);
     expect(container.textContent).toContain("Detected header row: 3");
@@ -50,6 +50,10 @@ describe("post-upload UI with synthetic normalized metadata only", () => {
     await act(async () => button("Confirm header row").click());
     expect(button("Start workflow").disabled).toBe(true);
     await select("current-metadata-key", "mock-key-id");
+    expect(button("Save and confirm configuration").disabled).toBe(true);
+    await select("main-metadata-sheet", mockSheet.sheetName);
+    await act(async () => button("Confirm header row").click());
+    await select("main-metadata-key", "mock-key-id");
     await act(async () => button("Save and confirm configuration").click());
     expect(button("Start workflow").disabled).toBe(false);
     await act(async () => button("Start workflow").click());
@@ -57,7 +61,7 @@ describe("post-upload UI with synthetic normalized metadata only", () => {
     expect(container.textContent).toContain("Sign in to read the backend job status");
   });
   it("resets confirmation/key after selecting a different sheet", async () => {
-    const flow = createMetadataFlow("mock-job", metadataForm(), mockMetadataAdapter()); await render(flow);
+    const flow = createMetadataFlow("mock-job", metadataForm(true), mockMetadataAdapter()); await render(flow);
     await select("current-metadata-sheet", mockSheet.sheetName);
     await act(async () => button("Confirm header row").click());
     await select("current-metadata-key", "mock-key-id");
@@ -79,7 +83,7 @@ describe("post-upload UI with synthetic normalized metadata only", () => {
     expect(flow.getSnapshot().choices.current.header?.row).toBe(0);
   });
   it("invalidates header/key on correction and uses backend-specific bounds", async () => {
-    const flow = createMetadataFlow("mock-job", metadataForm(), mockMetadataAdapter()); await render(flow);
+    const flow = createMetadataFlow("mock-job", metadataForm(true), mockMetadataAdapter()); await render(flow);
     await select("current-metadata-sheet", mockSheet.sheetName);
     await act(async () => button("Confirm header row").click()); await select("current-metadata-key", "mock-key-id");
     const row = container.querySelector<HTMLInputElement>("#current-metadata-header-row")!;
@@ -106,5 +110,22 @@ describe("post-upload UI with synthetic normalized metadata only", () => {
     await render(flow); await select("current-metadata-sheet", mockSheet.sheetName);
     expect(container.textContent).toContain("warning, not a rejection");
     expect(container.textContent).toContain("top issues only");
+  });
+  it.each([false, true])("hides matching keys and saves without them when update is off (standardize=%s)", async (standardize) => {
+    const snapshot = mockSnapshot();
+    const workbooks = { current: { ...snapshot.workbooks.current!, keyRule: "optional" as const }, main: { ...snapshot.workbooks.main!, keyRule: "optional" as const } };
+    const configuration = { ...metadataForm(standardize), standardize, update: false };
+    const flow = createMetadataFlow("mock-job", configuration, mockMetadataAdapter({ ...snapshot, workbooks }));
+    await render(flow);
+    for (const role of standardize ? ["current", "main"] : ["current"]) {
+      await select(`${role}-metadata-sheet`, mockSheet.sheetName);
+      expect(container.querySelector(`#${role}-metadata-key`)).toBeNull();
+      expect(button("Save and confirm configuration").disabled).toBe(true);
+      await act(async () => button("Confirm header row").click());
+    }
+    expect(container.textContent).not.toContain("Key column");
+    expect(button("Save and confirm configuration").disabled).toBe(false);
+    await act(async () => button("Save and confirm configuration").click());
+    expect(button("Start workflow").disabled).toBe(false);
   });
 });

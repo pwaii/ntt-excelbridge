@@ -44,6 +44,16 @@ TARGET_TYPE_ALIASES = {
 _log = logging.getLogger(__name__)
 
 
+def _canonical_target_type(value: str) -> str:
+    # Inspection labels differ from the public rule vocabulary. Also handle
+    # reports created before the quality worker started emitting canonical names.
+    return {
+        "int": "integer", "bool": "boolean", "decimal": "number",
+        "percentage": "number", "text": "string", "identifier": "string",
+        "identifier-like": "string", "formula": "string",
+    }.get(value, value)
+
+
 def _validate_against_inputs(payload: Tool2Output) -> None:
     """Reject the whole response (invariant #1) if the model used an unknown target type.
     Rules describe value-patterns, not prompt rows, so there is no row-id set to check —
@@ -71,11 +81,15 @@ def run_tool2(
     client = client or BedrockClient()
     model_id = model_id or settings.bedrock_model_id
 
+    inputs = {**inputs, "target_type": _canonical_target_type(inputs.get("target_type", ""))}
+    if inputs["target_type"] not in ALLOWED_TARGET_TYPES:
+        raise ValueError(f"unsupported input target_type: {inputs['target_type']!r}")
     prompt = render_prompt(TOOL, PROMPT_VERSION, _FIELDS, inputs)
     data, raw, usage, latency_ms = client.converse_json(
         model_id, prompt, MAX_OUTPUT_TOKENS, settings.bedrock_temperature
     )
     payload = Tool2Output(**data)  # trust boundary: reject anything off-shape
+    payload.target_type = _canonical_target_type(payload.target_type)
     _validate_against_inputs(payload)  # reject off-allowlist target type
     _apply_confidence_floor(payload)   # demote-only guardrail
 

@@ -87,7 +87,7 @@ export function createCognitoAdapter(
     },
     async login(target) {
       try { await manager.clearStaleState(); await manager.signinRedirect({ state: { returnTo: safeReturnTo(target) } }); }
-      catch { throw new AuthError("Unable to open Cognito sign in. Please try again."); }
+      catch { throw new AuthError("Unable to open sign in. Please try again."); }
     },
     async logout() {
       signedOut = true;

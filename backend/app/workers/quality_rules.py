@@ -49,9 +49,12 @@ def run_quality_rules(source: bytes, manifest: dict[str, Any] | None = None) -> 
                 minority = total - dominant_count
                 if dominant_count / total < 0.8 or minority / total > 0.2:
                     target_type = {
+                        "int": "integer",
+                        "bool": "boolean",
                         "decimal": "number",
                         "percentage": "number",
                         "identifier": "string",
+                        "identifier-like": "string",
                         "text": "string",
                         "formula": "string",
                     }.get(dominant_type, dominant_type)
