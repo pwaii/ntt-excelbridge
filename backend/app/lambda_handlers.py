@@ -38,40 +38,56 @@ def _stores() -> tuple[DynamoStore, S3Store]:
     return DynamoStore(), S3Store()
 
 
+# The primary input keeps every existing key/SK unchanged so single-input jobs
+# (and their tests) are byte-identical; only extra slots get a namespace suffix.
+def _artifact_map_key(base: str, slot: str) -> str:
+    return base if slot == "input" else f"{base}_{slot}"
+
+
+def _artifact_filename(name: str, slot: str) -> str:
+    return name if slot == "input" else f"{slot}-{name}"
+
+
+def _issue_sk(issue_id: str, slot: str) -> str:
+    return f"ISSUE#{issue_id}" if slot == "input" else f"ISSUE#{slot}#{issue_id}"
+
+
 def inspect_handler(event: dict[str, Any], context) -> dict[str, Any]:
     dynamo, s3 = _stores()
     job_id = event["job_id"]
+    slot = event.get("slot", "input")
     item = dynamo.get_job(job_id)
     if not item:
         raise ValueError("job not found")
-    source = s3.get_bytes(item["files"]["input"]["key"])
+    source = s3.get_bytes(item["files"][slot]["key"])
     manifest = inspect_bytes(source, sheet_name=item.get("config", {}).get("input_sheet"), header_row=item.get("config", {}).get("input_header_row"))
-    manifest.update({"job_id": job_id, "input_sha256": sha256(source).hexdigest()})
-    key = s3.artifact_key(job_id, "inspection", "manifest.json")
+    manifest.update({"job_id": job_id, "input_sha256": sha256(source).hexdigest(), "slot": slot})
+    key = s3.artifact_key(job_id, "inspection", _artifact_filename("manifest.json", slot))
     if not s3.object_exists(key):
         s3.put_bytes(key, manifest_json(manifest), "application/json")
     artifacts = dict(item.get("artifacts", {}))
-    artifacts["inspection"] = {"key": key, "content_type": "application/json"}
+    artifacts[_artifact_map_key("inspection", slot)] = {"key": key, "content_type": "application/json"}
     updated = dynamo.update_job(job_id, int(item["revision"]), {"status": "DETECTED", "artifacts": artifacts})
-    return {"job_id": job_id, "manifest_key": key, "revision": updated["revision"]}
+    return {"job_id": job_id, "slot": slot, "manifest_key": key, "revision": updated["revision"]}
 
 
 def quality_handler(event: dict[str, Any], context) -> dict[str, Any]:
     dynamo, s3 = _stores()
     job_id = event["job_id"]
+    slot = event.get("slot", "input")
     item = dynamo.get_job(job_id)
     if not item:
         raise ValueError("job not found")
-    source = s3.get_bytes(item["files"]["input"]["key"])
+    source = s3.get_bytes(item["files"][slot]["key"])
     manifest = inspect_bytes(source, sheet_name=item.get("config", {}).get("input_sheet"), header_row=item.get("config", {}).get("input_header_row"))
     report = run_quality_rules(source, manifest)
-    key = s3.artifact_key(job_id, "quality", "quality-report.json")
+    key = s3.artifact_key(job_id, "quality", _artifact_filename("quality-report.json", slot))
     if not s3.object_exists(key):
         s3.put_bytes(key, json.dumps(report, indent=2).encode("utf-8"), "application/json")
     for issue in report["issues"]:
-        dynamo.put_child(job_id, f"ISSUE#{issue['issue_id']}", {"entity_type": "issue", "issue_id": issue["issue_id"], "kind": issue["kind"], "summary": issue["message"], "artifact_key": key})
+        dynamo.put_child(job_id, _issue_sk(issue["issue_id"], slot), {"entity_type": "issue", "issue_id": issue["issue_id"], "kind": issue["kind"], "summary": issue["message"], "artifact_key": key, "slot": slot})
     artifacts = dict(item.get("artifacts", {}))
-    artifacts["quality"] = {"key": key, "content_type": "application/json", "issue_count": report["issue_count"]}
+    artifacts[_artifact_map_key("quality", slot)] = {"key": key, "content_type": "application/json", "issue_count": report["issue_count"]}
     if item.get("status") == "DETECTED":
         updated = item
     else:
@@ -97,9 +113,10 @@ def bedrock_handler(event: dict[str, Any], context) -> dict[str, Any]:
     # Keep the pre-AI snapshot only for input selection. The model call can be
     # slow enough for an API or another worker to advance the job revision.
     initial_revision = int(item["revision"])
+    slot = event.get("slot", "input")
     tool = event["tool"]
     if tool == "tool2" and not event.get("inputs"):
-        batch = _tool_inputs(item, s3, tool)
+        batch = _tool_inputs(item, s3, tool, slot)
         proposals = []
         for mismatch in batch.get("mismatches", []):
             proposal_inputs = {
@@ -112,7 +129,7 @@ def bedrock_handler(event: dict[str, Any], context) -> dict[str, Any]:
             proposals.append(run_tool_segment(job_id, tool, proposal_inputs, dynamo, s3))
         proposal = {"tool": tool, "proposals": proposals, "status": "proposed"}
     else:
-        inputs = event.get("inputs") or _tool_inputs(item, s3, tool)
+        inputs = event.get("inputs") or _tool_inputs(item, s3, tool, slot)
         proposal = run_tool_segment(job_id, tool, inputs, dynamo, s3)
     status_by_tool = {
         "tool3": "FORMULA_REVIEW_PENDING",
@@ -188,8 +205,8 @@ def quality_gate_handler(event: dict[str, Any], context) -> dict[str, Any]:
     return {"job_id": event["job_id"], "revision": updated["revision"], "status": updated["status"]}
 
 
-def _tool_inputs(item: dict[str, Any], s3: S3Store, tool: str) -> dict[str, Any]:
-    source = s3.get_bytes(item["files"]["input"]["key"])
+def _tool_inputs(item: dict[str, Any], s3: S3Store, tool: str, slot: str = "input") -> dict[str, Any]:
+    source = s3.get_bytes(item["files"][slot]["key"])
     manifest = inspect_bytes(source, sheet_name=item.get("config", {}).get("input_sheet"), header_row=item.get("config", {}).get("input_header_row"))
     first_sheet = manifest["sheets"][0] if manifest["sheets"] else {"headers": [], "columns": []}
     if tool == "tool1":
@@ -212,7 +229,7 @@ def _tool_inputs(item: dict[str, Any], s3: S3Store, tool: str) -> dict[str, Any]
         }
     if tool == "tool2":
         quality_report = {}
-        quality_key = item.get("artifacts", {}).get("quality", {}).get("key")
+        quality_key = item.get("artifacts", {}).get(_artifact_map_key("quality", slot), {}).get("key")
         if quality_key:
             quality_report = json.loads(s3.get_bytes(quality_key))
         type_issues = [issue for issue in quality_report.get("issues", []) if issue.get("kind") == "type_mismatch"]
@@ -284,7 +301,7 @@ def _tool_inputs(item: dict[str, Any], s3: S3Store, tool: str) -> dict[str, Any]
         main_file = item.get("files", {}).get("main")
         if not main_file:
             raise ValueError("main workbook is required for Tool #5")
-        current_rows = load_canonical_rows(s3.get_bytes(item["files"]["input"]["key"]), item.get("config", {}).get("input_sheet"), item.get("config", {}).get("input_header_row") or 1)
+        current_rows = load_canonical_rows(s3.get_bytes(item["files"][slot]["key"]), item.get("config", {}).get("input_sheet"), item.get("config", {}).get("input_header_row") or 1)
         main_rows = load_canonical_rows(s3.get_bytes(main_file["key"]), item.get("config", {}).get("main_sheet"), item.get("config", {}).get("main_header_row") or 1)
         key_column = item.get("config", {}).get("key_column")
         if not key_column:

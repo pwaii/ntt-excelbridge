@@ -290,6 +290,64 @@ def test_upload_configuration_both_review_gates_and_download_all_modes(api, stan
     assert all(row["status"] != "proposed" for row in persisted if row["id"] in decisions)
 
 
+def _dup_workbook():
+    book = Workbook()
+    sheet = book.active
+    sheet.title = "Data"
+    sheet.append(["ID", "Amount", "Status"])
+    sheet.append(["001", 2, "Old"])
+    sheet.append(["001", 2, "Old"])  # exact duplicate -> a quality issue every slot will raise
+    stream = BytesIO()
+    book.save(stream)
+    book.close()
+    return stream.getvalue()
+
+
+def test_fanout_handlers_isolate_each_input_slot(api):
+    client, store, storage, _ = api
+    response = client.post(
+        "/v1/jobs",
+        json={
+            "config": {
+                "comment_name": "Double Amount",
+                "output_header": "Double",
+                "standardize": False,
+                "update": False,
+            },
+            "input_filenames": ["current.xlsx", "current-2.xlsx"],
+        },
+    )
+    assert response.status_code == 201, response.text
+    job_id = response.json()["job"]["job_id"]
+    assert set(store.item["files"]) == {"input", "input_2"}
+    for slot, file in store.item["files"].items():
+        storage.objects[file["key"]] = _dup_workbook()
+        assert (
+            client.post(f"/v1/jobs/{job_id}/uploads/complete", json={"slot": slot}).status_code
+            == 200
+        )
+    store.item["config"].update({"input_sheet": "Data", "input_header_row": 1})
+
+    # The Map fan-out: inspect + quality run once per input slot.
+    for slot in ("input", "input_2"):
+        handlers.inspect_handler({"job_id": job_id, "slot": slot}, None)
+        handlers.quality_handler({"job_id": job_id, "slot": slot}, None)
+
+    artifacts = store.item["artifacts"]
+    # Each slot wrote its own isolated inspection + quality artifacts.
+    assert artifacts["inspection"]["key"] != artifacts["inspection_input_2"]["key"]
+    assert artifacts["quality"]["key"] != artifacts["quality_input_2"]["key"]
+    # Issues are namespaced by slot; both slots produced some and record their slot.
+    assert any(sk.startswith("ISSUE#input_2#") for sk in store.children)
+    assert any(
+        sk.startswith("ISSUE#") and not sk.startswith("ISSUE#input_2#") for sk in store.children
+    )
+    assert {child["slot"] for child in store.children.values() if child.get("entity_type") == "issue"} == {
+        "input",
+        "input_2",
+    }
+
+
 def test_review_rejects_unknown_incomplete_and_stale_decisions(api):
     client, store, storage, _ = api
     job_id = prepare(api)
