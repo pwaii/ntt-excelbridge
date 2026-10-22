@@ -48,6 +48,8 @@ class ReportItem(ReportModel):
     title: str
     severity: Literal["high", "medium", "low"] = "medium"
     reason: str
+    slot: str = "input"  # which input workbook this item belongs to
+    filename: str | None = None  # that workbook's filename, for grouping in the gate
     cells: list[CellEvidence] = Field(default_factory=list)
     sheet: str | None = None
     row: int | None = None

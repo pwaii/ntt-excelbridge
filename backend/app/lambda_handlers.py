@@ -335,9 +335,24 @@ def _ordered_input_slots(item: dict[str, Any]) -> list[str]:
     return slots or ["input"]
 
 
+def _slot_decisions(decisions: dict[str, Any], slot: str) -> dict[str, Any]:
+    """Project the combined decisions dict onto one slot, stripping the ``<slot>::``
+    prefix. Primary 'input' owns the unprefixed keys; extra inputs own their prefixed
+    keys. Mirrors review_report._slot_qualified so colliding issue ids stay distinct."""
+    result: dict[str, Any] = {}
+    for key, value in decisions.items():
+        if slot == "input":
+            if "::" not in key:
+                result[key] = value
+        elif key.startswith(f"{slot}::"):
+            result[key[len(slot) + 2:]] = value
+    return result
+
+
 def _collect_slot_changes(dynamo: DynamoStore, s3: S3Store, job_id: str, slot: str, item: dict[str, Any], config: dict[str, Any], decisions: dict[str, Any]) -> dict[str, Any]:
     """Resolve one input slot's accepted proposals + quality report into the
     mappings/type_rules/update_matches/formula that ``apply`` consumes."""
+    decisions = _slot_decisions(decisions, slot)
     source = s3.get_bytes(item["files"][slot]["key"])
     quality_report: dict[str, Any] = {}
     quality_artifact = item.get("artifacts", {}).get(_artifact_map_key("quality", slot), {})
@@ -441,6 +456,7 @@ def _collect_slot_changes(dynamo: DynamoStore, s3: S3Store, job_id: str, slot: s
         "formula": formula,
         "decision_audit": decision_audit,
         "quality_decision_audit": quality_decision_audit,
+        "decisions": decisions,  # slot-local, bare keys — use for apply_* on this slot
     }
 
 
@@ -504,7 +520,7 @@ def apply_handler(event: dict[str, Any], context) -> dict[str, Any]:
             stage, stage_audit = apply_accepted_changes(
                 change["source"],
                 quality_report=change["quality_report"],
-                decisions=decisions,
+                decisions=change["decisions"],
                 type_rules=change["type_rules"],
                 standardization_mappings=change["mappings"] if standardize else [],
                 formula=change["formula"] if not update else None,
@@ -538,7 +554,7 @@ def apply_handler(event: dict[str, Any], context) -> dict[str, Any]:
                 merged,
                 current_stages[slot] if policy == "both" else change["source"],
                 change["update_matches"],
-                decisions,
+                change["decisions"],
                 key_column=config["key_column"],
                 main_key_column=config.get("main_key_column"),
                 current_header_row=config.get("input_header_row") or 1,

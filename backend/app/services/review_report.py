@@ -26,6 +26,92 @@ def all_children(dynamo, job_id, prefix):
         cursor = following
 
 
+def _slot_qualified(slot, bare_id):
+    """Primary input keeps bare ids (back-compat); extra inputs are slot-prefixed so
+    two workbooks that share a sheet name never collide on an issue/proposal id."""
+    return bare_id if slot == "input" else f"{slot}::{bare_id}"
+
+
+_QUALITY_KINDS = {
+    "duplicate_rows": "duplicate-row",
+    "blank_row": "blank-row",
+    "blank_column": "blank-column",
+    "type_mismatch": "type-mismatch",
+}
+
+
+def _quality_rows(issues, s3, item, slot, filename, prefix):
+    """Build the review rows for one input slot's quality issues, with cell evidence
+    drawn from that slot's own workbook."""
+    workbook = None
+    source = item.get("files", {}).get(slot, {}).get("key")
+    rows = []
+    try:
+        if source and source.startswith(prefix):
+            workbook = load_workbook(BytesIO(s3.get_bytes(source)), read_only=True, data_only=False)
+        requested_rows = {}
+        for issue in issues:
+            requested_rows.setdefault(issue.get("sheet"), set()).update(issue.get("row_numbers", [])[:3])
+        samples = {}
+        if workbook:
+            for sheet_name, numbers in requested_rows.items():
+                if not numbers or sheet_name not in workbook.sheetnames:
+                    continue
+                for number, values in enumerate(
+                    workbook[sheet_name].iter_rows(
+                        min_row=min(numbers), max_row=max(numbers), max_col=8, values_only=True
+                    ),
+                    min(numbers),
+                ):
+                    if number in numbers:
+                        samples[(sheet_name, number)] = values
+        for issue in issues:
+            if issue.get("kind") not in _QUALITY_KINDS:
+                raise HTTPException(503, "Unsupported quality finding")
+            kind = _QUALITY_KINDS[issue["kind"]]
+            cells = []
+            sheet_name = issue.get("sheet")
+            row_numbers = issue.get("row_numbers", [])
+            if workbook and sheet_name in workbook.sheetnames:
+                for number in row_numbers[:3]:
+                    for column, value in enumerate(samples.get((sheet_name, number), ()), 1):
+                        cells.append(
+                            CellEvidence(
+                                coordinate=f"{get_column_letter(column)}{number}",
+                                before=None if value is None else str(value),
+                                after="Keep first row; remove later duplicates"
+                                if kind == "duplicate-row"
+                                else "Remove row if accepted",
+                            )
+                        )
+            rows.append(
+                ReportItem(
+                    id=_slot_qualified(slot, issue["issue_id"]),
+                    kind=kind,
+                    title=issue["message"],
+                    reason=issue["message"]
+                    + (f" Rows: {row_numbers[:50]}" if row_numbers else "")
+                    + (
+                        " Informational finding; no supported direct mutation is proposed."
+                        if kind in {"type-mismatch", "blank-column"}
+                        else ""
+                    ),
+                    slot=slot,
+                    filename=filename,
+                    sheet=sheet_name,
+                    row=row_numbers[0] if row_numbers else None,
+                    column=str(issue["column"]) if issue.get("column") else None,
+                    cells=cells,
+                    requires_decision=kind not in {"type-mismatch", "blank-column"},
+                    affected_count=len(row_numbers) or None,
+                )
+            )
+        return rows
+    finally:
+        if workbook:
+            workbook.close()
+
+
 def build_report(item, stage, dynamo, s3):
     cache = {}
     prefix = s3.job_prefix(item["job_id"]) + "/"
@@ -50,74 +136,18 @@ def build_report(item, stage, dynamo, s3):
                 raise HTTPException(503, "Review source is unavailable")
             workbook = load_workbook(BytesIO(s3.get_bytes(source)), read_only=True, data_only=False)
         if stage == "quality":
-            key = item.get("artifacts", {}).get("quality", {}).get("key")
-            if not key:
+            input_slots = [s for s in (["input"] + [f"input_{i}" for i in range(2, 9)]) if s in item.get("files", {})] or ["input"]
+            found_any = False
+            for slot in input_slots:
+                artifacts_map = item.get("artifacts", {})
+                key = artifacts_map.get("quality" if slot == "input" else f"quality_{slot}", {}).get("key")
+                if not key:
+                    continue
+                found_any = True
+                filename = item.get("files", {}).get(slot, {}).get("filename")
+                rows.extend(_quality_rows(artifact(key).get("issues", []), s3, item, slot, filename, prefix))
+            if not found_any:
                 raise HTTPException(409, "The quality report is not ready")
-            kinds = {
-                "duplicate_rows": "duplicate-row",
-                "blank_row": "blank-row",
-                "blank_column": "blank-column",
-                "type_mismatch": "type-mismatch",
-            }
-            issues = artifact(key).get("issues", [])
-            requested_rows = {}
-            for issue in issues:
-                requested_rows.setdefault(issue.get("sheet"), set()).update(
-                    issue.get("row_numbers", [])[:3]
-                )
-            samples = {}
-            if workbook:
-                for sheet_name, numbers in requested_rows.items():
-                    if not numbers or sheet_name not in workbook.sheetnames:
-                        continue
-                    # One bounded scan per sheet, including real empty cells.
-                    for number, values in enumerate(
-                        workbook[sheet_name].iter_rows(
-                            min_row=min(numbers), max_row=max(numbers), max_col=8, values_only=True
-                        ),
-                        min(numbers),
-                    ):
-                        if number in numbers:
-                            samples[(sheet_name, number)] = values
-            for issue in issues:
-                if issue.get("kind") not in kinds:
-                    raise HTTPException(503, "Unsupported quality finding")
-                kind = kinds[issue["kind"]]
-                cells = []
-                sheet_name = issue.get("sheet")
-                row_numbers = issue.get("row_numbers", [])
-                if workbook and sheet_name in workbook.sheetnames:
-                    for number in row_numbers[:3]:
-                        for column, value in enumerate(samples.get((sheet_name, number), ()), 1):
-                            cells.append(
-                                CellEvidence(
-                                    coordinate=f"{get_column_letter(column)}{number}",
-                                    before=None if value is None else str(value),
-                                    after="Keep first row; remove later duplicates"
-                                    if kind == "duplicate-row"
-                                    else "Remove row if accepted",
-                                )
-                            )
-                rows.append(
-                    ReportItem(
-                        id=issue["issue_id"],
-                        kind=kind,
-                        title=issue["message"],
-                        reason=issue["message"]
-                        + (f" Rows: {row_numbers[:50]}" if row_numbers else "")
-                        + (
-                            " Informational finding; no supported direct mutation is proposed."
-                            if kind in {"type-mismatch", "blank-column"}
-                            else ""
-                        ),
-                        sheet=sheet_name,
-                        row=row_numbers[0] if row_numbers else None,
-                        column=str(issue["column"]) if issue.get("column") else None,
-                        cells=cells,
-                        requires_decision=kind not in {"type-mismatch", "blank-column"},
-                        affected_count=len(row_numbers) or None,
-                    )
-                )
 
         for proposal in all_children(dynamo, item["job_id"], "PROPOSAL#"):
             tool = proposal.get("tool")
@@ -126,12 +156,16 @@ def build_report(item, stage, dynamo, s3):
             ):
                 continue
             payload = artifact(proposal.get("artifact_key"))["payload"]
-            identity = proposal["proposal_id"]
+            proposal_slot = proposal.get("slot", "input")
+            proposal_filename = item.get("files", {}).get(proposal_slot, {}).get("filename")
+            identity = _slot_qualified(proposal_slot, proposal["proposal_id"])
             index = proposal.get("proposal_index")
             if tool == "tool1":
                 rows.append(
                     ReportItem(
                         id=identity,
+                        slot=proposal_slot,
+                        filename=proposal_filename,
                         kind="semantic",
                         title=payload["meaning"],
                         reason=payload["interpretation"],
@@ -147,6 +181,8 @@ def build_report(item, stage, dynamo, s3):
                 rows.append(
                     ReportItem(
                         id=identity,
+                        slot=proposal_slot,
+                        filename=proposal_filename,
                         kind="normalization-rule",
                         title=f"Normalize {payload['column_id']}",
                         column=payload["column_id"],
@@ -258,6 +294,8 @@ def build_report(item, stage, dynamo, s3):
                 rows.append(
                     ReportItem(
                         id=identity,
+                        slot=proposal_slot,
+                        filename=proposal_filename,
                         kind="formula",
                         title=f"Formula: {payload['target_header']}",
                         reason=payload["explanation"],
@@ -280,6 +318,8 @@ def build_report(item, stage, dynamo, s3):
                 rows.append(
                     ReportItem(
                         id=identity,
+                        slot=proposal_slot,
+                        filename=proposal_filename,
                         kind="standardization",
                         title="Standardization mapping"
                         if index is not None
@@ -321,6 +361,8 @@ def build_report(item, stage, dynamo, s3):
                 rows.append(
                     ReportItem(
                         id=identity,
+                        slot=proposal_slot,
+                        filename=proposal_filename,
                         kind="update-match",
                         title=f"{match_type}: {match['current_row_id']}",
                         reason=match["reason"],

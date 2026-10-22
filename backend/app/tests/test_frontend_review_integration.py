@@ -348,6 +348,37 @@ def test_fanout_handlers_isolate_each_input_slot(api):
     }
 
 
+def test_combined_quality_gate_lists_every_slot_without_id_collision(api):
+    client, store, storage, _ = api
+    response = client.post(
+        "/v1/jobs",
+        json={
+            "config": {"comment_name": "Double Amount", "output_header": "Double",
+                       "standardize": False, "update": False},
+            "input_filenames": ["current.xlsx", "current-2.xlsx"],
+        },
+    )
+    job_id = response.json()["job"]["job_id"]
+    for slot, file in store.item["files"].items():
+        storage.objects[file["key"]] = _dup_workbook()  # identical -> identical issue_ids
+        client.post(f"/v1/jobs/{job_id}/uploads/complete", json={"slot": slot})
+    store.item["config"].update({"input_sheet": "Data", "input_header_row": 1})
+
+    for slot in ("input", "input_2"):
+        handlers.inspect_handler({"job_id": job_id, "slot": slot}, None)
+        handlers.quality_handler({"job_id": job_id, "slot": slot}, None)
+    handlers.quality_gate_handler({"job_id": job_id}, None)
+
+    rows = report(client, store, "quality")
+    # Both workbooks' issues appear (the single-slot report would have shown only one),
+    # grouped by filename, with distinct ids despite sharing the same sheet/issue_id.
+    by_slot = {row["slot"] for row in rows}
+    assert by_slot == {"input", "input_2"}
+    assert {row["filename"] for row in rows} == {"current.xlsx", "current-2.xlsx"}
+    assert len({row["id"] for row in rows}) == len(rows)  # no collision -> no 503
+    assert any(row["id"].startswith("input_2::") for row in rows)
+
+
 def test_apply_emits_one_output_per_input_slot(api):
     client, store, storage, _ = api
     response = client.post(
@@ -385,13 +416,18 @@ def test_apply_emits_one_output_per_input_slot(api):
             {"proposal_id": f"tool3-{slot}", "tool": "tool3", "artifact_key": key, "slot": slot},
         )
 
-    # Accept every quality issue and every formula proposal across both slots.
+    # Accept every quality issue and formula proposal across both slots. Secondary
+    # slots use slot-qualified keys (input_2::...), as the combined gate presents them;
+    # the primary slot keeps bare keys. Both slots' identical issue_id stays distinct.
+    def qualify(slot, bare):
+        return bare if slot == "input" else f"{slot}::{bare}"
+
     decisions = {
-        child["issue_id"]: {"decision": "accept"}
+        qualify(child["slot"], child["issue_id"]): {"decision": "accept"}
         for child in store.children.values()
         if child.get("entity_type") == "issue"
     }
-    decisions.update({f"tool3-{slot}": {"decision": "accept"} for slot in ("input", "input_2")})
+    decisions.update({qualify(slot, f"tool3-{slot}"): {"decision": "accept"} for slot in ("input", "input_2")})
     store.item["last_review_key"] = storage.artifact_key(job_id, "reviews", "r.json")
     storage.put_bytes(store.item["last_review_key"], json.dumps({"decisions": decisions}).encode(), "application/json")
 
