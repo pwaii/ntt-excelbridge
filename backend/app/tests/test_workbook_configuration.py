@@ -113,6 +113,43 @@ def selections(client, id, both=False, update=False):
     return values
 
 
+def test_multi_input_job_configures_and_starts_through_the_api(api):
+    client, store, storage = api
+    response = client.post(
+        "/v1/jobs",
+        json={
+            "config": {"comment_name": "Profit", "output_header": "profit"},
+            "input_filenames": ["current.xlsx", "current-2.xlsx"],
+        },
+    )
+    assert response.status_code == 201
+    id = response.json()["job"]["job_id"]
+    for slot, file in store.item["files"].items():
+        storage.objects[file["key"]] = workbook_bytes(slot)
+        client.post(f"/v1/jobs/{id}/uploads/complete", json={"slot": slot})
+
+    chosen = {}
+    for slot in ("input", "input_2"):
+        data = client.get(f"/v1/jobs/{id}/workbooks/{slot}/metadata").json()
+        chosen[slot] = {
+            "sheet_name": "Data",
+            "header_row": 3,
+            "header_confirmed": True,
+            "key_column": None,
+            "workbook_version": data["workbook_version"],
+        }
+    saved = client.put(
+        f"/v1/jobs/{id}/configuration",
+        json={"expected_revision": store.item["revision"], "selections": chosen},
+    )
+    assert saved.status_code == 200, saved.text
+    assert set(saved.json()["job"]["workbook_selections"]) == {"input", "input_2"}
+
+    started = client.post(f"/v1/jobs/{id}/start", params={"expected_revision": store.item["revision"]})
+    assert started.status_code == 200, started.text
+    assert started.json()["job"]["status"] == "QUALITY_REVIEW_PENDING"
+
+
 def test_quality_segment_fans_out_over_every_input_slot(api):
     from app.workers.orchestrator import run_quality_segment
 
