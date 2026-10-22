@@ -21,51 +21,51 @@ async function render(status = "COMPLETED", artifacts: Record<string, { key: str
 }
 it("shows actual completion and only prepares a published artifact after a human request", async () => {
   const { fetcher } = await render();
-  expect(container.textContent).toContain("Backend processing completed"); expect(container.textContent).toContain("Not published by backend");
+  expect(container.textContent).toContain("Your workbook is ready"); expect(container.textContent).toContain("No supporting reports are available");
   expect(container.querySelector(`a[href^="${origin}"]`)).toBeNull(); expect(fetcher).toHaveBeenCalledOnce();
   fetcher.mockResolvedValueOnce(new Response(JSON.stringify(signed)));
-  await act(async () => button("Generate download link").click());
+  await act(async () => button("Prepare download").click());
   const link = container.querySelector<HTMLAnchorElement>(`a[href^="${origin}"]`)!;
   expect(link.href).toBe(signed.url); expect(link.rel).toContain("noreferrer"); expect(link.getAttribute("referrerpolicy")).toBe("no-referrer");
   expect(fetcher).toHaveBeenCalledTimes(2);
-  expect(container.textContent).toContain("does not certify AI corrections");
+  expect(container.textContent).toContain("Check the workbook before using it");
 });
 it.each(["INSPECTING", "QUALITY_REVIEW_PENDING", "FAILED", "CANCELLED"])("offers progress recovery and no downloads at %s", async (status) => {
   await render(status); expect(container.textContent).toContain("Result is not ready");
   expect(container.querySelector(`a[href="/jobs/${base.job.job_id}"]`)).not.toBeNull();
-  expect(container.textContent).not.toContain("Generate download link");
+  expect(container.textContent).not.toContain("Prepare download");
 });
 it("removes an expired link and requests a fresh URL", async () => {
   vi.useFakeTimers(); const { fetcher } = await render();
   fetcher.mockResolvedValueOnce(new Response(JSON.stringify(signed)));
-  await act(async () => button("Generate download link").click());
+  await act(async () => button("Prepare download").click());
   act(() => vi.advanceTimersByTime(60_001));
   expect(container.textContent).toContain("Link expired"); expect(container.querySelector(`a[href^="${origin}"]`)).toBeNull();
   fetcher.mockResolvedValueOnce(new Response(JSON.stringify({ ...signed, url: `${origin}/fresh.xlsx` })));
-  await act(async () => button("Generate new link").click());
+  await act(async () => button("Refresh download link").click());
   expect(container.querySelector<HTMLAnchorElement>(`a[href^="${origin}"]`)?.href).toBe(`${origin}/fresh.xlsx`);
 });
 it("reports request errors without advertising a download or retrying automatically", async () => {
   const { fetcher } = await render(); fetcher.mockResolvedValueOnce(new Response(JSON.stringify({ detail: "Not ready" }), { status: 404 }));
-  await act(async () => button("Generate download link").click());
+  await act(async () => button("Prepare download").click());
   expect(container.querySelector('[role="alert"]')).not.toBeNull(); expect(container.querySelector(`a[href^="${origin}"]`)).toBeNull(); expect(fetcher).toHaveBeenCalledTimes(2);
 });
 it("clears a previously generated link when refreshing authoritative job state", async () => {
   const { fetcher } = await render(); fetcher.mockResolvedValueOnce(new Response(JSON.stringify(signed)));
-  await act(async () => button("Generate download link").click());
+  await act(async () => button("Prepare download").click());
   fetcher.mockResolvedValueOnce(new Response(JSON.stringify({ ...base, job: { ...base.job, status: "FAILED" } })));
   await act(async () => button("Refresh result").click());
   expect(container.textContent).toContain("FAILED"); expect(container.querySelector(`a[href^="${origin}"]`)).toBeNull();
 });
 it("blocks a signed link for a different artifact key", async () => {
   const { fetcher } = await render(); fetcher.mockResolvedValueOnce(new Response(JSON.stringify({ ...signed, key: "jobs/another/output.xlsx" })));
-  await act(async () => button("Generate download link").click());
+  await act(async () => button("Prepare download").click());
   expect(container.querySelector('[role="alert"]')?.textContent).toContain("does not match this job");
   expect(container.querySelector(`a[href^="${origin}"]`)).toBeNull();
 });
 it("renders an empty published-artifacts list without inventing output or counts", async () => {
   await render("COMPLETED", {});
-  expect(container.querySelectorAll('[aria-label="Artifact downloads"] article')).toHaveLength(6);
+  expect(container.querySelectorAll('[aria-label="Artifact downloads"] article')).toHaveLength(1);
   expect(container.querySelectorAll('[aria-label="Artifact downloads"] button')).toHaveLength(0);
   expect(container.textContent).toContain("counts, formula syntax results");
 });

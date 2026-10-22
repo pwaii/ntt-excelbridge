@@ -1,7 +1,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PostUploadConfiguration } from "@/components/job/post-upload-configuration";
 import { JobProgressPage } from "@/pages/job-progress-page";
 import { createMetadataFlow, type MetadataFlow } from "@/metadata/controller";
@@ -30,14 +30,14 @@ describe("post-upload UI with synthetic normalized metadata only", () => {
   it("shows loading without inventing sheets or counts", async () => {
     const adapter = mockMetadataAdapter(); adapter.load = () => new Promise(() => {});
     await render(createMetadataFlow("mock-job", metadataForm(), adapter));
-    expect(container.textContent).toContain("Loading backend workbook metadata");
+    expect(container.textContent).toContain("Loading worksheets");
     expect(container.querySelector("select")?.options).toHaveLength(1);
     expect(container.textContent).not.toContain("Mock source sheet");
     expect(button("Start workflow").disabled).toBe(true);
   });
   it("shows honest unavailable state and blocks Start without an adapter", async () => {
     await render(createMetadataFlow("mock-job", metadataForm()));
-    expect(container.textContent).toContain("Metadata unavailable");
+    expect(container.textContent).toContain("Worksheet details are unavailable");
     expect(container.textContent).not.toContain("Detected header row:");
     expect(button("Start workflow").disabled).toBe(true);
   });
@@ -50,11 +50,11 @@ describe("post-upload UI with synthetic normalized metadata only", () => {
     await act(async () => button("Confirm header row").click());
     expect(button("Start workflow").disabled).toBe(true);
     await select("current-metadata-key", "mock-key-id");
-    expect(button("Save and confirm configuration").disabled).toBe(true);
+    expect(button("Save setup").disabled).toBe(true);
     await select("main-metadata-sheet", mockSheet.sheetName);
     await act(async () => button("Confirm header row").click());
     await select("main-metadata-key", "mock-key-id");
-    await act(async () => button("Save and confirm configuration").click());
+    await act(async () => button("Save setup").click());
     expect(button("Start workflow").disabled).toBe(false);
     await act(async () => button("Start workflow").click());
     expect(container.querySelector("h1")?.textContent).toBe("Job progress");
@@ -100,7 +100,7 @@ describe("post-upload UI with synthetic normalized metadata only", () => {
     await render(flow); await select("current-metadata-sheet", mockSheet.sheetName);
     expect(container.textContent).toContain("limited preview");
     expect(container.textContent).toContain("Row count not provided");
-    expect(container.textContent).toContain("NEW version derived from the main workbook");
+    expect(container.textContent).toContain("new main workbook");
     expect(container.textContent).toContain("skipped and reported");
     expect(button("Start workflow").disabled).toBe(true);
   });
@@ -120,12 +120,27 @@ describe("post-upload UI with synthetic normalized metadata only", () => {
     for (const role of standardize ? ["current", "main"] : ["current"]) {
       await select(`${role}-metadata-sheet`, mockSheet.sheetName);
       expect(container.querySelector(`#${role}-metadata-key`)).toBeNull();
-      expect(button("Save and confirm configuration").disabled).toBe(true);
+      expect(button("Save setup").disabled).toBe(true);
       await act(async () => button("Confirm header row").click());
     }
     expect(container.textContent).not.toContain("Key column");
-    expect(button("Save and confirm configuration").disabled).toBe(false);
-    await act(async () => button("Save and confirm configuration").click());
+    expect(button("Save setup").disabled).toBe(false);
+    await act(async () => button("Save setup").click());
     expect(button("Start workflow").disabled).toBe(false);
   });
+});
+
+it.each([false, true])("saves before starting with one explicit action, and never starts if saving fails (failure: %s)", async (failure) => {
+  const snapshot = mockSnapshot();
+  const adapter = mockMetadataAdapter({ ...snapshot, workbooks: { current: { ...snapshot.workbooks.current!, keyRule: "not-applicable" } } });
+  const operations: string[] = [];
+  adapter.persistSelections = vi.fn(async (_id, _selection, selectionKey) => { operations.push("save"); if (failure) throw new Error("Synthetic save failure"); return { selectionKey, serverRevision: "saved-revision" }; });
+  adapter.start = vi.fn(async () => { operations.push("start"); return { accepted: true as const, jobId: "mock-job", statusLabel: "INSPECTING" }; });
+  await render(createMetadataFlow("mock-job", metadataForm(), adapter));
+  await select("current-metadata-sheet", mockSheet.sheetName);
+  await act(async () => button("Confirm header row").click());
+  expect(button("Start workflow").disabled).toBe(false);
+  await act(async () => { button("Start workflow").click(); button("Start workflow").click(); });
+  expect(operations).toEqual(failure ? ["save"] : ["save", "start"]);
+  expect(adapter.start).toHaveBeenCalledTimes(failure ? 0 : 1);
 });

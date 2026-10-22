@@ -35,8 +35,14 @@ it("renders safe cell evidence, draft states and requires an explicit submission
   expect(container.textContent).toContain("Draft: accept"); expect(submit).not.toHaveBeenCalled(); expect(button("Submit review").disabled).toBe(true);
   act(() => container.querySelector<HTMLInputElement>('section:last-child input[type="checkbox"]')!.click());
   await act(async () => button("Submit review").click());
-  expect(submit).toHaveBeenCalledTimes(1); expect(container.textContent).toContain("Review recorded by backend");
-  expect(container.textContent).toContain("does not prove that the next workflow segment has started");
+  expect(submit).toHaveBeenCalledTimes(1); expect(container.textContent).toContain("Review ID:");
+  expect(container.textContent).toContain("Check job progress for processing status");
+  const submittedReview = container.querySelector<HTMLDetailsElement>(".review-content")!;
+  expect(submittedReview.open).toBe(false);
+  act(() => submittedReview.querySelector("summary")!.click());
+  expect(submittedReview.open).toBe(true);
+  expect(container.textContent).toContain("Submitted: accept");
+  expect(container.querySelector(".review-submit")).toBeNull();
 });
 it("sorts unknown/low confidence first, filters types and retains hidden drafts", async () => {
   const { flow } = await render(qualitySnapshot({ items: [qualityItem({ id: "high", confidence: 0.99 }), qualityItem({ id: "low", title: "Low confidence", confidence: 0.2 }), qualityItem({ id: "unknown", title: "Unknown confidence", confidence: undefined, kind: "blank-row" })] }));
@@ -50,7 +56,7 @@ it("sorts unknown/low confidence first, filters types and retains hidden drafts"
 it("requires a reason for ignore and shows pattern-level context rather than per-cell decisions", async () => {
   await render(qualitySnapshot({ items: [qualityItem({ kind: "normalization-rule", pattern: "DD/MM/YYYY", affectedCount: 2000 })] }));
   act(() => button("Date format differs").click()); change(select("Decision for this finding"), "ignore");
-  expect(container.textContent).toContain("2000 affected cells reported by backend");
+  expect(container.textContent).toContain("2000 affected cells");
   expect(container.querySelector('[role="alert"]')?.textContent).toContain("reason is required");
   expect(button("Submit review").disabled).toBe(true); expect(container.querySelectorAll("select")).toHaveLength(6);
 });
@@ -62,11 +68,16 @@ it("paginates and windows a large report with keyboard-accessible issue navigati
   act(() => button("Finding 50").click()); act(() => button("Next issue").click());
   expect(container.querySelector("#finding-details")?.parentElement?.parentElement?.textContent).toContain("Finding 51");
   const scroller = container.querySelector<HTMLElement>('[aria-label="Scrollable quality findings"]')!;
-  act(() => { scroller.scrollTop = 2160; scroller.dispatchEvent(new Event("scroll", { bubbles: true })); });
+  act(() => { scroller.scrollTop = 1680; scroller.dispatchEvent(new Event("scroll", { bubbles: true })); });
   expect(button("Finding 80")).toBeTruthy(); expect(container.querySelectorAll("tbody button").length).toBeLessThanOrEqual(10);
 });
 it("shows an honest empty report and never enables an empty review submission", async () => {
-  await render(qualitySnapshot({ items: [] })); expect(container.textContent).toContain("contains no findings"); expect(button("Submit review").disabled).toBe(true);
+  await render(qualitySnapshot({ items: [] }));
+  expect(container.textContent).toContain("contains no findings");
+  expect(container.querySelector('.review-submit')).toBeNull();
+  expect(container.querySelector("select")).toBeNull();
+  expect(container.querySelector('[aria-label="Bulk review"]')).toBeNull();
+  expect(container.querySelector(`a[href="/jobs/${qualityJobId}"]`)?.textContent).toContain("View job progress");
 });
 it("shows loading and failure states without displaying raw thrown values", async () => {
   let reject!: (reason: Error) => void;
@@ -75,13 +86,35 @@ it("shows loading and failure states without displaying raw thrown values", asyn
   expect(container.textContent).toContain("Loading quality review");
   await act(async () => reject(new Error("private-workbook-data")));
   expect(container.textContent).toContain("could not be loaded"); expect(container.textContent).not.toContain("private-workbook-data");
+  expect(button("Reload review").disabled).toBe(false);
 });
-it("marks only actual timeline observations and links to the real quality gate", () => {
+it("shows finished prerequisites and links only to the current review gate", () => {
   const receipt = qualityReceipt();
   const job = { ...receipt.job, config: { ...receipt.job.config, conflict_policy: "reject_all" as const }, status: "QUALITY_REVIEW_PENDING" as const };
   act(() => root.render(<MemoryRouter><JobTimeline job={job} observed={["INSPECTING", "QUALITY_REVIEW_PENDING"]} /></MemoryRouter>));
   expect(container.querySelectorAll('[aria-current="step"]')).toHaveLength(1);
   expect(container.querySelector('[aria-current="step"]')?.textContent).toContain("Quality review");
-  expect(container.querySelector("li")?.textContent).toContain("Not observed");
+  expect(container.querySelector("li")?.textContent).toContain("Complete");
   expect(container.querySelector("a")?.getAttribute("href")).toBe(`/jobs/${qualityJobId}/quality-review`);
+});
+
+it("offers filter recovery instead of treating zero filtered rows as an empty report", async () => {
+  await render(qualitySnapshot({ items: [qualityItem({ severity: "medium" })] }));
+  change(select("Severity"), "high");
+  expect(container.textContent).toContain("No findings match these filters.");
+  expect(container.querySelector('[aria-label="Empty review"]')).toBeNull();
+  act(() => button("Show all items").click());
+  expect(button("Date format differs")).toBeTruthy();
+});
+
+it("opens finding details and returns to the list without discarding a draft", async () => {
+  const { flow } = await render();
+  act(() => button("Date format differs").click());
+  expect(container.querySelector(".review-split")?.getAttribute("data-detail-open")).toBe("true");
+  change(select("Decision for this finding"), "accept");
+  act(() => button("All findings").click());
+  expect(container.querySelector(".review-split")?.getAttribute("data-detail-open")).toBe("false");
+  expect(flow.getSnapshot().drafts["issue-1"]?.decision).toBe("accept");
+  act(() => button("Date format differs").click());
+  expect(select("Decision for this finding").value).toBe("accept");
 });

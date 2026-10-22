@@ -38,3 +38,11 @@ sample-data/*.xlsx
 
 # Bedrock response cache (Day-6 eval / demo repeat runs)
 backend/.cache/
+
+# Local design-review captures and tool sessions
+.impeccable/review/
+.impeccable/questions/
+.impeccable/mocks/
+
+# Generated frontend design inspection
+.taste-skill/

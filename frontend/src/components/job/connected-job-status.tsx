@@ -4,15 +4,16 @@ import { createJobServices } from "@/api/job-services";
 import { ApiError } from "@/api/errors";
 import type { BackendJob } from "@/api/jobs-api";
 import { Button } from "@/components/ui/button";
+import { WorkflowLoading } from "@/components/ui/workflow-loading";
 import { workflowConfigurationSchema } from "@/schemas/job-creation";
 import { createMetadataFlow } from "@/metadata/controller";
 import { createBackendMetadataAdapter } from "@/metadata/backend-adapter";
 import { PostUploadConfiguration } from "./post-upload-configuration";
 import { JobTimeline } from "./job-timeline";
-import { JobStatusBadge } from "./job-status-badge";
+import { CompletedJobOutput } from "./result-workspace";
 import { RefreshCw } from "lucide-react";
 
-// Real status reconciliation with capped polling and observed-only phase history.
+// Real status reconciliation with capped polling and server-owned workflow state.
 export function ConnectedJobStatus({ jobId }: { jobId: string }) {
   const auth = useAuth();
   const getToken = useRef(auth.getValidToken); getToken.current = auth.getValidToken;
@@ -69,25 +70,21 @@ export function ConnectedJobStatus({ jobId }: { jobId: string }) {
       if (!controller.signal.aborted) setLoading(false);
     }
   }
-  return <section aria-labelledby="backend-job-status" className="mt-5 min-w-0 space-y-5">
-    <div className="panel p-5 sm:p-6">
-    <div className="flex flex-wrap items-center justify-between gap-3"><h2 id="backend-job-status" className="text-base font-semibold">Job details</h2>{job && <JobStatusBadge status={job.status} />}</div>
-    <p className="mt-2 break-all text-xs text-muted-foreground">Job ID: {jobId}</p>
-    {!ready && <p role="note" className="text-sm text-muted-foreground">Configure Cognito and the backend JWT type, then sign in to load this job.</p>}
-    {loading && <p role="status" className="mt-4 text-sm text-muted-foreground">Loading backend job status…</p>}
-    {error && <p role="alert" className="notice notice-error mt-4 break-words">{error}</p>}
-    {job && <dl className="mt-5 grid gap-x-6 gap-y-4 border-t pt-4 text-sm sm:grid-cols-2">
-      <div><dt className="text-muted-foreground">Status reported by backend</dt><dd className="mt-1 break-words font-medium">{job.status}</dd></div>
-      <div><dt className="text-muted-foreground">Server revision</dt><dd className="mt-1 font-medium">{job.revision}</dd></div>
-      {Object.entries(job.files ?? {}).map(([slot, file]) => <div key={slot}><dt className="text-muted-foreground">{slot === "input" ? "Current workbook" : "Main workbook"}</dt><dd className="mt-1 break-all">{file.filename} — {file.uploaded ? "Backend-confirmed upload" : "Upload not confirmed"}</dd></div>)}
-    </dl>}
-    <div className="action-buttons mt-5"><Button type="button" variant="outline" disabled={!ready || !services.api || loading} aria-busy={loading} onClick={() => { void load(); }}><RefreshCw aria-hidden="true" />Refresh job status</Button>
-    {job?.status === "FAILED" && <Button type="button" variant="outline" disabled={!ready || !services.api || loading || Boolean(error)} onClick={() => { void retry(); }}>Retry failed processing</Button>}</div>
-    {job?.error_code && <p role="note" className="notice notice-error mt-4 break-words">{job.error_code}{job.error_detail ? `: ${job.error_detail}` : ""}</p>}
-    {job && ["DRAFT", "UPLOADING"].includes(job.status) && <p className="notice mt-4 text-xs text-muted-foreground">Upload is incomplete. Returning to this page does not restore selected files or issue new upload links.</p>}
-    {job && ["COMPLETED", "FAILED", "CANCELLED", "COST_GUARD_REACHED"].includes(job.status) && <p role="status" className="mt-4 text-xs text-muted-foreground">Workflow finished with backend status: {job.status}. Automatic polling stopped.</p>}
-    </div>
-    {job && <JobTimeline job={job} observed={observed} />}
+  return <section aria-labelledby="backend-job-status" className="job-workspace">
+    <div className="workspace-toolbar"><h2 id="backend-job-status" className="sr-only">Job details</h2><span className="truncate text-xs text-muted-foreground">{job?.files?.input?.filename ?? "Connecting to your workflow"}</span><Button type="button" variant="ghost" size="sm" disabled={!ready || !services.api || loading} aria-busy={loading} onClick={() => { void load(); }}><RefreshCw aria-hidden="true" />Refresh job status</Button></div>
+    {!ready && <p role="note" className="notice">Sign in to load this workflow. If it remains unavailable, check your connection settings.</p>}
+    {loading && !job && <WorkflowLoading label="Loading your workflow..." />}
+    {error && <p role="alert" className="notice notice-error break-words">{error}</p>}
+    {job?.status === "COMPLETED" && services.api && <CompletedJobOutput key={`${jobId}-${job.revision}`} job={job} api={services.api} showReports={false} />}
+    {job && <JobTimeline job={job} observed={observed} showSummary={job.status !== "COMPLETED"} />}
+
+    {job?.error_code && <div role="alert" className="notice notice-error"><p className="font-medium">Processing needs attention</p>{job.error_detail && <p className="mt-1 break-words">{job.error_detail}</p>}<details className="mt-2 text-xs"><summary className="cursor-pointer">Error details</summary><p className="mt-2 break-all">{job.error_code}</p></details></div>}
+    {job?.status === "FAILED" && <div className="flex flex-wrap items-center gap-3"><Button type="button" variant="outline" disabled={!ready || !services.api || loading || Boolean(error)} onClick={() => { void retry(); }}>Retry failed processing</Button><p className="text-xs text-muted-foreground">No need to upload again.</p></div>}
+    {job && ["DRAFT", "UPLOADING"].includes(job.status) && <p className="notice text-sm">Upload is incomplete. Selected files cannot be restored after leaving the upload page.</p>}
     {resumeFlow && <PostUploadConfiguration flow={resumeFlow} onStarted={() => { void load(); }} />}
+    {job && <details className="section-disclosure"><summary>Workflow details</summary><dl className="job-context"><div><dt>Requested column</dt><dd>{job.config.output_header || job.config.comment_name}</dd></div><div><dt>Worksheet</dt><dd>{job.config.input_sheet || job.workbook_selections?.input?.sheet_name || "Not reported"}</dd></div><div><dt>Last updated</dt><dd><time dateTime={job.updated_at}>{new Date(job.updated_at).toLocaleString()}</time></dd></div></dl><dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2">
+      {Object.entries(job.files ?? {}).map(([slot, file]) => <div key={slot}><dt className="text-xs text-muted-foreground">{slot === "input" ? "Current workbook" : "Main workbook"}</dt><dd className="mt-1 break-all">{file.filename}</dd><dd className="mt-1 text-xs text-muted-foreground">{file.uploaded ? "Upload confirmed" : "Upload not confirmed"}</dd></div>)}
+      <div><dt className="text-xs text-muted-foreground">Job ID</dt><dd className="mt-1 break-all">{jobId}</dd></div><div><dt className="text-xs text-muted-foreground">Server status / revision</dt><dd className="mt-1 break-all">{job.status} / {job.revision}</dd></div>
+    </dl></details>}
   </section>;
 }

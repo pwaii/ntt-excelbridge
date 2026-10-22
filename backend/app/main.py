@@ -2,6 +2,7 @@
 import logging
 from uuid import uuid4
 
+from botocore import exceptions as botocore_exceptions
 from botocore.exceptions import (
     ClientError,
     CredentialRetrievalError,
@@ -64,7 +65,7 @@ async def aws_credentials_error(request: Request, error: Exception) -> JSONRespo
     return JSONResponse(
         status_code=503,
         content={
-            "detail": "AWS credentials are missing or expired; run aws sso login --profile finpilot and restart the backend",
+            "detail": "AWS credentials are missing or expired; renew the configured AWS profile login and restart the backend",
             "request_id": request_id,
             "error_code": "AWS_CREDENTIALS_EXPIRED",
         },
@@ -73,6 +74,11 @@ async def aws_credentials_error(request: Request, error: Exception) -> JSONRespo
 
 for _credential_error in AWS_CREDENTIAL_ERRORS:
     app.add_exception_handler(_credential_error, aws_credentials_error)
+
+# AWS CLI login profiles use this exception in newer botocore releases.
+_login_refresh_error = getattr(botocore_exceptions, "LoginRefreshRequired", None)
+if _login_refresh_error is not None:
+    app.add_exception_handler(_login_refresh_error, aws_credentials_error)
 
 
 @app.exception_handler(ProfileNotFound)

@@ -9,9 +9,9 @@ interface FormSectionProps {
 
 export function FormSection({ id, title, required, children }: FormSectionProps) {
   return (
-    <section aria-labelledby={`${id}-title`} className="min-w-0 px-5 py-5 sm:px-6">
-      <h2 id={`${id}-title`} tabIndex={-1} className="mb-3 scroll-mt-6 rounded text-sm font-semibold">{title}{required && <span className="ml-1 text-primary" aria-hidden="true">*</span>}</h2>
-      {children}
+    <section aria-labelledby={`${id}-title`} className="form-section">
+      <h2 id={`${id}-title`} tabIndex={-1} className="scroll-mt-4 rounded">{title}{required && <span className="ml-1 text-primary" aria-hidden="true">*</span>}</h2>
+      <div className="min-w-0">{children}</div>
     </section>
   );
 }

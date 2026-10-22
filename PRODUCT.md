@@ -133,7 +133,7 @@ Keep terminology consistent:
 - **Syntax verified:** formula checks passed within supported constraints, not a
   calculated or financially validated result.
 
-The visible application currently uses the name `XLSX Data Workflow`; the
+The visible application currently uses the name `Pilotxl`; the
 repository is named `ntt-excelbridge`. A new marketing name or brand positioning
 has not been approved.
 

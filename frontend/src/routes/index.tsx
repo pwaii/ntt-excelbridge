@@ -15,7 +15,7 @@ import { AuthCallbackPage } from "@/pages/auth-callback-page";
 export function AppRoutes() {
   const { pathname } = useLocation();
   useEffect(() => {
-    document.title = `${getPageTitle(pathname)} | XLSX Data Workflow`;
+    document.title = `${getPageTitle(pathname)} | Pilotxl`;
     document.getElementById("main-content")?.focus({ preventScroll: true });
     window.scrollTo(0, 0);
   }, [pathname]);

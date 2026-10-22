@@ -70,20 +70,22 @@ describe("production page wiring with FastAPI contract fixtures and mocked auth/
         Object.defineProperty(input, "files", { configurable: true, value: [file] });
         input.dispatchEvent(new Event("change", { bubbles: true }));
       }
-      button("Profit").click();
+      const prompt = container.querySelector<HTMLTextAreaElement>("#prompt")!;
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(prompt, "Profit");
+      prompt.dispatchEvent(new Event("input", { bubbles: true }));
       const header = container.querySelector<HTMLInputElement>("#output-header")!;
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(header, "profit");
       header.dispatchEvent(new Event("input", { bubbles: true }));
     });
     expect(container.querySelector("#prompt")!.getAttribute("name")).toBe("comment_name");
-    expect(button("Create job and upload files").disabled).toBe(false);
-    await act(async () => { button("Create job and upload files").click(); button("Create job and upload files").click(); });
-    await vi.waitFor(() => expect(container.textContent).toContain("All required uploads are server-confirmed"));
+    expect(button("Upload workbooks").disabled).toBe(false);
+    await act(async () => { button("Upload workbooks").click(); button("Upload workbooks").click(); });
+    await vi.waitFor(() => expect(container.textContent).toContain("All workbooks uploaded"));
     expect(requests.map((xhr) => xhr.body)).toEqual(files);
     expect(requests.every((xhr) => xhr.method === "PUT" && !xhr.withCredentials && !xhr.headers.Authorization)).toBe(true);
     expect(fetcher.mock.calls.filter(([url]) => String(url).endsWith("/v1/jobs"))).toHaveLength(1);
     expect(fetcher.mock.calls.filter(([url]) => String(url).endsWith("/uploads/complete"))).toHaveLength(2);
-    expect(container.textContent).toContain("Review workbook metadata");
+    expect(container.textContent).toContain("Confirm your worksheets");
     await act(async () => {
       for (const role of ["current", "main"]) {
         const select = container.querySelector<HTMLSelectElement>(`#${role}-metadata-sheet`)!;
@@ -97,9 +99,9 @@ describe("production page wiring with FastAPI contract fixtures and mocked auth/
         select.value = "A"; select.dispatchEvent(new Event("change", { bubbles: true }));
       }
     });
-    expect(button("Start workflow").disabled).toBe(true);
+    expect(button("Start workflow").disabled).toBe(false);
     expect(fetcher.mock.calls.some(([url]) => String(url).endsWith("/start"))).toBe(false);
-    await act(async () => { button("Save and confirm configuration").click(); });
+    await act(async () => { button("Save setup").click(); });
     expect(button("Start workflow").disabled).toBe(false);
     await act(async () => { button("Start workflow").click(); });
     expect(fetcher.mock.calls.filter(([url]) => new URL(String(url)).pathname.endsWith("/start"))).toHaveLength(1);
@@ -123,14 +125,14 @@ describe("production page wiring with FastAPI contract fixtures and mocked auth/
     expect(container.querySelector<HTMLSelectElement>("#current-metadata-sheet")!.value).toBe("Data");
     expect(container.querySelector<HTMLInputElement>("#current-metadata-header-row")!.value).toBe("3");
     expect(container.querySelector<HTMLSelectElement>("#main-metadata-key")!.value).toBe("A");
-    expect(button("Configuration saved").disabled).toBe(true);
+    expect(button("Setup saved").disabled).toBe(true);
     expect(button("Start workflow").disabled).toBe(false);
     expect(fetcher.mock.calls.every(([, options]) => options?.method === "GET")).toBe(true);
   });
   it("blocks real creation when authentication configuration is incomplete", async () => {
     const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
     await act(async () => { root.render(<MemoryRouter><AuthContext.Provider value={{ ...auth, configurationIssues: ["Missing VITE_COGNITO_DOMAIN."] }}><CreateJobPage /></AuthContext.Provider></MemoryRouter>); });
-    expect(button("Create job and upload files").disabled).toBe(true);
+    expect(button("Upload workbooks").disabled).toBe(true);
     expect(container.textContent).toContain("Missing VITE_COGNITO_DOMAIN");
     expect(fetcher).not.toHaveBeenCalled();
   });

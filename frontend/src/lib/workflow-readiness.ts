@@ -33,7 +33,7 @@ export function getWorkflowReadiness(input: WorkflowReadinessInput): WorkflowRea
   const blockers: string[] = [];
   if (!input.localFormValid) blockers.push("Complete the required configuration.");
   const files = [{ label: "Current workbook", metadata: input.currentMetadata, header: input.currentHeader }];
-  if (input.requiresMain) files.push({ label: "Master workbook", metadata: input.mainMetadata, header: input.mainHeader });
+  if (input.requiresMain) files.push({ label: "Main workbook", metadata: input.mainMetadata, header: input.mainHeader });
   let rejected = false;
   for (const file of files) {
     const limit = workbookRowLimit(file.metadata);

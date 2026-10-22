@@ -82,11 +82,12 @@ export function WorkbookFilePicker({ id, label, file, onChange, validationError,
       />
       <div
         className={cn(
-          "workbook-dropzone flex items-center rounded-md border p-4 transition-colors duration-150 motion-reduce:transition-none",
-          file ? "min-h-20" : "min-h-28 border-dashed",
-          dragging ? "border-primary bg-accent outline-2 outline-offset-2 outline-ring" : file ? "border-border bg-muted/40" : "border-input bg-background hover:border-primary hover:bg-accent/30",
+          "workbook-dropzone flex items-center border motion-reduce:transition-none",
+          !file && "border-dashed",
           displayedError && "border-destructive",
         )}
+        data-dragging={dragging}
+        data-selected={Boolean(file)}
         onDragEnter={(event) => { event.preventDefault(); dragDepth.current += 1; setDragging(true); }}
         onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
         onDragLeave={(event) => { event.preventDefault(); dragDepth.current -= 1; if (dragDepth.current <= 0) setDragging(false); }}
@@ -94,7 +95,7 @@ export function WorkbookFilePicker({ id, label, file, onChange, validationError,
       >
         {file ? (
           <div className="grid w-full min-w-0 grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-3">
-            <span className="flex size-9 items-center justify-center rounded-md border bg-card text-primary"><FileSpreadsheet className="size-4" aria-hidden="true" /></span>
+            <span className="file-document-icon flex size-9 items-center justify-center text-primary"><FileSpreadsheet className="size-6" aria-hidden="true" /></span>
             <div className="min-w-0 flex-1" role="status">
               <p className="truncate text-sm font-medium" title={file.name}>{file.name}</p>
               <p className="mt-1 text-[11px] text-muted-foreground">{formatFileSize(file.size)} · Selected locally</p>
@@ -105,18 +106,18 @@ export function WorkbookFilePicker({ id, label, file, onChange, validationError,
             </div>
           </div>
         ) : (
-          <div className="flex w-full flex-col items-center gap-3 text-center sm:flex-row sm:gap-4 sm:text-left">
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-md border bg-card text-muted-foreground"><UploadCloud className="size-5" aria-hidden="true" /></span>
+          <div className="flex w-full flex-wrap items-center gap-3 text-left">
+            <span className="file-upload-icon flex size-8 shrink-0 items-center justify-center text-muted-foreground"><UploadCloud className="size-5" aria-hidden="true" /></span>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">{dragging ? "Drop to select your workbook" : "Drop your Excel file here"}</p>
+              <p className="text-sm font-medium">{dragging ? "Drop to select your workbook" : "Drop your workbook here"}</p>
               <p className="mt-1 text-xs text-muted-foreground">.xlsx · Max 25 MB</p>
               <span className="sr-only">No file selected.</span>
             </div>
-            <Button ref={browseButton} variant="outline" size="sm" onClick={() => input.current?.click()} aria-label={`Browse ${label.toLowerCase()}`} aria-describedby={descriptionId}><FolderOpen aria-hidden="true" />Browse</Button>
+            <Button ref={browseButton} variant="outline" size="sm" onClick={() => input.current?.click()} aria-label={`Browse ${label.toLowerCase()}`} aria-describedby={descriptionId}><FolderOpen aria-hidden="true" />Choose file</Button>
           </div>
         )}
       </div>
-      <p id={`${id}-hint`} className="sr-only">Required. XLSX only, up to 25 MB. Files upload when you choose Create job and upload files.</p>
+      <p id={`${id}-hint`} className="sr-only">Required. XLSX only, up to 25 MB. Files upload when you choose Upload workbooks.</p>
       {displayedError && <p id={`${id}-error`} role="alert" className="mt-2 text-sm text-destructive">{displayedError}{error && file ? " The previous workbook is retained; choose a valid replacement or remove it." : ""}</p>}
     </div>
   );

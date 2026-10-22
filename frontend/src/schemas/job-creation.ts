@@ -28,7 +28,7 @@ export const jobCreationSchema = z.object({
   mainFile: workbookFileSchema.nullable().optional(),
 }).superRefine((values, context) => {
   if ((values.standardize || values.update) && !values.mainFile) {
-    context.addIssue({ code: "custom", path: ["mainFile"], message: "Select a master workbook for standardization or updates." });
+    context.addIssue({ code: "custom", path: ["mainFile"], message: "Select a main workbook for standardization or updates." });
   }
 });
 

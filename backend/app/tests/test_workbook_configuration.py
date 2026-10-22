@@ -243,3 +243,24 @@ def test_missing_aws_profile_has_safe_actionable_diagnostics(api):
     assert response.json()["error_code"] == "AWS_PROFILE_NOT_FOUND"
     assert response.json()["request_id"]
     assert "private-profile-description" not in response.text
+
+
+def test_expired_aws_login_returns_diagnostics_with_cors(api):
+    from botocore import exceptions
+
+    login_refresh_error = getattr(exceptions, "LoginRefreshRequired", None)
+    if login_refresh_error is None:
+        pytest.skip("This botocore version does not support AWS CLI login profiles")
+    client, _store, _storage = api
+
+    def expired():
+        raise login_refresh_error()
+
+    app.dependency_overrides[get_dynamo_store] = expired
+    response = client.get(
+        "/v1/jobs", headers={"Origin": "http://127.0.0.1:5173", "X-Request-Id": "expired-login"}
+    )
+    assert response.status_code == 503
+    assert response.json()["error_code"] == "AWS_CREDENTIALS_EXPIRED"
+    assert response.json()["request_id"] == "expired-login"
+    assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5173"

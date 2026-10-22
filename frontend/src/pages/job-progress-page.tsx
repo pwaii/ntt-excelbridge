@@ -7,8 +7,8 @@ import { PageHeader } from "@/components/layout/page-header";
 export function JobProgressPage() {
   const auth = useContext(AuthContext);
   const { id } = useParams();
-  return <section className="mx-auto max-w-4xl">
-    <PageHeader title="Job progress" description="Track processing, complete worksheet setup, and open reviews when your input is needed." />
+  return <section className="workspace-page">
+    <PageHeader title="Job progress" />
     {auth && id ? <ConnectedJobStatus jobId={id} /> : <p className="mt-5 text-sm text-muted-foreground">Sign in to read the backend job status.</p>}
   </section>;
 }

@@ -10,7 +10,10 @@ export class ApiError extends Error {
   ) { super(message); this.name = "ApiError"; }
 }
 
-export function httpErrorMessage(status: number) {
+export function httpErrorMessage(status: number, code?: string) {
+  if (status === 503 && code === "AWS_CREDENTIALS_EXPIRED") return "The server's storage session has expired. Ask your administrator to renew it, then check job progress before retrying.";
+  if (status === 503 && code === "AWS_PROFILE_NOT_FOUND") return "The server's storage connection is not configured. Ask your administrator to check its AWS profile.";
+  if (status === 503 && code === "AWS_ENDPOINT_UNREACHABLE") return "The server cannot connect to storage. Check job progress once the connection is restored before retrying.";
   if (status === 400 || status === 422) return "The server could not validate this request. Check the configuration.";
   if (status === 401) return "Sign in again before continuing.";
   if (status === 403) return "You do not have permission to perform this action.";
