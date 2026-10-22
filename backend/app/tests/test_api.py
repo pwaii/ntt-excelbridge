@@ -124,6 +124,23 @@ def test_create_job_returns_upload_url():
     assert response.uploads[0].key.endswith("/input/input.xlsx")
 
 
+def test_create_job_returns_multiple_current_workbook_uploads():
+    response = create_job(
+        CreateJobRequest(
+            config=JobConfig(comment_name="Status"),
+            input_filenames=["current.xlsx", "current-2.xlsx", "current-3.xlsx"],
+        ),
+        _request(),
+        "local-user",
+        FakeDynamo(),
+        FakeS3(),
+    )
+
+    assert [upload.slot for upload in response.uploads] == ["input", "input_2", "input_3"]
+    assert response.job.files["input_2"].filename == "current-2.xlsx"
+    assert response.job.files["input_3"].filename == "current-3.xlsx"
+
+
 def test_main_file_is_required_for_update():
     with pytest.raises(HTTPException) as raised:
         create_job(

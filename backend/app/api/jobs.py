@@ -95,7 +95,19 @@ def create_job(
 ) -> CreateJobResponse:
     """Create metadata and return short-lived upload URLs for workbook inputs."""
 
-    _validate_xlsx_filename(payload.input_filename)
+    input_filenames = payload.input_filenames or ([payload.input_filename] if payload.input_filename else [])
+    if not input_filenames:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="at least one current workbook is required",
+        )
+    if len(set(input_filenames)) != len(input_filenames):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="current workbook filenames must be unique",
+        )
+    for filename in input_filenames:
+        _validate_xlsx_filename(filename)
     if payload.config.requires_main_file() and not payload.main_filename:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -107,12 +119,20 @@ def create_job(
     job_id = str(uuid4())
     files = {
         "input": {
-            "filename": payload.input_filename,
-            "key": s3.input_key(job_id, "input", payload.input_filename),
+            "filename": input_filenames[0],
+            "key": s3.input_key(job_id, "input", input_filenames[0]),
             "content_type": XLSX_CONTENT_TYPE,
             "uploaded": False,
         }
     }
+    for index, filename in enumerate(input_filenames[1:], start=2):
+        slot = f"input_{index}"
+        files[slot] = {
+            "filename": filename,
+            "key": s3.input_key(job_id, slot, filename),
+            "content_type": XLSX_CONTENT_TYPE,
+            "uploaded": False,
+        }
     if payload.main_filename:
         files["main"] = {
             "filename": payload.main_filename,

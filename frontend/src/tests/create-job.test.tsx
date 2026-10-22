@@ -67,24 +67,23 @@ async function enterHeader(value: string) {
 
 
 describe("job creation UI", () => {
-  it("uses a real file picker and supports browse, replace, and remove", async () => {
+  it("uses a real multi-file picker and supports selecting and removing current workbooks", async () => {
     const input = get<HTMLInputElement>("#current-file");
     expect(input.type).toBe("file");
+    expect(input.multiple).toBe(true);
     expect(input.accept).toContain(".xlsx");
     const browse = vi.spyOn(input, "click");
-    await click('[aria-label="Browse current workbook"]');
+    await click('[aria-label="Browse current workbooks"]');
     expect(browse).toHaveBeenCalledOnce();
     await selectFile("current-file", "current.xlsx");
     expect(container.textContent).toContain("current.xlsx");
     expect(container.textContent).toContain("12 bytes");
-    await click('[aria-label="Replace current workbook"]');
-    expect(browse).toHaveBeenCalledTimes(2);
-    await selectFile("current-file", "replacement.xlsx");
-    expect(container.textContent).toContain("replacement.xlsx");
+    await selectFile("current-file", "current-2.xlsx");
+    expect(container.textContent).toContain("current-2.xlsx");
+    await click('[aria-label="Remove current-2.xlsx"]');
+    expect(container.textContent).not.toContain("current-2.xlsx");
+    await click('[aria-label="Remove current.xlsx"]');
     expect(container.textContent).not.toContain("current.xlsx");
-    await click('[aria-label="Remove current workbook"]');
-    expect(container.textContent).not.toContain("replacement.xlsx");
-    expect(container.textContent).toContain("No file selected");
   });
 
   it("accepts dropped XLSX files and rejects unsupported formats", async () => {
@@ -242,7 +241,7 @@ describe("job creation UI", () => {
     await enterHeader("profit");
     expect(header.getAttribute("aria-invalid")).toBe("false");
     expect(get<HTMLButtonElement>('button[type="submit"]').disabled).toBe(false);
-    expect(container.querySelector('[role="status"]')?.textContent).not.toContain("large file");
+    expect(container.querySelector('[role="status"]')?.textContent ?? "").not.toContain("large file");
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -280,9 +279,9 @@ describe("job creation UI", () => {
 
   it("returns keyboard focus to Browse after removing either workbook", async () => {
     await selectFile("current-file", "current.xlsx");
-    get<HTMLButtonElement>('[aria-label="Remove current workbook"]').focus();
-    await click('[aria-label="Remove current workbook"]');
-    expect(document.activeElement).toBe(get('[aria-label="Browse current workbook"]'));
+    get<HTMLButtonElement>('[aria-label="Remove current.xlsx"]').focus();
+    await click('[aria-label="Remove current.xlsx"]');
+    expect(document.activeElement).toBe(get('[aria-label="Browse current workbooks"]'));
     await click('input[name="standardize"]');
     await selectFile("main-file", "main.xlsx");
     get<HTMLButtonElement>('[aria-label="Remove main workbook"]').focus();
@@ -290,14 +289,13 @@ describe("job creation UI", () => {
     expect(document.activeElement).toBe(get('[aria-label="Browse main workbook"]'));
   });
 
-  it("exposes rejected replacement feedback to the keyboard-accessible Replace action", async () => {
+  it("exposes rejected selection feedback without losing valid current workbooks", async () => {
     await selectFile("current-file", "valid.xlsx");
     await selectFile("current-file", "invalid.csv");
-    const replace = get<HTMLButtonElement>('[aria-label="Replace current workbook"]');
-    expect(replace.getAttribute("aria-describedby")).toContain("current-file-error");
-    expect(get("#current-file-error").textContent).toContain("previous workbook is retained");
+    expect(get("#current-file-error").textContent).toContain("Choose an .xlsx workbook");
     await selectFile("current-file", "fixed.xlsx");
-    expect(replace.getAttribute("aria-describedby")).toBe("current-file-hint");
+    expect(container.textContent).toContain("valid.xlsx");
+    expect(container.textContent).toContain("fixed.xlsx");
     expect(container.querySelector("#current-file-error")).toBeNull();
   });
 
@@ -315,13 +313,15 @@ describe("job creation UI", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("rejects multiple dropped workbooks without losing the selected file", async () => {
+  it("accepts multiple dropped current workbooks", async () => {
     await selectFile("current-file", "keep.xlsx");
     const event = new Event("drop", { bubbles: true, cancelable: true });
     Object.defineProperty(event, "dataTransfer", { value: { files: [new File(["a"], "a.xlsx"), new File(["b"], "b.xlsx")] } });
     await act(async () => { get(".workbook-dropzone").dispatchEvent(event); });
-    expect(get("#current-file-error").textContent).toContain("Choose one workbook at a time");
+    expect(container.querySelector("#current-file-error")).toBeNull();
     expect(container.textContent).toContain("keep.xlsx");
+    expect(container.textContent).toContain("a.xlsx");
+    expect(container.textContent).toContain("b.xlsx");
   });
 
   it("requires a non-whitespace output header and associates its feedback with the input", async () => {

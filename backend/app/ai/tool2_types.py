@@ -27,6 +27,20 @@ ALLOWED_TARGET_TYPES = frozenset(
     {"string", "integer", "number", "date", "datetime", "boolean"}
 )
 
+# Models sometimes return a programming-language spelling even though the prompt
+# asks for the backend vocabulary. Normalize only unambiguous aliases at this
+# trust boundary; unknown values remain hard failures.
+TARGET_TYPE_ALIASES = {
+    "str": "string",
+    "text": "string",
+    "int": "integer",
+    "float": "number",
+    "double": "number",
+    "decimal": "number",
+    "bool": "boolean",
+    **{name: name for name in ALLOWED_TARGET_TYPES},
+}
+
 _log = logging.getLogger(__name__)
 
 
@@ -44,10 +58,13 @@ def _validate_against_inputs(payload: Tool2Output) -> None:
     """Reject the whole response (invariant #1) if the model used an unknown target type.
     Rules describe value-patterns, not prompt rows, so there is no row-id set to check —
     the backend re-parses every applied cell, which is the real safety gate (§10.3)."""
-    if payload.target_type not in ALLOWED_TARGET_TYPES:
+    raw_target_type = payload.target_type.strip().lower()
+    normalized_target_type = TARGET_TYPE_ALIASES.get(raw_target_type)
+    if normalized_target_type is None:
         raise ValueError(
             f"target_type {payload.target_type!r} not in {set(ALLOWED_TARGET_TYPES)}"
         )
+    payload.target_type = normalized_target_type
 
 
 def _apply_confidence_floor(payload: Tool2Output) -> None:

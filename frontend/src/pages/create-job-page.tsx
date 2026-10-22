@@ -8,12 +8,13 @@ import { PageHeader } from "@/components/layout/page-header";
 import { WorkflowSteps } from "@/components/job/workflow-steps";
 import { FormSection } from "@/components/job/form-section";
 import { JobFormActions } from "@/components/job/job-form-actions";
+import { CurrentWorkbookPicker } from "@/components/job/current-workbook-picker";
 import { WorkbookFilePicker } from "@/components/job/workbook-file-picker";
 import { LargeFileWarning } from "@/components/job/large-file-warning";
 import { jobCreationSchema, type JobFormInput, type JobFormValues } from "@/schemas/job-creation";
 import { getOutputPolicy, outputPolicies } from "@/lib/output-policy";
 
-const defaults: JobFormInput = { currentFile: null, mainFile: null, comment_name: "", outputHeader: "", standardize: false, update: false };
+const defaults: JobFormInput = { currentFile: null, currentFiles: [], mainFile: null, comment_name: "", outputHeader: "", standardize: false, update: false };
 const fieldClass = "field-control";
 
 export function CreateJobPage() {
@@ -24,7 +25,7 @@ export function CreateJobPage() {
     defaultValues: defaults, resolver: zodResolver(jobCreationSchema), mode: "onTouched",
   });
   const values = watch();
-  const { comment_name, outputHeader, currentFile, mainFile } = values;
+  const { comment_name, outputHeader, currentFile, currentFiles = [], mainFile } = values;
   const standardize = values.standardize ?? false;
   const update = values.update ?? false;
   const createAction = useRef<(() => Promise<void>)>();
@@ -40,6 +41,12 @@ export function CreateJobPage() {
   function changeFile(field: "currentFile" | "mainFile", file: File | null) {
     setValue(field, file, { shouldDirty: true, shouldTouch: true, shouldValidate: true });
     setSelectionErrors((previous) => ({ ...previous, [field === "currentFile" ? "current" : "main"]: null }));
+  }
+
+  function changeCurrentFiles(files: File[]) {
+    setValue("currentFiles", files, { shouldDirty: true, shouldTouch: true, shouldValidate: true });
+    setValue("currentFile", files[0] ?? null, { shouldDirty: true, shouldTouch: true, shouldValidate: true });
+    setSelectionErrors((previous) => ({ ...previous, current: null }));
   }
 
   useEffect(() => {
@@ -67,7 +74,7 @@ export function CreateJobPage() {
             <div className="builder-grid">
               <div className="builder-fields">
                 <FormSection id="current-workbook" title="Current workbook" required>
-                  <WorkbookFilePicker key={`current-${resetVersion}`} id="current-file" label="Current workbook" file={currentFile} onChange={(file) => changeFile("currentFile", file)} validationError={errors.currentFile?.message} onSelectionError={(message) => setSelectionErrors((previous) => ({ ...previous, current: message }))} />
+                  <CurrentWorkbookPicker key={`current-${resetVersion}`} id="current-file" files={currentFiles} onChange={changeCurrentFiles} validationError={errors.currentFile?.message} onSelectionError={(message) => setSelectionErrors((previous) => ({ ...previous, current: message }))} />
                 </FormSection>
                 <FormSection id="output-configuration" title="Column to add" required>
                   <label htmlFor="prompt" className="field-label">What should the new column calculate or contain?</label>

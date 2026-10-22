@@ -30,6 +30,8 @@ def _validate_against_inputs(payload: Tool4Output, inputs: dict) -> None:
     candidate."""
     allowed = set(inputs.get("canonical_candidates", []))
     for m in payload.mappings:
+        if m.cardinality == "unmapped" and m.canonical_value.strip().casefold() == "unmapped":
+            m.canonical_value = ""
         if m.cardinality == "unmapped" and m.canonical_value == "":
             continue
         if m.canonical_value not in allowed:
