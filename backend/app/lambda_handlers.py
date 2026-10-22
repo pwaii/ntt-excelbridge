@@ -241,9 +241,45 @@ def _tool_inputs(item: dict[str, Any], s3: S3Store, tool: str) -> dict[str, Any]
     if tool == "tool4":
         main_file = item.get("files", {}).get("main")
         main_rows = load_canonical_rows(s3.get_bytes(main_file["key"]), item.get("config", {}).get("main_sheet"), item.get("config", {}).get("main_header_row") or 1) if main_file else []
-        candidates = sorted({str(value) for row in main_rows for value in row.values() if value is not None})
-        source_values = sorted({str(value) for column in first_sheet.get("columns", []) for value in column.get("samples", [])})
-        return {"source_values": source_values, "canonical_candidates": candidates, "samples": first_sheet.get("columns", [])}
+        current_rows = load_canonical_rows(
+            source,
+            item.get("config", {}).get("input_sheet"),
+            item.get("config", {}).get("input_header_row") or 1,
+        )
+        main_fields = {
+            str(field)
+            for row in main_rows
+            for field in row
+            if field != "row_id"
+        }
+        shared_columns = [
+            column
+            for column in first_sheet.get("columns", [])
+            if column.get("name") in main_fields
+        ]
+        source_values = sorted(
+            {
+                (str(field), str(row[field]))
+                for row in current_rows
+                for field in main_fields
+                if field in row and row[field] is not None and str(row[field]).strip()
+            }
+        )
+        candidates = sorted(
+            {
+                str(row[field])
+                for row in main_rows
+                for field in main_fields
+                if row.get(field) is not None and str(row[field]).strip()
+            }
+        )
+        return {
+            "source_values": [
+                {"field": field, "value": value} for field, value in source_values
+            ],
+            "canonical_candidates": candidates,
+            "samples": shared_columns,
+        }
     if tool == "tool5":
         main_file = item.get("files", {}).get("main")
         if not main_file:

@@ -14,6 +14,8 @@ never "calculated."
 ## Rules
 - Use ONLY the allowed functions and the source headers listed above. Do not invent headers.
 - No external links, macros, INDIRECT, OFFSET, WEBSERVICE, HYPERLINK, or volatile functions.
+- Use ordinary A1-style cell references with the literal `{row}` placeholder, for example
+  `=IFERROR(F{row}*G{row},0)`. Do not use Excel table references such as `[@Quantity]`.
 - The formula must start with "=". confidence is 0..1.
 
 ## Output — JSON only, matching this shape

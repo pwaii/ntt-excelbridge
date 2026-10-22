@@ -24,7 +24,7 @@ export function CreateJobPage() {
     defaultValues: defaults, resolver: zodResolver(jobCreationSchema), mode: "onTouched",
   });
   const values = watch();
-  const { comment_name, outputHeader, currentFile, mainFile } = values;
+  const { comment_name, outputHeader, currentFile, currentFiles = [], mainFile } = values;
   const standardize = values.standardize ?? false;
   const update = values.update ?? false;
   const createAction = useRef<(() => Promise<void>)>();
@@ -40,6 +40,13 @@ export function CreateJobPage() {
   function changeFile(field: "currentFile" | "mainFile", file: File | null) {
     setValue(field, file, { shouldDirty: true, shouldTouch: true, shouldValidate: true });
     setSelectionErrors((previous) => ({ ...previous, [field === "currentFile" ? "current" : "main"]: null }));
+  }
+
+  function changeCurrentFiles(files: File[]) {
+    setValue("currentFiles", files, { shouldDirty: true, shouldTouch: true, shouldValidate: true });
+    setValue("currentFile", files[0] ?? null, { shouldDirty: true, shouldTouch: true, shouldValidate: true });
+    setCurrentHeader(null);
+    setSelectionErrors((previous) => ({ ...previous, current: null }));
   }
 
   useEffect(() => {
@@ -66,7 +73,7 @@ export function CreateJobPage() {
         <legend className="sr-only">Job configuration</legend>
         <div className="divide-y">
           <FormSection id="current-workbook" title="Current workbook" required>
-            <WorkbookFilePicker key={`current-${resetVersion}`} id="current-file" label="Current workbook" file={currentFile} onChange={(file) => changeFile("currentFile", file)} validationError={errors.currentFile?.message} onSelectionError={(message) => setSelectionErrors((previous) => ({ ...previous, current: message }))} />
+            <CurrentWorkbookPicker key={`current-${resetVersion}`} id="current-file" files={currentFiles} onChange={changeCurrentFiles} validationError={errors.currentFile?.message} onSelectionError={(message) => setSelectionErrors((previous) => ({ ...previous, current: message }))} />
           </FormSection>
           <FormSection id="output-configuration" title="Column to add" required>
             <div className="ai-composer overflow-hidden rounded-md">

@@ -68,9 +68,19 @@ def test_run_tool3_valid_formula_wraps_meta():
     result = run_tool3(T3_FIXTURE, client=_client(GOOD_T3))
     assert isinstance(result, ToolResult)
     assert isinstance(result.payload, Tool3Output)
-    assert result.payload.formula_template == "=Qty*UnitPrice"
+    assert result.payload.formula_template == "=A{row}*B{row}"
     assert result.meta.tool == "tool3_formulas"
     assert len(result.meta.input_hash) == 64
+
+
+def test_run_tool3_normalizes_structured_header_references():
+    response = (
+        '{"formula_template": "=IFERROR([@Qty]*[@UnitPrice],0)", "target_header": "Total", '
+        '"expected_type": "number", "referenced_headers": ["Qty", "UnitPrice"], '
+        '"explanation": "multiply", "confidence": 0.9}'
+    )
+    result = run_tool3(T3_FIXTURE, client=_client(response))
+    assert result.payload.formula_template == "=IFERROR(A{row}*B{row},0)"
 
 
 def test_run_tool3_rejects_malformed_payload():
@@ -113,7 +123,7 @@ def test_run_tool3_allows_header_containing_function_substring():
         '"referenced_headers": ["Snowfall"], "explanation": "x", "confidence": 0.9}'
     )
     result = run_tool3(fixture, client=_client(resp))
-    assert result.payload.formula_template == "=SUM(Snowfall)"
+    assert result.payload.formula_template == "=SUM(A{row})"
 
 
 from app.ai.tool4_standardize import run_tool4
@@ -145,6 +155,17 @@ def test_run_tool4_valid_mapping_wraps_meta():
     assert isinstance(result.payload, Tool4Output)
     assert result.payload.mappings[0].canonical_value == "United States"
     assert result.meta.tool == "tool4_standardize"
+
+
+def test_run_tool4_normalizes_unmapped_canonical_value():
+    response = (
+        '{"mappings": [{"source_field": "Country", "source_value": "Wakanda", '
+        '"canonical_field": "Country", "canonical_value": "unmapped", '
+        '"reason": "no candidate", "confidence": 0.2, '
+        '"cardinality": "unmapped", "action": "rejected"}]}'
+    )
+    result = run_tool4(T4_FIXTURE, client=_client(response))
+    assert result.payload.mappings[0].canonical_value == ""
 
 
 def test_run_tool4_rejects_hallucinated_canonical():

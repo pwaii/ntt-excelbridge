@@ -24,11 +24,25 @@ MODEL_ALLOWLIST = frozenset({settings.bedrock_model_id, settings.bedrock_model_i
 
 
 def _extract_json(text: str) -> dict:
-    """Take the outermost {...}; Nova may wrap JSON in prose or ```json fences."""
-    start, end = text.find("{"), text.rfind("}")
-    if start == -1 or end == -1:
-        raise ValueError(f"no JSON object in model output:\n{text}")
-    return json.loads(text[start : end + 1])
+    """Parse the first complete JSON object from prose or fenced model output.
+
+    ``rfind('}')`` incorrectly joins two objects when a model repeats its answer,
+    producing ``Extra data``. ``raw_decode`` stops at the first complete object;
+    the tool-specific Pydantic adapter remains responsible for validating its
+    shape and contents.
+    """
+    decoder = json.JSONDecoder()
+    start = text.find("{")
+    while start != -1:
+        try:
+            value, _end = decoder.raw_decode(text[start:])
+        except json.JSONDecodeError:
+            start = text.find("{", start + 1)
+            continue
+        if isinstance(value, dict):
+            return value
+        start = text.find("{", start + 1)
+    raise ValueError(f"no JSON object in model output:\n{text}")
 
 
 class BedrockClient:

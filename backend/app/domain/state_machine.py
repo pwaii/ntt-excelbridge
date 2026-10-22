@@ -23,6 +23,8 @@ def validate_transition(frm: S, to: S) -> None:
         if frm is S.FAILED and to not in TERMINAL:
             return  # retry may re-enter the failed segment's live state
         raise ValueError(f"{frm} is terminal; no transition to {to}")
+    if frm == to:
+        return  # idempotent upload completion may keep a job UPLOADING
     if to == S.COMPLETED:
         if frm is not S.VALIDATING_OUTPUT:
             raise ValueError(f"COMPLETED only reachable from VALIDATING_OUTPUT, not {frm}")

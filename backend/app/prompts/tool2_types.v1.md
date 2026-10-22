@@ -20,6 +20,8 @@ is always kept.
 - Any loss of precision, leading zeros, timezone, or meaning -> status "reject" (manual review).
 - status is one of safe | ambiguous | reject. confidence is 0..1.
 - normalized_form is always a non-null string — for reject rules use the original value unchanged.
+- target_type must use exactly one canonical value: string, integer, number, date, datetime, or boolean.
+- Do not emit programming-language aliases such as int, float, double, bool, str, or text.
 
 ## Output — JSON only, matching this shape
 ```json

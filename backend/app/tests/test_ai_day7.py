@@ -57,6 +57,10 @@ def test_extract_json_rejects_response_with_no_object():
         _extract_json("sorry, I can't help with that")
 
 
+def test_extract_json_uses_first_complete_object_when_model_repeats_it():
+    assert _extract_json('{"answer": 1}\n{"answer": 2}') == {"answer": 1}
+
+
 from app.ai.tool1_semantics import run_tool1
 from app.ai.tool2_types import run_tool2
 from app.ai.tool3_formulas import run_tool3

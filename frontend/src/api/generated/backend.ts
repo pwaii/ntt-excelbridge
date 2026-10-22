@@ -313,7 +313,9 @@ export interface components {
         CreateJobRequest: {
             config: components["schemas"]["JobConfig"];
             /** Input Filename */
-            input_filename: string;
+            input_filename?: string | null;
+            /** Input Filenames */
+            input_filenames?: string[];
             /** Main Filename */
             main_filename?: string | null;
         };
@@ -641,11 +643,8 @@ export interface components {
         };
         /** UploadCompleteRequest */
         UploadCompleteRequest: {
-            /**
-             * Slot
-             * @enum {string}
-             */
-            slot: "input" | "main";
+            /** Slot */
+            slot: string;
             /** Sha256 */
             sha256?: string | null;
         };
