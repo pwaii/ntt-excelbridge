@@ -37,7 +37,7 @@ These are the point of the project — do not relax them for convenience:
 
 ## Constraints
 
-- `.xlsx` only (reject `.xls`, `.xlsm`, password-protected). One input + optional one main workbook; one sheet each. Header row within first 20 rows. Demo limits: 25 MB / 50k rows — reject over-limit rather than time out.
+- `.xlsx` only (reject `.xls`, `.xlsm`, password-protected). ~~One input + optional one main workbook~~ **Up to 8 input workbooks (slots `input`, `input_2`…`input_8`) + optional one main workbook** (Pilotxl redesign); one sheet each. Header row within first 20 rows. Demo limits: 25 MB / 50k rows — reject over-limit rather than time out.
 - AWS regions limited to `us-east-1` (default), `ap-southeast-1`, `ap-southeast-7` — one region per deployed environment, selected at deploy time.
 - Bedrock model must be verified non-Marketplace; resolve the exact model/inference-profile ID at deploy via the preflight script, do not hardcode.
 - Jobs are idempotent by input hash (uploaded object version + config); workers check for an existing artifact with the same hash before writing.
