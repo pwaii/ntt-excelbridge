@@ -1,38 +1,43 @@
 import { Link } from "react-router-dom";
-import { CircleDot, ListChecks } from "lucide-react";
+import { Check, Circle, CircleDot, ArrowRight, AlertCircle, LoaderCircle } from "lucide-react";
 import type { BackendJob } from "@/api/jobs-api";
 import { Button } from "@/components/ui/button";
+import { jobStages } from "@/lib/job-stages";
 
-const stages = [
-  { name: "Upload & configure", states: ["DRAFT", "UPLOADING", "UPLOADED"] },
-  { name: "Inspect workbook", states: ["INSPECTING", "DETECTED"] },
-  { name: "Quality review", states: ["SEMANTIC_REVIEW_PENDING", "QUALITY_REVIEW_PENDING", "NORMALIZATION_PENDING"] },
-  { name: "Transformation review", states: ["FORMULA_REVIEW_PENDING", "STANDARDIZATION_PENDING", "UPDATE_PENDING", "TRANSFORMATION_REVIEW_PENDING"] },
-  { name: "Apply approved changes", states: ["APPLYING"] },
-  { name: "Validate output", states: ["VALIDATING_OUTPUT"] },
-  { name: "Result", states: ["COMPLETED"] },
-];
-export function JobTimeline({ job, observed }: { job: BackendJob; observed: readonly string[] }) {
-  const terminalError = ["FAILED", "CANCELLED", "COST_GUARD_REACHED"].includes(job.status);
-  return <section aria-labelledby="workflow-timeline" className="panel space-y-4 p-5 sm:p-6">
-    <div><h3 id="workflow-timeline" className="font-semibold">Workflow progress</h3>
-      <p className="mt-1 text-xs text-muted-foreground">Only statuses received from the backend are marked observed. No intermediate steps are inferred.</p></div>
-    <ol className="divide-y">
-      {stages.map((stage, index) => {
-        const current = stage.states.includes(job.status);
-        const seen = stage.states.some((status) => observed.includes(status));
-        return <li key={stage.name} aria-current={current ? "step" : undefined} className={`flex items-center gap-3 px-3 py-3 ${current ? "bg-accent" : ""}`}>
-          <span aria-hidden="true" className={`stage-number ${current ? "border-primary bg-primary text-primary-foreground" : "text-muted-foreground"}`}>{current ? <CircleDot className="size-3.5" /> : index + 1}</span>
-          <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-4 gap-y-1"><p className={`text-sm ${current ? "font-semibold text-primary" : "font-medium"}`}>{stage.name}</p><p className="text-xs text-muted-foreground">{current ? "Current backend phase" : seen ? "Observed in this visit" : "Not observed in this visit"}</p></div>
-        </li>;
-      })}
-    </ol>
-    {terminalError && <p role="status" className="notice notice-error">Backend status: {job.status}. Processing is stopped. Check the job details before retrying.</p>}
-    {job.status === "QUALITY_REVIEW_PENDING" && <div className="notice flex flex-wrap items-center justify-between gap-3 border-primary/20 bg-accent p-4">
-      <p className="text-sm font-medium">Your quality review is required before processing can continue.</p>
-      <Button asChild><Link to={`/jobs/${encodeURIComponent(job.job_id)}/quality-review`}><ListChecks aria-hidden="true" />Review data quality</Link></Button>
-    </div>}
-    {job.status === "TRANSFORMATION_REVIEW_PENDING" && <Button asChild><Link to={`/jobs/${encodeURIComponent(job.job_id)}/transformation-review`}>Review transformations</Link></Button>}
-    {job.status === "COMPLETED" && <Button asChild><Link to={`/jobs/${encodeURIComponent(job.job_id)}/result`}>View result and downloads</Link></Button>}
+const messages: Record<string, [string, string]> = {
+  DRAFT: ["Add your workbook", "Upload the required files to continue."],
+  UPLOADING: ["Uploading workbooks", "Wait for the files to finish uploading."],
+  UPLOADED: ["Confirm your worksheets", "Choose the sheets and header rows below before starting."],
+  INSPECTING: ["Checking your workbook", "Scanning columns, data types, and workbook structure."],
+  DETECTED: ["Preparing quality findings", "Your data checks are being prepared for review."],
+  SEMANTIC_REVIEW_PENDING: ["Checking column meanings", "Preparing the workbook's column interpretation."],
+  QUALITY_REVIEW_PENDING: ["Your quality review is ready", "Decide which corrections to approve before continuing."],
+  NORMALIZATION_PENDING: ["Preparing proposed changes", "Applying your quality decisions and preparing the next review."],
+  FORMULA_REVIEW_PENDING: ["Preparing your formula", "Creating a proposal for the column you requested."],
+  STANDARDIZATION_PENDING: ["Preparing value mappings", "Comparing values with your main workbook."],
+  UPDATE_PENDING: ["Matching workbook rows", "Preparing row matches for your approval."],
+  TRANSFORMATION_REVIEW_PENDING: ["Your changes are ready to review", "Check the formula and other proposals before they are applied."],
+  APPLYING: ["Applying approved changes", "Creating a new workbook from your submitted decisions."],
+  VALIDATING_OUTPUT: ["Checking the output", "Verifying the new workbook before publishing it."],
+  COMPLETED: ["Your workbook is ready", "The output is available. Your original files are unchanged."],
+  FAILED: ["Processing stopped", "Check the error details before retrying this job."],
+  CANCELLED: ["Workflow cancelled", "Processing has stopped for this job."],
+  COST_GUARD_REACHED: ["Processing limit reached", "Review the job details before continuing."],
+};
+export function JobTimeline({ job, observed, showSummary = true }: { job: BackendJob; observed: readonly string[]; showSummary?: boolean }) {
+  const phases = jobStages(job, observed);
+  const failed = ["FAILED", "CANCELLED", "COST_GUARD_REACHED"].includes(job.status);
+  const completed = job.status === "COMPLETED";
+  const review = ["QUALITY_REVIEW_PENDING", "TRANSFORMATION_REVIEW_PENDING"].includes(job.status);
+  const message = messages[job.status] ?? ["Checking workflow status", "Refresh this page to check for updates."];
+  const next = job.status === "QUALITY_REVIEW_PENDING" ? { path: "quality-review", action: "Review data quality" }
+    : job.status === "TRANSFORMATION_REVIEW_PENDING" ? { path: "transformation-review", action: "Review transformations" }
+    : completed ? { path: "result", action: "View result and downloads" } : undefined;
+  return <section aria-labelledby="workflow-timeline" className="workflow-status">
+    {showSummary && <div className="workflow-current"><span className={`workflow-state-icon ${failed ? "text-destructive" : completed ? "text-[var(--success)]" : "text-primary"}`} aria-hidden="true">{failed ? <AlertCircle /> : completed ? <Check /> : review || job.status === "UPLOADED" ? <CircleDot /> : <LoaderCircle className="processing-indicator" />}</span><div className="min-w-0 flex-1"><h2 id="workflow-timeline" className="text-sm font-semibold">{message[0]}</h2><p className="mt-1 text-xs text-muted-foreground">{message[1]}</p></div>{next && <Button asChild size="sm"><Link to={`/jobs/${encodeURIComponent(job.job_id)}/${next.path}`}>{next.action}<ArrowRight aria-hidden="true" /></Link></Button>}</div>}
+    {!showSummary && <h2 id="workflow-timeline" className="sr-only">Workflow progress</h2>}
+    <ol className="workflow-phases" aria-label="Workflow progress">{phases.map((phase, index) => <li key={phase.id} data-state={phase.state} aria-current={phase.state === "active" || phase.state === "failed" ? "step" : undefined}>
+      <span className="phase-icon" aria-hidden="true">{phase.state === "complete" ? <Check /> : phase.state === "failed" ? <AlertCircle /> : phase.state === "active" ? <CircleDot /> : phase.state === "skipped" ? <Circle /> : index + 1}</span><span className="min-w-0"><span className="block font-medium">{phase.label}</span><span className="phase-state">{phase.state === "complete" ? "Complete" : phase.state === "active" ? review ? "Your review needed" : "In progress" : phase.state === "failed" ? "Stopped" : phase.state === "skipped" ? phase.skipLabel : "Pending"}</span></span>
+    </li>)}</ol>
   </section>;
 }

@@ -14,6 +14,14 @@ function client(fetcher: typeof fetch, getValidToken = vi.fn(async () => "mock-a
 afterEach(() => vi.restoreAllMocks());
 
 describe("contract-independent authenticated transport", () => {
+  it("explains an expired storage session without exposing server prose or replaying creation", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({ error_code: "AWS_CREDENTIALS_EXPIRED", detail: "private credential information", request_id: "expired-session" }, 503));
+    await expect(client(fetcher).request("/v1/transport-test", { method: "POST", decode })).rejects.toMatchObject({
+      status: 503, code: "AWS_CREDENTIALS_EXPIRED", requestId: "expired-session",
+      message: "The server's storage session has expired. Ask your administrator to renew it, then check job progress before retrying.",
+    });
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
   it("attaches only the token returned by Task 7 and decodes JSON with request ID", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({ sample: true, request_id: "request-body" }));
     const getToken = vi.fn(async () => "mock-selected-token-type");

@@ -10,26 +10,26 @@ export function UploadProgressPanel<T>({ state, onCancel, onRetry, canRetry }: {
   onRetry: (role: WorkbookRole) => void;
   canRetry: (role: WorkbookRole) => boolean;
 }) {
-  return <section aria-labelledby="upload-status-title" className="space-y-4 rounded-xl border bg-card p-4">
+  return <section aria-labelledby="upload-status-title" className="panel space-y-4 p-5">
     <h2 id="upload-status-title" className="text-sm font-semibold">Workbook uploads</h2>
     {state.files.map((file) => {
       const percent = file.progress?.total ? Math.min(100, Math.floor(file.progress.loaded / file.progress.total * 100)) : undefined;
-      const label = file.phase === "uploaded" ? "Uploaded — confirmed by backend" : file.phase === "awaiting-confirmation" ? "Transfer complete — awaiting backend confirmation" : file.phase.charAt(0).toUpperCase() + file.phase.slice(1);
-      return <div key={file.role} className="min-w-0 rounded-lg border bg-background/50 p-3">
+      const label = file.phase === "uploaded" ? "Uploaded and verified" : file.phase === "awaiting-confirmation" ? "Transfer complete. Verifying upload." : file.phase.charAt(0).toUpperCase() + file.phase.slice(1);
+      return <div key={file.role} className="min-w-0 border-t pt-4">
         <p className="break-all text-sm font-medium">{file.filename}</p>
         <p className="mt-1 text-xs text-muted-foreground">{file.role === "current" ? "Current workbook" : "Main workbook"} · {formatFileSize(file.size)}</p>
         <p role="status" className="mt-2 text-xs">{label}</p>
         {file.phase === "uploading" && <>
-          <progress aria-label={`${file.role} workbook transfer`} max={100} value={percent} className="mt-2 h-2 w-full accent-primary" />
-          <p className="mt-1 text-xs text-muted-foreground">{percent === undefined ? "Progress percentage unavailable" : `${percent}% transferred; backend confirmation still required`}</p>
+          <progress aria-label={`${file.role} workbook transfer`} max={100} value={percent} className="upload-transfer-progress" />
+          <p className="mt-1 text-xs text-muted-foreground">{percent === undefined ? "Progress percentage unavailable" : `${percent}% transferred`}</p>
           <Button size="sm" variant="outline" className="mt-2" onClick={() => onCancel(file.role)}>Cancel {file.role} upload</Button>
         </>}
         {file.error && <p role="alert" className="mt-2 text-xs text-destructive">{file.error.message}</p>}
         {canRetry(file.role) && <Button size="sm" variant="outline" className="mt-2" onClick={() => onRetry(file.role)}>Retry {file.role} upload</Button>}
       </div>;
     })}
-    {state.confirmation === "confirming" && <p role="status" className="text-xs text-muted-foreground">Verifying completed transfers with the backend…</p>}
+    {state.confirmation === "confirming" && <p role="status" className="text-xs text-muted-foreground">Verifying completed transfers…</p>}
     {state.confirmationError && <p role="alert" className="text-xs leading-relaxed text-destructive">{state.confirmationError.message}</p>}
-    {state.confirmation === "confirmed" && <p role="status" className="text-xs text-primary">All required uploads are server-confirmed. Workbook inspection metadata remains backend-owned.</p>}
+    {state.confirmation === "confirmed" && <p role="status" className="text-xs text-primary">All workbooks uploaded. Confirm your worksheets below to continue.</p>}
   </section>;
 }

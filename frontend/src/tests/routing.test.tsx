@@ -58,10 +58,10 @@ describe("application routing", () => {
     renderAt(path);
     expect(container.querySelectorAll("h1")).toHaveLength(1);
     expect(container.querySelector("h1")?.textContent).toBe(heading);
-    expect(document.title).toBe(`${heading} | XLSX Data Workflow`);
+    expect(document.title).toBe(`${heading} | Pilotxl`);
     expect(document.activeElement?.id).toBe("main-content");
     if (["Transformation review", "Result"].includes(heading)) {
-      expect(container.textContent).toContain("Sign in and configure the backend API");
+      expect(container.textContent).toContain("Sign in again or ask your administrator");
       expect(container.textContent).not.toContain("Coming soon");
       expect(container.querySelector("form")).toBeNull();
     }
@@ -79,12 +79,12 @@ describe("application routing", () => {
     renderAt("/jobs/customer%20report/quality-review");
     const navigation = container.querySelector('[aria-label="Desktop navigation"]');
     expect(navigation?.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
-    expect(navigation?.querySelector('[aria-current="page"]')?.textContent).toBe("Quality review");
+    expect(navigation?.querySelector('[aria-current="page"]')?.textContent).toContain("Quality review");
     expect(navigation?.querySelector('a[href="/jobs/customer%20report/result"]')).not.toBeNull();
     click(navigation?.querySelector('a[href="/jobs/customer%20report/result"]') ?? null);
     expect(window.location.pathname).toBe("/jobs/customer%20report/result");
     expect(container.querySelector("h1")?.textContent).toBe("Result");
-    expect(navigation?.querySelector('[aria-current="page"]')?.textContent).toBe("Result");
+    expect(navigation?.querySelector('[aria-current="page"]')?.textContent).toContain("Result");
   });
 
   it("does not invent a current job on workspace pages", () => {

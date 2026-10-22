@@ -44,11 +44,11 @@ async function click(text: string) {
 describe("authentication routing and UI", () => {
   it("introduces the product with a standard sign-in action and keeps provider details off the welcome page", async () => {
     await renderAt("/login", adapter());
-    expect(container.textContent).toContain("XLSX Data Workflow");
-    expect(container.textContent).toContain("review proposed changes");
+    expect(container.textContent).toContain("Pilotxl");
+    expect(container.textContent).toContain("check the proposed changes");
     expect(container.textContent).not.toContain("Cognito");
     expect(container.querySelector("aside")).toBeNull();
-    expect(container.querySelector('a[href="#sign-in"]')).not.toBeNull();
+    expect(container.querySelector("#sign-in")).not.toBeNull();
     expect([...container.querySelectorAll("button")].find((item) => item.textContent === "Sign in")?.disabled).toBe(false);
   });
   it.each(["/jobs/new", "/jobs/id", "/jobs/id/quality-review", "/jobs/id/transformation-review", "/jobs/id/result"])("protects %s without calling the backend", async (path) => {

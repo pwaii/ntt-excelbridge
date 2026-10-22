@@ -1,4 +1,74 @@
-# Frontend UI refresh — 2026-10-20
+# Frontend UI redesign
+
+## 2026-10-21 compact product pass
+
+The second pass rebuilds the layout around a smaller 56px header, a consistent
+1120px desktop content grid, 22–24px page titles, and compact task-sized sections.
+Setup uses shorter upload targets and plain optional processing controls. Starting
+saves valid worksheet selections through the existing controller; saving setup
+separately remains available. A failed save cannot start processing.
+
+Progress now presents five phases with distinct active, completed, pending,
+stopped, and unrecorded states. Completed workflows lead with the published Excel
+output and its download action; reports and diagnostics remain secondary.
+Reviews use naturally sized list and evidence panels, compact filters, and a
+submission area that explains remaining decisions. Syntax checks explicitly do
+not validate a formula's business meaning or calculated results.
+
+Validation: all 365 frontend tests, ESLint, TypeScript, and production build pass.
+The design detector reports no findings. Sixteen synthetic-fixture captures cover
+setup, worksheet confirmation, sign-in, processing, review gates, completion,
+results, stopped processing, empty reports, loading errors, and drafted decisions
+across desktop, tablet, and a 390px content column. Narrow captures use a constrained
+root under Windows Chrome's minimum viewport; they are not physical-device tests.
+No backend business logic, API contracts, or dependencies changed in this pass.
+Existing dependency annotation and bundle-size build advisories remain. No live
+cloud job was created or approved, and no deployment was performed for this pass.
+
+Independent finish review: `disposition: ship`, with no material fixes. This verdict
+covers the supplied synthetic captures and sampled source, including the replaced
+ready-state capture, rather than a live-service or physical-device certification.
+
+## 2026-10-21 workflow redesign
+
+The application now uses a compact top navigation instead of a permanent sidebar.
+Setup groups each label with its controls, keeps optional worksheet and data-use
+information in disclosures, and uses the existing upload and confirmation flow.
+Progress leads with the actual next task. Results prioritize the published output
+workbook and keep supporting reports and verification details available on demand.
+
+Reviews now select the first visible item automatically, show how many required
+decisions remain, and provide a route to a remaining decision even when filters
+hide it. Match filters affect row matches only, so formulas remain visible.
+Optional filters, bulk acceptance, counts, and technical details no longer dominate
+the page. Submission remains a separate, explicitly confirmed action, subject to
+the existing complete-report, revision, syntax, matching, and decision gates.
+Read-only findings explain that no decision is required. Loading failures provide
+a reload action. Known storage-connection errors provide authored recovery guidance
+without exposing arbitrary backend prose.
+
+Validation for this redesign: 356 frontend tests, ESLint, TypeScript, and the
+production build pass. The source design detector reports no findings. Separate
+headless Chrome profiles rendered the actual components with synthetic fixtures
+for setup, sign-in, progress, quality, transformations, results, and empty,
+failed-loading, and drafted-decision states. Desktop and tablet layouts and a
+390-pixel content column were inspected. The narrow captures constrain the root
+under Windows Chrome's minimum viewport width; they are not real-device touch or
+mobile-browser certification. External services in tests remain mocked. No live
+cloud workflow was created or approved for this redesign, and no deployment ran.
+
+The independent finish review requested two corrections: fitting before/after
+evidence into the narrow pane and replacing empty-review controls with a direct
+progress action. Both were corrected and scored resolved on the recaptured
+screens and source. Filtered-zero recovery remains distinct from an empty report.
+This verdict covers those fixes at the synthetic-render and source-review scope.
+The implemented tokens and interaction patterns are recorded in `DESIGN.md` and
+`.impeccable/design.json`. Temporary preview entry points were removed.
+
+The previous refresh notes below describe the earlier implementation and its
+verification limits; the current redesign supersedes those layout descriptions.
+
+## Earlier refresh — 2026-10-20
 
 ## Product and direction
 

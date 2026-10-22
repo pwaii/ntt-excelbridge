@@ -16,7 +16,8 @@ type UploadFlow = ReturnType<typeof createUploadWorkflow<BackendJob>>;
 function UploadedJob({ flow }: { flow: UploadFlow }) {
   const state = useSyncExternalStore(flow.subscribe, flow.getSnapshot);
   // Configuration is passed separately by the parent once confirmation succeeds.
-  return <UploadProgressPanel state={state} onCancel={flow.cancel} canRetry={flow.canRetry} onRetry={(role) => { void flow.upload(role).then(() => flow.confirm()); }} />;
+  const panel = <UploadProgressPanel state={state} onCancel={flow.cancel} canRetry={flow.canRetry} onRetry={(role) => { void flow.upload(role).then(() => flow.confirm()); }} />;
+  return state.confirmation === "confirmed" ? <details className="section-disclosure"><summary>Uploaded files</summary><div className="mt-3">{panel}</div></details> : panel;
 }
 
 export function ConnectedCreateFlow({ configuration, canCreate, onLockedChange, actionRef, onAvailabilityChange, onStageChange }: { configuration: JobFormInput; canCreate: boolean; onLockedChange: (value: boolean) => void; actionRef: MutableRefObject<(() => Promise<void>) | undefined>; onAvailabilityChange: (value: boolean) => void; onStageChange?: (step: number) => void }) {
@@ -77,15 +78,15 @@ export function ConnectedCreateFlow({ configuration, canCreate, onLockedChange, 
   useEffect(() => { onAvailabilityChange(available); }, [available, onAvailabilityChange]);
   const id = "receipt" in state ? state.receipt.jobId : undefined;
   return <section aria-labelledby="backend-create-title" className="mt-5 min-w-0 space-y-4">
-    <div className="panel p-5 sm:p-6">
-    <h2 id="backend-create-title" className="text-sm font-semibold">Create job and upload</h2>
-    <p className="mt-2 text-xs leading-relaxed text-muted-foreground">Files upload to S3 when you create a job. You will confirm worksheet details before starting processing.</p>
-    <details className="mt-3 text-xs text-muted-foreground"><summary className="w-fit cursor-pointer font-medium">How your data is processed</summary><p className="mt-2 max-w-2xl leading-relaxed">When AI analysis is enabled, the backend sends workbook data to Amazon Bedrock. Review proposed changes before approving them. Original uploads are preserved.</p></details>
+    <div className="space-y-3 text-sm">
+    <h2 id="backend-create-title" className="sr-only">Upload status</h2>
+
+    <details className="mt-3 text-xs text-muted-foreground"><summary className="w-fit cursor-pointer font-medium">How your data is processed</summary><p className="mt-2 max-w-2xl leading-relaxed">When AI analysis is enabled, the backend sends workbook data to Amazon Bedrock. Review proposed changes before approving them.</p></details>
     {issues.length > 0 && <ul role="note" className="list-disc space-y-1 pl-4 text-xs text-muted-foreground">{issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>}
-    {state.phase === "creating-job" && <p role="status" className="mt-4 text-sm">Creating backend job…</p>}
-    {state.phase === "create-error" && <div role="alert" className="notice notice-error mt-4"><p className="font-medium">{state.error.message}</p>{state.error.requestId && <p className="mt-1 break-all text-xs">Request ID: {state.error.requestId}</p>}{state.outcomeUnknown && <p className="mt-2 text-sm">The request may have created a job. Check existing jobs with the backend before creating another one.</p>}</div>}
-    {id && <p className="mt-4 break-all text-xs text-muted-foreground">Job ID: <Link className="text-primary underline underline-offset-4" to={`/jobs/${encodeURIComponent(id)}`}>{id}</Link></p>}
-    {!id && resumeId && <p className="mt-4 text-xs"><Link className="text-primary underline underline-offset-4" to={`/jobs/${encodeURIComponent(resumeId)}`}>Read the last created job status</Link>. Refreshing does not restore local file selections.</p>}
+    {state.phase === "creating-job" && <p role="status" className="mt-4 text-sm">Preparing upload…</p>}
+    {state.phase === "create-error" && <div role="alert" className="notice notice-error mt-4"><p className="font-medium">{state.error.message}</p>{state.error.requestId && <p className="mt-1 break-all text-xs">Request ID: {state.error.requestId}</p>}{state.outcomeUnknown && <p className="mt-2 text-sm">A job may already have been created. Check job progress or contact support before uploading again.</p>}</div>}
+    {id && <p className="mt-4 break-all text-xs text-muted-foreground"><Link className="text-primary underline underline-offset-4" to={`/jobs/${encodeURIComponent(id)}`}>View job progress</Link></p>}
+    {!id && resumeId && <p className="mt-4 text-xs"><Link className="text-primary underline underline-offset-4" to={`/jobs/${encodeURIComponent(resumeId)}`}>Resume your last workflow</Link>. Refreshing does not restore local file selections.</p>}
     </div>
     {flow && <UploadedJob flow={flow} />}
     {metadataFlow && <PostUploadConfiguration flow={metadataFlow} />}

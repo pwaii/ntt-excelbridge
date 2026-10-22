@@ -62,11 +62,11 @@ describe("explicit local backend fallback", () => {
     const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
     try {
       await act(async () => { root.render(<MemoryRouter initialEntries={["/jobs/new"]}><AuthProvider adapter={adapter}><AppRoutes /></AuthProvider></MemoryRouter>); });
-      expect(container.textContent).toContain("No Cognito login or JWT verification");
+      expect(container.textContent).toContain("development access, not a production sign-in");
       const find = (label: string) => [...container.querySelectorAll("button")].find((button) => button.textContent === label)!;
       await act(async () => { find("Continue in local development").click(); });
       expect(container.querySelector("h1")!.textContent).toBe("Create workflow");
-      expect(container.textContent).toContain("Local fallback: local-user");
+      expect(container.textContent).toContain("Local development · local-user");
       expect(container.textContent).not.toContain("Signed in as");
       await act(async () => { find("Exit local workspace").click(); });
       expect(container.querySelector("h1")!.textContent).toBe("Sign in");

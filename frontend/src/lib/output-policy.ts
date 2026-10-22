@@ -2,20 +2,20 @@ import type { OutputPolicy } from "@/types/review";
 
 export const outputPolicies: Record<OutputPolicy, { title: string; description: string }> = {
   standardize_only: {
-    title: "Standardize only",
-    description: "The final download is derived from the current workbook, with approved standardization rules applied and the requested output column if approved. Original uploads remain unchanged.",
+    title: "Standardized workbook",
+    description: "Download a new current workbook with approved standardization and the requested column, if approved.",
   },
   update_only: {
-    title: "Update only",
-    description: "The final download is a NEW version derived from the main workbook, with approved current rows merged into matched rows. The original main workbook remains unchanged. Unmatched current rows are skipped and reported, never inserted automatically.",
+    title: "Updated main workbook",
+    description: "Download a new main workbook with approved current values merged into matched rows. Unmatched rows are skipped and reported.",
   },
   both: {
-    title: "Standardize and update",
-    description: "Standardize current data first, then match against the main workbook using standardized current values. Apply approved updates to a NEW main-derived workbook. The original main workbook remains unchanged. Unmatched current rows are skipped and reported, never inserted automatically.",
+    title: "Standardized main workbook",
+    description: "Standardize current data, then use those values to match and update a new main workbook. Only approved changes are applied; unmatched rows are skipped and reported.",
   },
   neither: {
-    title: "Neither standardization nor update",
-    description: "The final download is derived from the current workbook, with approved quality fixes and the requested column. No standardization or main-file update is performed. Original uploads remain unchanged.",
+    title: "New current workbook",
+    description: "Download a new current workbook with approved quality fixes and the requested column.",
   },
 };
 

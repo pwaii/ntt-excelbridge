@@ -74,18 +74,17 @@ describe("job configuration schema", () => {
 
 describe("ADR D2/D7 policy semantics", () => {
   it.each(["neither", "standardize_only"] as const)("%s names the current-derived output", (mode) => {
-    expect(outputPolicies[mode].description).toContain("derived from the current workbook");
+    expect(outputPolicies[mode].description).toContain("new current workbook");
   });
-  it.each(["update_only", "both"] as const)("%s creates a new main-derived output, preserving the source", (mode) => {
+  it.each(["update_only", "both"] as const)("%s names a new main workbook and explains skipped rows", (mode) => {
     const description = outputPolicies[mode].description;
-    expect(description).toContain("NEW");
-    expect(description).toContain("original main workbook remains unchanged");
-    expect(description).toContain("skipped and reported, never inserted automatically");
+    expect(description).toContain("new main workbook");
+    expect(description).toContain("skipped and reported");
     expect(description).not.toContain("overwrite");
   });
   it("specifies standardization before matching", () => {
-    expect(outputPolicies.both.description).toContain("Standardize current data first");
-    expect(outputPolicies.both.description).toContain("using standardized current values");
+    expect(outputPolicies.both.description).toContain("Standardize current data, then");
+    expect(outputPolicies.both.description).toContain("use those values to match");
   });
 });
 

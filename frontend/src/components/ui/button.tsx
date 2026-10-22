@@ -5,18 +5,18 @@ import { cn } from "@/lib/utils";
 
 // Local shadcn/ui-style primitive; compose links with asChild.
 const buttonVariants = cva(
-  "inline-flex max-w-full shrink-0 items-center justify-center gap-2 rounded-md text-sm leading-5 font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "ui-button inline-flex max-w-full shrink-0 items-center justify-center gap-2 rounded-md text-[13px] leading-5 font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:bg-secondary disabled:text-muted-foreground disabled:border-transparent [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
-        outline: "border border-input bg-card text-foreground hover:border-muted-foreground hover:bg-muted",
-        ghost: "text-muted-foreground hover:bg-muted hover:text-foreground",
+        default: "button-primary bg-primary text-primary-foreground hover:bg-[#2e4d54]",
+        outline: "button-outline border border-input bg-card text-foreground hover:bg-muted hover:border-[#a7b7bd]",
+        ghost: "button-ghost text-muted-foreground hover:bg-muted hover:text-foreground disabled:bg-transparent",
       },
       size: {
-        default: "min-h-10 px-4 py-2",
-        sm: "min-h-9 px-3 py-1.5 text-xs",
-        icon: "size-10 p-2",
+        default: "min-h-9 px-3 py-1.5",
+        sm: "min-h-8 px-3 py-1 text-[13px]",
+        icon: "size-9 p-2",
       },
     },
     defaultVariants: { variant: "default", size: "default" },

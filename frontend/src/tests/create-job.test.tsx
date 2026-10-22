@@ -126,7 +126,7 @@ describe("job creation UI", () => {
     await selectFile("current-file", "current.xlsx");
     await enterPrompt("Customer segment");
     await enterHeader("customer_segment");
-    expect(get<HTMLButtonElement>('button[type="submit"]').textContent).toContain("Create job and upload files");
+    expect(get<HTMLButtonElement>('button[type="submit"]').textContent).toContain("Upload workbooks");
     expect(get<HTMLButtonElement>('button[type="submit"]').disabled).toBe(false);
     expect(container.textContent).not.toContain("Preview configuration");
     const resetButton = [...container.querySelectorAll("button")].find((button) => button.textContent === "Reset form")!;
@@ -140,43 +140,30 @@ describe("job creation UI", () => {
     await click('input[name="update"]');
     const selectors = [...container.querySelectorAll("select")];
     expect(selectors).toHaveLength(0);
-    expect(container.textContent).toContain("Worksheet selection becomes available after upload");
     expect(container.querySelector('input[type="number"]')).toBeNull();
-    expect(container.textContent).toContain("No workbook has been inspected");
   });
 
-  it("explains worksheet setup after upload without losing an entered output header", async () => {
-    const advanced = get<HTMLDetailsElement>("#advanced-settings");
-    expect(advanced.open).toBe(false);
-    await click("#advanced-settings > summary");
-    expect(advanced.open).toBe(true);
-    const header = get<HTMLInputElement>("#output-header");
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(header, "profit");
-      header.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    await click("#advanced-settings > summary");
+  it("preserves the output header when optional processing changes", async () => {
+    await enterHeader("profit");
     await click('input[name="standardize"]');
-    await click("#advanced-settings > summary");
-    expect(header.value).toBe("profit");
-    expect(advanced.textContent).toContain("current workbook and master workbook");
-    expect(advanced.querySelector("select")).toBeNull();
+    await click('input[name="update"]');
+    expect(get<HTMLInputElement>("#output-header").value).toBe("profit");
+    expect(container.querySelector("#advanced-settings")).toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("keeps the policy summary compact and exposes the exact behavior on demand", async () => {
     const policy = get('[aria-labelledby="output-policy-title"]');
     const summary = policy.querySelector('[aria-live="polite"]');
-    expect(summary?.textContent).toContain("Current workbook copy");
-    expect(policy.textContent).toContain("Approval required");
-    expect(summary?.textContent).toContain("Preserved");
+    expect(summary?.textContent).toContain(outputPolicies.neither.title);
     const details = policy.querySelector("details");
     expect(details?.open).toBe(false);
     await click('input[name="update"]');
-    expect(summary?.textContent).toContain("Master workbook copy");
+    expect(summary?.textContent).toContain(outputPolicies.update_only.title);
     await click('[aria-labelledby="output-policy-title"] summary');
     expect(details?.open).toBe(true);
     expect(details?.textContent).toContain(outputPolicies.update_only.description);
-    expect(get<HTMLButtonElement>('button[type="submit"]').textContent).toContain("Create job and upload files");
+    expect(get<HTMLButtonElement>('button[type="submit"]').textContent).toContain("Upload workbooks");
   });
 
   it("rejects oversized files, clears errors on reset, and blocks blank prompts", async () => {
@@ -202,24 +189,11 @@ describe("job creation UI", () => {
     expect(container.textContent).not.toContain("Preview configuration");
   });
 
-  it("populates the prompt from example chips and returns focus to the composer", async () => {
-    const examples = get('[aria-label="Example column prompts"]');
-    for (const text of ["Profit", "Growth Rate", "Net Revenue", "Profit Margin"]) {
-      const chip = [...examples.querySelectorAll("button")].find((button) => button.textContent === text);
-      await act(async () => { chip?.click(); });
-      expect(get<HTMLTextAreaElement>("#prompt").value).toBe(text);
-      await vi.waitFor(() => expect(document.activeElement?.id, text).toBe("prompt"));
-      expect(chip?.getAttribute("aria-pressed")).toBe("true");
-      expect(examples.querySelectorAll('[aria-pressed="true"]')).toHaveLength(1);
-    }
-    expect(container.textContent).not.toContain("Frontend-only preview ready");
-    expect(fetch).not.toHaveBeenCalled();
-  });
 
   it("shows the current setup step without inventing processing progress", async () => {
     expect(container.querySelector('[aria-labelledby="workflow-preview-title"]')).toBeNull();
     expect(container.querySelector('[aria-label="Job setup steps"] [aria-current="step"]')?.textContent).toContain("Configure job");
-    expect(container.querySelector("aside")).toBeNull();
+    expect(container.querySelector('[aria-label="Processing and output"]')?.textContent).toContain("Your output");
     await selectFile("current-file", "current.xlsx");
     await enterPrompt("Profit");
     await enterHeader("profit");
@@ -243,7 +217,7 @@ describe("job creation UI", () => {
     expect(get('[aria-labelledby="output-policy-title"]').textContent).toContain(outputPolicies.neither.description);
   });
 
-  it("shows a touched prompt error and clears it when an example is chosen", async () => {
+  it("shows a touched prompt error and clears it when instructions are entered", async () => {
     const prompt = get<HTMLTextAreaElement>("#prompt");
     await act(async () => {
       prompt.focus();
@@ -251,9 +225,8 @@ describe("job creation UI", () => {
     });
     expect(prompt.getAttribute("aria-invalid")).toBe("true");
     expect(get('#prompt-error').textContent).toBe("Describe the column you want to add.");
-    const example = [...container.querySelectorAll('[aria-label="Example column prompts"] button')].find((button) => button.textContent === "Profit");
-    await act(async () => { (example as HTMLButtonElement).click(); });
-    expect(prompt.value).toBe("Profit");
+    await enterPrompt("Calculate Profit as Revenue minus Cost.");
+    expect(prompt.value).toBe("Calculate Profit as Revenue minus Cost.");
     expect(prompt.getAttribute("aria-invalid")).toBe("false");
     expect(container.querySelector("#prompt-error")).toBeNull();
     expect(fetch).not.toHaveBeenCalled();
@@ -269,8 +242,6 @@ describe("job creation UI", () => {
     await enterHeader("profit");
     expect(header.getAttribute("aria-invalid")).toBe("false");
     expect(get<HTMLButtonElement>('button[type="submit"]').disabled).toBe(false);
-    expect(get("#real-job-readiness").textContent).toContain("After upload, select the worksheet");
-    expect(container.textContent).toContain("Awaiting workbook metadata");
     expect(container.querySelector('[role="status"]')?.textContent).not.toContain("large file");
     expect(fetch).not.toHaveBeenCalled();
   });
@@ -291,9 +262,9 @@ describe("job creation UI", () => {
     await selectFile("main-file", "main-two.xlsx");
     expect(container.textContent).not.toContain("main-one.xlsx");
     expect(get<HTMLButtonElement>('button[type="submit"]').disabled).toBe(false);
-    await click('[aria-label="Remove master workbook"]');
+    await click('[aria-label="Remove main workbook"]');
     expect(get<HTMLButtonElement>('button[type="submit"]').disabled).toBe(true);
-    expect(get("#main-file-error").textContent).toContain("Select a master workbook");
+    expect(get("#main-file-error").textContent).toContain("Select a main workbook");
   });
 
   it("accepts formula-looking prompt/header as untrusted text without executing anything", async () => {
@@ -314,9 +285,9 @@ describe("job creation UI", () => {
     expect(document.activeElement).toBe(get('[aria-label="Browse current workbook"]'));
     await click('input[name="standardize"]');
     await selectFile("main-file", "main.xlsx");
-    get<HTMLButtonElement>('[aria-label="Remove master workbook"]').focus();
-    await click('[aria-label="Remove master workbook"]');
-    expect(document.activeElement).toBe(get('[aria-label="Browse master workbook"]'));
+    get<HTMLButtonElement>('[aria-label="Remove main workbook"]').focus();
+    await click('[aria-label="Remove main workbook"]');
+    expect(document.activeElement).toBe(get('[aria-label="Browse main workbook"]'));
   });
 
   it("exposes rejected replacement feedback to the keyboard-accessible Replace action", async () => {

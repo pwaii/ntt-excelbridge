@@ -30,7 +30,7 @@ it.each(["COMPLETED", "FAILED", "QUALITY_REVIEW_PENDING", "TRANSFORMATION_REVIEW
       expect(container.querySelector('a[href$="/quality-review"]')?.textContent).toBe("Review data quality");
       expect(container.querySelector('[aria-current="step"]')?.textContent).toContain("Quality review");
     } else if (terminal === "TRANSFORMATION_REVIEW_PENDING") expect(container.querySelector('a[href$="/transformation-review"]')?.textContent).toBe("Review transformations");
-    else expect(container.textContent).toContain(`Workflow finished with backend status: ${terminal}`);
+    else expect(container.textContent).toContain(terminal);
     await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
     expect(fetcher).toHaveBeenCalledTimes(3);
     expect(fetcher.mock.calls.every(([, options]) => options?.method === "GET")).toBe(true);

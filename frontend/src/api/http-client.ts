@@ -87,7 +87,7 @@ export function createApiClient({ baseUrl, getValidToken, fetcher = fetch, devel
           if (response.ok) throw new ApiError("protocol", "The backend returned an unreadable response.", response.status, undefined, responseDiagnostics(response.headers, null).requestId);
         }
         const diagnostics = responseDiagnostics(response.headers, payload);
-        if (!response.ok) throw new ApiError("http", httpErrorMessage(response.status), response.status, diagnostics.code, diagnostics.requestId);
+        if (!response.ok) throw new ApiError("http", httpErrorMessage(response.status, diagnostics.code), response.status, diagnostics.code, diagnostics.requestId);
         let data: T;
         try { data = options.decode(payload); }
         catch { throw new ApiError("protocol", "The backend response does not match the expected contract.", response.status, undefined, diagnostics.requestId); }
