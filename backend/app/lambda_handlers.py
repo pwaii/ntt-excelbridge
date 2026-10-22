@@ -126,11 +126,11 @@ def bedrock_handler(event: dict[str, Any], context) -> dict[str, Any]:
                 "type_distribution": mismatch.get("type_distribution", {}),
                 "constraints": mismatch.get("constraints", {}),
             }
-            proposals.append(run_tool_segment(job_id, tool, proposal_inputs, dynamo, s3))
+            proposals.append(run_tool_segment(job_id, tool, proposal_inputs, dynamo, s3, slot))
         proposal = {"tool": tool, "proposals": proposals, "status": "proposed"}
     else:
         inputs = event.get("inputs") or _tool_inputs(item, s3, tool, slot)
-        proposal = run_tool_segment(job_id, tool, inputs, dynamo, s3)
+        proposal = run_tool_segment(job_id, tool, inputs, dynamo, s3, slot)
     status_by_tool = {
         "tool3": "FORMULA_REVIEW_PENDING",
         "tool4": "STANDARDIZATION_PENDING",
