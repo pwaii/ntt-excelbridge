@@ -1,0 +1,14 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Sid": "QuickSightRead",
+    "Effect": "Allow",
+    "Principal": {"Service": "quicksight.amazonaws.com"},
+    "Action": ["s3:GetObject", "s3:ListBucket"],
+    "Resource": [
+      "arn:aws:s3:::xlsx-workflow-demo-453995432289",
+      "arn:aws:s3:::xlsx-workflow-demo-453995432289/quicksight/*"
+    ],
+    "Condition": {"StringEquals": {"aws:SourceAccount": "453995432289"}}
+  }]
+}

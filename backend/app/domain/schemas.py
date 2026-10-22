@@ -45,7 +45,7 @@ class ReviewItemDecision(BaseModel):
 
 class ReviewRequest(BaseModel):
     expected_revision: int = Field(ge=0)
-    decisions: dict[str, ReviewItemDecision] = Field(min_length=1)  # keyed by issue/proposal id
+    decisions: dict[str, ReviewItemDecision] = Field(default_factory=dict)  # keyed by issue/proposal id
     approved_by: str | None = None  # populated from authenticated Cognito subject
 
 

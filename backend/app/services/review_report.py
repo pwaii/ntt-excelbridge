@@ -10,6 +10,7 @@ from openpyxl.utils.cell import column_index_from_string, coordinate_from_string
 from app.domain.review_report import CellEvidence, FormulaEvidence, MatchEvidence, ReportItem
 from app.workers.apply_changes import materialize_formula
 from app.workers.formulas import verify_formula
+from app.workers.inspect_workbook import normalize_text
 
 
 def all_children(dynamo, job_id, prefix):
@@ -178,6 +179,8 @@ def build_report(item, stage, dynamo, s3):
                 if index is None or not 0 <= int(index) < len(payload.get("rules", [])):
                     raise HTTPException(503, "Normalization rule identity is unavailable")
                 rule = payload["rules"][int(index)]
+                if rule["example_original"] == rule["normalized_form"]:
+                    continue
                 rows.append(
                     ReportItem(
                         id=identity,
@@ -201,96 +204,111 @@ def build_report(item, stage, dynamo, s3):
             elif tool == "tool3":
                 formula = payload["formula_template"]
                 syntax, diagnostic = "unverified", None
-                if workbook:
-                    sheet = (
-                        workbook[config["input_sheet"]]
-                        if config.get("input_sheet")
-                        else workbook.worksheets[0]
-                    )
-                    header = config.get("input_header_row") or 1
-                    headers = [cell.value for cell in sheet[header]]
-                    target = payload.get("target_header") or config.get("output_header")
-                    target_column = (
-                        headers.index(target) + 1 if target in headers else sheet.max_column + 1
-                    )
-                    try:
-                        if any(name not in headers for name in payload["referenced_headers"]):
-                            raise ValueError(
-                                "Formula references a header outside the confirmed source"
-                            )
-                        if config.get("update"):
-                            main_key = item.get("files", {}).get("main", {}).get("key")
-                            if not main_key or not main_key.startswith(prefix):
+                # Use the workbook for this proposal's actual slot (not always the primary input)
+                slot_key = item.get("files", {}).get(proposal_slot, {}).get("key")
+                if proposal_slot == "input":
+                    slot_wb, slot_wb_owned = workbook, False
+                elif slot_key and slot_key.startswith(prefix):
+                    slot_wb = load_workbook(BytesIO(s3.get_bytes(slot_key)), read_only=True, data_only=False)
+                    slot_wb_owned = True
+                else:
+                    slot_wb, slot_wb_owned = None, False
+                try:
+                    if slot_wb:
+                        sheet = (
+                            slot_wb[config["input_sheet"]]
+                            if config.get("input_sheet")
+                            else slot_wb.worksheets[0]
+                        )
+                        header = config.get("input_header_row") or 1
+                        headers = [cell.value for cell in sheet[header]]
+                        # Normalize for comparison — inspect_bytes normalizes header names
+                        headers_normalized = {normalize_text(h) for h in headers if h is not None}
+                        target = payload.get("target_header") or config.get("output_header")
+                        target_column = (
+                            headers.index(target) + 1 if target in headers else sheet.max_column + 1
+                        )
+                        try:
+                            if any(name not in headers_normalized for name in payload["referenced_headers"]):
                                 raise ValueError(
-                                    "The main workbook is unavailable for formula verification"
+                                    "Formula references a header outside the confirmed source"
                                 )
-                            main_book = load_workbook(
-                                BytesIO(s3.get_bytes(main_key)), read_only=True, data_only=False
-                            )
-                            try:
-                                main_sheet = (
-                                    main_book[config["main_sheet"]]
-                                    if config.get("main_sheet")
-                                    else main_book.worksheets[0]
-                                )
-                                main_headers = [
-                                    cell.value
-                                    for cell in main_sheet[config.get("main_header_row") or 1]
-                                ]
-                                if any(
-                                    name not in main_headers
-                                    or main_headers.index(name) != headers.index(name)
-                                    for name in payload["referenced_headers"]
-                                ):
+                            if config.get("update"):
+                                main_key = item.get("files", {}).get("main", {}).get("key")
+                                if not main_key or not main_key.startswith(prefix):
                                     raise ValueError(
-                                        "Referenced columns differ in the output workbook; request a new output-specific formula"
+                                        "The main workbook is unavailable for formula verification"
                                     )
-                                main_header = config.get("main_header_row") or 1
-                                main_target = (
-                                    main_headers.index(target) + 1
-                                    if target in main_headers
-                                    else main_sheet.max_column + 1
+                                main_book = load_workbook(
+                                    BytesIO(s3.get_bytes(main_key)), read_only=True, data_only=False
                                 )
-                                if main_sheet.max_row <= main_header:
-                                    raise ValueError(
-                                        "The main sheet has no output rows for this formula"
+                                try:
+                                    main_sheet = (
+                                        main_book[config["main_sheet"]]
+                                        if config.get("main_sheet")
+                                        else main_book.worksheets[0]
                                     )
-                                for output_row in {main_header + 1, main_sheet.max_row}:
-                                    verified = verify_formula(
-                                        materialize_formula(formula, output_row),
-                                        min_row=main_header + 1,
-                                        max_row=main_sheet.max_row,
-                                        max_column=max(main_sheet.max_column, main_target),
-                                        target_column=main_target,
-                                    )
-                                    for reference in verified["references"]:
-                                        letter, _number = coordinate_from_string(
-                                            reference.replace("$", "")
+                                    main_headers = [
+                                        cell.value
+                                        for cell in main_sheet[config.get("main_header_row") or 1]
+                                    ]
+                                    if any(
+                                        name not in main_headers
+                                        or main_headers.index(name) != headers.index(name)
+                                        for name in payload["referenced_headers"]
+                                    ):
+                                        raise ValueError(
+                                            "Referenced columns differ in the output workbook; request a new output-specific formula"
                                         )
-                                        position = column_index_from_string(letter) - 1
-                                        if (
-                                            position >= len(headers)
-                                            or position >= len(main_headers)
-                                            or headers[position] != main_headers[position]
-                                        ):
-                                            raise ValueError(
-                                                "Formula cell references differ in the output workbook"
+                                    main_header = config.get("main_header_row") or 1
+                                    main_target = (
+                                        main_headers.index(target) + 1
+                                        if target in main_headers
+                                        else main_sheet.max_column + 1
+                                    )
+                                    if main_sheet.max_row <= main_header:
+                                        raise ValueError(
+                                            "The main sheet has no output rows for this formula"
+                                        )
+                                    for output_row in {main_header + 1, main_sheet.max_row}:
+                                        verified = verify_formula(
+                                            materialize_formula(formula, output_row),
+                                            min_row=main_header + 1,
+                                            max_row=main_sheet.max_row,
+                                            max_column=max(main_sheet.max_column, main_target),
+                                            target_column=main_target,
+                                        )
+                                        for reference in verified["references"]:
+                                            letter, _number = coordinate_from_string(
+                                                reference.replace("$", "")
                                             )
-                            finally:
-                                main_book.close()
-                        if sheet.max_row <= header:
-                            raise ValueError("The selected sheet has no data rows")
-                        for row in {header + 1, sheet.max_row}:
-                            verify_formula(
-                                materialize_formula(formula, row),
-                                min_row=header + 1,
-                                max_row=sheet.max_row,
-                                max_column=max(sheet.max_column, target_column),
-                                target_column=target_column,
-                            )
-                        syntax = "verified"
-                    except ValueError as error:
-                        syntax, diagnostic = "invalid", str(error)
+                                            position = column_index_from_string(letter) - 1
+                                            if (
+                                                position >= len(headers)
+                                                or position >= len(main_headers)
+                                                or headers[position] != main_headers[position]
+                                            ):
+                                                raise ValueError(
+                                                    "Formula cell references differ in the output workbook"
+                                                )
+                                finally:
+                                    main_book.close()
+                            if sheet.max_row <= header:
+                                raise ValueError("The selected sheet has no data rows")
+                            for row in {header + 1, sheet.max_row}:
+                                verify_formula(
+                                    materialize_formula(formula, row),
+                                    min_row=header + 1,
+                                    max_row=sheet.max_row,
+                                    max_column=max(sheet.max_column, target_column),
+                                    target_column=target_column,
+                                )
+                            syntax = "verified"
+                        except ValueError as error:
+                            syntax, diagnostic = "invalid", str(error)
+                finally:
+                    if slot_wb_owned:
+                        slot_wb.close()
                 rows.append(
                     ReportItem(
                         id=identity,

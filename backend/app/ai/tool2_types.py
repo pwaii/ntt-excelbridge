@@ -92,6 +92,7 @@ def run_tool2(
     payload.target_type = _canonical_target_type(payload.target_type)
     _validate_against_inputs(payload)  # reject off-allowlist target type
     _apply_confidence_floor(payload)   # demote-only guardrail
+    payload.rules = [r for r in payload.rules if r.example_original != r.normalized_form]
 
     meta = AuditMeta(
         tool=TOOL, model_id=model_id, prompt_version=PROMPT_VERSION,
