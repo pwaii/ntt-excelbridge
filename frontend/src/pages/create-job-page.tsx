@@ -35,7 +35,7 @@ export function CreateJobPage() {
   const requiresMain = standardize || update;
   const policy = outputPolicies[getOutputPolicy(standardize, update)];
   const localFormValid = jobCreationSchema.safeParse(values).success && !selectionErrors.current && !selectionErrors.main;
-  const missing = [!currentFile && "a current workbook", !comment_name.trim() && "a column prompt", !outputHeader.trim() && "an output header", requiresMain && !mainFile && "a main workbook"].filter(Boolean);
+  const missing = [!currentFile && "a current workbook", requiresMain && !mainFile && "a main workbook"].filter(Boolean);
   const missingRequirements = missing.length ? `Add ${missing.join(" and ")} to continue.` : !localFormValid ? "Resolve the highlighted file or field errors to continue." : undefined;
 
   function changeFile(field: "currentFile" | "mainFile", file: File | null) {
@@ -76,14 +76,14 @@ export function CreateJobPage() {
                 <FormSection id="current-workbook" title={currentFiles.length > 1 ? `Current workbooks (${currentFiles.length})` : "Current workbook"} required>
                   <CurrentWorkbookPicker key={`current-${resetVersion}`} id="current-file" files={currentFiles} onChange={changeCurrentFiles} validationError={errors.currentFile?.message} onSelectionError={(message) => setSelectionErrors((previous) => ({ ...previous, current: message }))} />
                 </FormSection>
-                <FormSection id="output-configuration" title="Column to add" required>
+                <FormSection id="output-configuration" title="Column to add">
                   <label htmlFor="prompt" className="field-label">What should the new column calculate or contain?</label>
-                  <textarea id="prompt" {...register("comment_name")} required aria-invalid={Boolean(errors.comment_name)} aria-describedby={errors.comment_name ? "prompt-error" : "prompt-hint"} rows={3} className="field-control instruction-field" placeholder="For example, calculate Profit as Revenue minus Cost." />
-                  {errors.comment_name ? <p id="prompt-error" role="alert" className="field-error">{errors.comment_name.message}</p> : <p id="prompt-hint" className="field-hint">Use the column names in your workbook. Include the calculation or rule. Up to 200 characters.</p>}
+                  <textarea id="prompt" {...register("comment_name")} aria-invalid={Boolean(errors.comment_name)} aria-describedby={errors.comment_name ? "prompt-error" : "prompt-hint"} rows={3} className="field-control instruction-field" placeholder="For example, calculate Profit as Revenue minus Cost." />
+                  {errors.comment_name ? <p id="prompt-error" role="alert" className="field-error">{errors.comment_name.message}</p> : <p id="prompt-hint" className="field-hint">Optional. Use the column names in your workbook. Include the calculation or rule. Up to 200 characters.</p>}
                   <div className="output-header-field">
-                    <label htmlFor="output-header" className="field-label">Output column header <span className="required-marker" aria-hidden="true">*</span></label>
-                    <input id="output-header" {...register("outputHeader")} required aria-invalid={Boolean(errors.outputHeader)} className={fieldClass} aria-describedby={errors.outputHeader ? "output-header-error" : "output-header-hint"} placeholder="For example, Profit" />
-                    {errors.outputHeader ? <p id="output-header-error" role="alert" className="field-error">{errors.outputHeader.message}</p> : <p id="output-header-hint" className="field-hint">This exact name will appear in the output workbook.</p>}
+                    <label htmlFor="output-header" className="field-label">Output column header</label>
+                    <input id="output-header" {...register("outputHeader")} aria-invalid={Boolean(errors.outputHeader)} className={fieldClass} aria-describedby={errors.outputHeader ? "output-header-error" : "output-header-hint"} placeholder="For example, Profit" />
+                    {errors.outputHeader ? <p id="output-header-error" role="alert" className="field-error">{errors.outputHeader.message}</p> : <p id="output-header-hint" className="field-hint">Optional. If blank, the column name is derived from your prompt above.</p>}
                   </div>
                 </FormSection>
               </div>

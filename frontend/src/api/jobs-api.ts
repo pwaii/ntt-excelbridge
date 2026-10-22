@@ -130,7 +130,7 @@ export function createJobsApi(client: ReturnType<typeof createApiClient>, allowe
     checkId(result.data.job, id); return result.data;
   }
   async function submitReview(id: string, body: components["schemas"]["ReviewRequest"], signal?: AbortSignal) {
-    const result = await client.request(`${jobPath(id)}/reviews`, { method: "POST", body, signal,
+    const result = await client.request(`${jobPath(id)}/reviews`, { method: "POST", body, signal, timeoutMs: 300_000,
       decode: (value): components["schemas"]["ReviewResponse"] => responseSchema.extend({ review_id: text }).parse(value) });
     checkId(result.data.job, id);
     if (result.data.job.revision <= body.expected_revision) throw new ApiError("protocol", "The backend did not acknowledge a new review revision.");

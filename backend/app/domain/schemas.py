@@ -11,7 +11,7 @@ from app.domain.enums import MatchType, OutputPolicy, ReviewDecision
 
 # --- Job configuration (§5.1) ---
 class JobConfig(BaseModel):
-    comment_name: str = Field(min_length=1, max_length=200)
+    comment_name: str = Field(default="", max_length=200)
     output_header: str | None = None  # derived from comment_name if empty (§3.1)
     standardize: bool = False
     update: bool = False

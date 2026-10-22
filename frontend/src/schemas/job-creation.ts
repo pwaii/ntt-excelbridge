@@ -21,8 +21,8 @@ export const jobCreationSchema = z.object({
   // current-workbook picker fills this array when more than one is selected.
   currentFiles: z.array(workbookFileSchema).max(8, "You can select up to 8 current workbooks.").optional(),
   // Keep the existing backend field name; the UI labels this field "Prompt".
-  comment_name: z.string().trim().min(1, "Describe the column you want to add.").max(200, "Prompt must contain at most 200 characters."),
-  outputHeader: z.string().trim().min(1, "Enter the output column header."),
+  comment_name: z.string().trim().max(200, "Prompt must contain at most 200 characters.").optional().default(""),
+  outputHeader: z.string().trim().optional().default(""),
   standardize: z.boolean().optional().default(false),
   update: z.boolean().optional().default(false),
   mainFile: workbookFileSchema.nullable().optional(),
@@ -35,8 +35,8 @@ export const jobCreationSchema = z.object({
 export type JobFormInput = z.input<typeof jobCreationSchema>;
 export type JobFormValues = z.output<typeof jobCreationSchema>;
 export const workflowConfigurationSchema = z.object({
-  comment_name: jobCreationSchema.shape.comment_name,
-  outputHeader: jobCreationSchema.shape.outputHeader,
+  comment_name: z.string().optional().default(""),
+  outputHeader: z.string().optional().default(""),
   standardize: z.boolean(), update: z.boolean(),
 });
 export type WorkflowConfiguration = z.infer<typeof workflowConfigurationSchema>;

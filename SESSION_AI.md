@@ -142,6 +142,6 @@ Spec: `docs/superpowers/specs/2026-10-16-ai-day7-design.md` · Plan: `docs/super
 - By action: keep_first_delete_later 42, manual_review 24, exclude_from_input 24, delete 18
 
 ### Next steps
-1. **Automation pipeline** — EventBridge S3 trigger on `jobs/*/quality/quality-report.json` → Lambda runs flatten → `create-ingestion` on `qa-issues-s3-76bde119`. Concurrency guard: skip if ingestion already RUNNING. Not yet built.
+1. **Automation pipeline**  EventBridge S3 t—rigger on `jobs/*/quality/quality-report.json` → Lambda runs flatten → `create-ingestion` on `qa-issues-s3-76bde119`. Concurrency guard: skip if ingestion already RUNNING. Not yet built.
 2. **`flatten_inspections.py`** — run to add workbook-metadata dataset (columns, types, blank rates per job).
 3. **QuickSight embedding** — Enterprise supports anonymous embedding (`generate-embed-url-for-anonymous-user`). FastAPI generates signed URL; React renders in `<iframe>`. Requires: publish dashboard, create namespace for anonymous access. Not started.

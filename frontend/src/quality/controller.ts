@@ -32,7 +32,6 @@ export function submissionBlocker(state: QualityState): string | undefined {
   if (!state.snapshot?.complete) return "The complete backend review must be loaded before submitting.";
   if (!reviewGates[state.stage ?? "quality"].includes(state.snapshot.status)) return `This job is not waiting for ${state.stage ?? "quality"} review.`;
   const required = state.snapshot.items.filter((item) => item.requiresDecision && item.status === "proposed");
-  if (!required.length) return "No pending decisions to submit.";
   if (required.some((item) => !state.drafts[item.id])) return "Decide every required item before submitting the review.";
   if (Object.entries(state.drafts).some(([id, draft]) => {
     const item = required.find((candidate) => candidate.id === id);
