@@ -185,6 +185,7 @@ def apply_accepted_updates(
     main_sheet: str | None = None,
     current_sheet: str | None = None,
     conflict_policy: str = "reject_all",
+    prior_destinations: set[tuple[str, int]] | None = None,
 ) -> tuple[bytes, list[dict[str, Any]]]:
     """Merge accepted current-row values into a new main-workbook copy.
 
@@ -200,7 +201,10 @@ def apply_accepted_updates(
     main_book = load_workbook(BytesIO(main_source), data_only=False)
     current_book = load_workbook(BytesIO(current_source), data_only=False)
     audit: list[dict[str, Any]] = []
-    used_destinations: set[tuple[str, int]] = set()
+    # Seeded by the caller when merging several current workbooks into one main in
+    # sequence: a destination an earlier file already wrote becomes a cross-file
+    # collision the existing conflict skip (below) catches instead of overwriting.
+    used_destinations: set[tuple[str, int]] = prior_destinations if prior_destinations is not None else set()
     try:
         main_ws = main_book[main_sheet] if main_sheet else main_book.worksheets[0]
         current_ws = current_book[current_sheet] if current_sheet else current_book.worksheets[0]
