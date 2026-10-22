@@ -348,6 +348,67 @@ def test_fanout_handlers_isolate_each_input_slot(api):
     }
 
 
+def test_apply_emits_one_output_per_input_slot(api):
+    client, store, storage, _ = api
+    response = client.post(
+        "/v1/jobs",
+        json={
+            "config": {
+                "comment_name": "Double Amount",
+                "output_header": "Double",
+                "standardize": False,
+                "update": False,
+            },
+            "input_filenames": ["current.xlsx", "current-2.xlsx"],
+        },
+    )
+    assert response.status_code == 201, response.text
+    job_id = response.json()["job"]["job_id"]
+    for slot, file in store.item["files"].items():
+        storage.objects[file["key"]] = _dup_workbook()
+        client.post(f"/v1/jobs/{job_id}/uploads/complete", json={"slot": slot})
+    store.item["config"].update({"input_sheet": "Data", "input_header_row": 1})
+
+    for slot in ("input", "input_2"):
+        handlers.inspect_handler({"job_id": job_id, "slot": slot}, None)
+        handlers.quality_handler({"job_id": job_id, "slot": slot}, None)
+        # A formula proposal per slot, stamped with its slot so apply filters correctly.
+        key = storage.artifact_key(job_id, "proposals", f"tool3-{slot}.json")
+        storage.put_bytes(
+            key,
+            json.dumps({"payload": {"formula_template": "=B{row}*2", "target_header": "Double"}}).encode(),
+            "application/json",
+        )
+        store.put_child(
+            job_id,
+            f"PROPOSAL#tool3-{slot}",
+            {"proposal_id": f"tool3-{slot}", "tool": "tool3", "artifact_key": key, "slot": slot},
+        )
+
+    # Accept every quality issue and every formula proposal across both slots.
+    decisions = {
+        child["issue_id"]: {"decision": "accept"}
+        for child in store.children.values()
+        if child.get("entity_type") == "issue"
+    }
+    decisions.update({f"tool3-{slot}": {"decision": "accept"} for slot in ("input", "input_2")})
+    store.item["last_review_key"] = storage.artifact_key(job_id, "reviews", "r.json")
+    storage.put_bytes(store.item["last_review_key"], json.dumps({"decisions": decisions}).encode(), "application/json")
+
+    handlers.apply_handler({"job_id": job_id}, None)
+    artifacts = store.item["artifacts"]
+    # neither policy with two inputs -> two independent current-workbook outputs.
+    assert "output" in artifacts and "output_2" in artifacts
+    assert artifacts["output"]["key"] != artifacts["output_2"]["key"]
+    for name in ("output", "output_2"):
+        book = load_workbook(BytesIO(storage.objects[artifacts[name]["key"]]), data_only=False)
+        sheet = book["Data"]
+        assert sheet["D1"].value == "Double"  # formula column added to each output
+        assert sheet["D2"].value == "=B2*2"
+        assert sheet.max_row == 2  # the duplicate row was removed in both
+        book.close()
+
+
 def test_review_rejects_unknown_incomplete_and_stale_decisions(api):
     client, store, storage, _ = api
     job_id = prepare(api)

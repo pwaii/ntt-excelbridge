@@ -328,31 +328,19 @@ def _review_reason(decisions: dict[str, Any], decision_id: str) -> str | None:
     return getattr(value, "reason", None)
 
 
-def apply_handler(event: dict[str, Any], context) -> dict[str, Any]:
-    dynamo, s3 = _stores()
-    item = dynamo.get_job(event["job_id"])
-    if not item:
-        raise ValueError("job not found")
-    source = s3.get_bytes(item["files"]["input"]["key"])
-    config = item.get("config", {})
-    standardize = bool(config.get("standardize"))
-    update = bool(config.get("update"))
-    policy = "both" if standardize and update else "standardize_only" if standardize else "update_only" if update else "neither"
-    main_file = item.get("files", {}).get("main")
-    main_source = s3.get_bytes(main_file["key"]) if main_file else None
-    decisions: dict[str, Any] = {}
+def _ordered_input_slots(item: dict[str, Any]) -> list[str]:
+    files = item.get("files", {})
+    candidates = ["input"] + [f"input_{index}" for index in range(2, 9)]
+    slots = [slot for slot in candidates if slot in files]
+    return slots or ["input"]
+
+
+def _collect_slot_changes(dynamo: DynamoStore, s3: S3Store, job_id: str, slot: str, item: dict[str, Any], config: dict[str, Any], decisions: dict[str, Any]) -> dict[str, Any]:
+    """Resolve one input slot's accepted proposals + quality report into the
+    mappings/type_rules/update_matches/formula that ``apply`` consumes."""
+    source = s3.get_bytes(item["files"][slot]["key"])
     quality_report: dict[str, Any] = {}
-    review_records = all_children(dynamo, event["job_id"], "REVIEW#")
-    review_records.sort(key=lambda record: int(record.get("revision", 0)))
-    for review_record in review_records:
-        review_key = review_record.get("artifact_key")
-        if review_key:
-            decisions.update(json.loads(s3.get_bytes(review_key)).get("decisions", {}))
-    for reference in sorted(item.get("review_artifacts", {}).values(), key=lambda entry: int(entry["revision"])):
-        decisions.update(json.loads(s3.get_bytes(reference["key"])).get("decisions", {}))
-    if not review_records and item.get("last_review_key"):
-        decisions = json.loads(s3.get_bytes(item["last_review_key"])).get("decisions", {})
-    quality_artifact = item.get("artifacts", {}).get("quality", {})
+    quality_artifact = item.get("artifacts", {}).get(_artifact_map_key("quality", slot), {})
     if quality_artifact.get("key"):
         quality_report = json.loads(s3.get_bytes(quality_artifact["key"]))
 
@@ -362,7 +350,9 @@ def apply_handler(event: dict[str, Any], context) -> dict[str, Any]:
     formula = None
     decision_audit: list[dict[str, Any]] = []
 
-    for proposal in all_children(dynamo, event["job_id"], "PROPOSAL#"):
+    for proposal in all_children(dynamo, job_id, "PROPOSAL#"):
+        if proposal.get("slot", "input") != slot:
+            continue
         proposal_id = str(proposal.get("proposal_id"))
         decision_value, edited_value = _review_decision(decisions, proposal_id)
         decision_audit.append({
@@ -442,58 +432,136 @@ def apply_handler(event: dict[str, Any], context) -> dict[str, Any]:
         }
         for issue in quality_report.get("issues", [])
     ]
+    return {
+        "source": source,
+        "quality_report": quality_report,
+        "mappings": mappings,
+        "type_rules": type_rules,
+        "update_matches": update_matches,
+        "formula": formula,
+        "decision_audit": decision_audit,
+        "quality_decision_audit": quality_decision_audit,
+    }
+
+
+def _apply_formula_to_main(output: bytes, formula: dict[str, Any], config: dict[str, Any]) -> tuple[bytes, list[dict[str, Any]]]:
+    """Re-target a formula onto the final main-derived workbook and apply it."""
+    output_book = load_workbook(BytesIO(output), read_only=True, data_only=False)
+    try:
+        sheet = output_book[config["main_sheet"]] if config.get("main_sheet") else output_book.worksheets[0]
+        header_row = config.get("main_header_row") or 1
+        headers = [cell.value for cell in sheet[header_row]]
+        target = formula["target_header"]
+        output_formula = {**formula, "target_column": headers.index(target) + 1 if target in headers else sheet.max_column + 1, "start_row": header_row + 1, "end_row": sheet.max_row}
+    finally:
+        output_book.close()
+    return apply_workbook_changes(output, sheet_name=config.get("main_sheet"), formula=output_formula, header_row=header_row)
+
+
+def apply_handler(event: dict[str, Any], context) -> dict[str, Any]:
+    dynamo, s3 = _stores()
+    item = dynamo.get_job(event["job_id"])
+    if not item:
+        raise ValueError("job not found")
+    config = item.get("config", {})
+    standardize = bool(config.get("standardize"))
+    update = bool(config.get("update"))
+    policy = "both" if standardize and update else "standardize_only" if standardize else "update_only" if update else "neither"
+    main_file = item.get("files", {}).get("main")
+    main_source = s3.get_bytes(main_file["key"]) if main_file else None
+    decisions: dict[str, Any] = {}
+    review_records = all_children(dynamo, event["job_id"], "REVIEW#")
+    review_records.sort(key=lambda record: int(record.get("revision", 0)))
+    for review_record in review_records:
+        review_key = review_record.get("artifact_key")
+        if review_key:
+            decisions.update(json.loads(s3.get_bytes(review_key)).get("decisions", {}))
+    for reference in sorted(item.get("review_artifacts", {}).values(), key=lambda entry: int(entry["revision"])):
+        decisions.update(json.loads(s3.get_bytes(reference["key"])).get("decisions", {}))
+    if not review_records and item.get("last_review_key"):
+        decisions = json.loads(s3.get_bytes(item["last_review_key"])).get("decisions", {})
+
+    slots = _ordered_input_slots(item)
+    # shortcut: issue_ids are sheet-name scoped (quality_rules), so inputs sharing a
+    # sheet name collide in the single decisions dict — accept/reject applies to every
+    # such input alike. Upgrade: slot-qualify decision keys through report/submit/apply.
+    slot_changes = {slot: _collect_slot_changes(dynamo, s3, event["job_id"], slot, item, config, decisions) for slot in slots}
 
     audit: list[dict[str, Any]] = []
-    if policy in {"standardize_only", "both", "neither"}:
-        input_stage, stage_audit = apply_accepted_changes(
-            source,
-            quality_report=quality_report,
-            decisions=decisions,
-            type_rules=type_rules,
-            standardization_mappings=mappings if standardize else [],
-            formula=formula if not update else None,
-            sheet_name=config.get("input_sheet"),
-            header_row=config.get("input_header_row") or 1,
-            include_quality_deletions=policy != "both",
-        )
-        audit.extend(stage_audit)
-    else:
-        input_stage = source
+    decision_audit: list[dict[str, Any]] = []
+    quality_decision_audit: list[dict[str, Any]] = []
+    for slot in slots:
+        decision_audit.extend(slot_changes[slot]["decision_audit"])
+        quality_decision_audit.extend(slot_changes[slot]["quality_decision_audit"])
 
-    if policy in {"update_only", "both"}:
+    # Each input slot becomes its own current-stage workbook (quality fixes +, when
+    # standardizing, mappings). Formula stays off the current for update policies —
+    # it belongs to the main-derived output.
+    current_stages: dict[str, bytes] = {}
+    for slot in slots:
+        change = slot_changes[slot]
+        if policy in {"standardize_only", "both", "neither"}:
+            stage, stage_audit = apply_accepted_changes(
+                change["source"],
+                quality_report=change["quality_report"],
+                decisions=decisions,
+                type_rules=change["type_rules"],
+                standardization_mappings=change["mappings"] if standardize else [],
+                formula=change["formula"] if not update else None,
+                sheet_name=config.get("input_sheet"),
+                header_row=config.get("input_header_row") or 1,
+                include_quality_deletions=policy != "both",
+            )
+            current_stages[slot] = stage
+            audit.extend(stage_audit)
+        else:
+            current_stages[slot] = change["source"]
+
+    # User-facing output keys: input -> "output", input_N -> "output_N".
+    def _output_key(slot: str) -> str:
+        return "output" if slot == "input" else "output_" + slot.removeprefix("input_")
+
+    outputs: dict[str, bytes] = {}
+    if policy in {"neither", "standardize_only"}:
+        for slot in slots:
+            outputs[_output_key(slot)] = current_stages[slot]
+    else:  # update_only, both — sequentially merge every input into one shared main
         if not main_source:
             raise ValueError("main workbook is required by the selected output policy")
         if not config.get("key_column"):
             raise ValueError("key_column is required by the selected output policy")
-        output, update_audit = apply_accepted_updates(
-            main_source,
-            input_stage if policy == "both" else source,
-            update_matches,
-            decisions,
-            key_column=config["key_column"],
-            main_key_column=config.get("main_key_column"),
-            current_header_row=config.get("input_header_row") or 1,
-            main_header_row=config.get("main_header_row") or 1,
-            main_sheet=config.get("main_sheet"),
-            current_sheet=config.get("input_sheet"),
-            conflict_policy=config.get("conflict_policy", "reject_all"),
-        )
-        audit.extend(update_audit)
+        merged = main_source
+        seen_destinations: set[tuple[str, int]] = set()
+        for slot in slots:
+            change = slot_changes[slot]
+            merged, update_audit = apply_accepted_updates(
+                merged,
+                current_stages[slot] if policy == "both" else change["source"],
+                change["update_matches"],
+                decisions,
+                key_column=config["key_column"],
+                main_key_column=config.get("main_key_column"),
+                current_header_row=config.get("input_header_row") or 1,
+                main_header_row=config.get("main_header_row") or 1,
+                main_sheet=config.get("main_sheet"),
+                current_sheet=config.get("input_sheet"),
+                conflict_policy=config.get("conflict_policy", "reject_all"),
+                prior_destinations=seen_destinations,
+            )
+            audit.extend(update_audit)
+        formula = next((slot_changes[slot]["formula"] for slot in slots if slot_changes[slot]["formula"]), None)
         if formula:
-            # Generated formulas belong to the final main-derived output, including Update-only.
-            output_book = load_workbook(BytesIO(output), read_only=True, data_only=False)
-            try:
-                sheet = output_book[config["main_sheet"]] if config.get("main_sheet") else output_book.worksheets[0]
-                header_row = config.get("main_header_row") or 1
-                headers = [cell.value for cell in sheet[header_row]]
-                target = formula["target_header"]
-                output_formula = {**formula, "target_column": headers.index(target) + 1 if target in headers else sheet.max_column + 1, "start_row": header_row + 1, "end_row": sheet.max_row}
-            finally:
-                output_book.close()
-            output, formula_audit = apply_workbook_changes(output, sheet_name=config.get("main_sheet"), formula=output_formula, header_row=header_row)
+            merged, formula_audit = _apply_formula_to_main(merged, formula, config)
             audit.extend(formula_audit)
-    else:
-        output = input_stage
+        outputs["output"] = merged
+        if policy == "both":
+            # The standardized currents are emitted alongside the merged main (N+1).
+            for slot in slots:
+                outputs["output_current" + ("" if slot == "input" else "_" + slot.removeprefix("input_"))] = current_stages[slot]
+
+    # The primary deliverable keeps the artifact key "output" so validate/download
+    # and single-input callers are unchanged.
+    output = outputs["output"]
 
     audit = decision_audit + quality_decision_audit + audit
     for decision_record in decision_audit + quality_decision_audit:
@@ -513,9 +581,16 @@ def apply_handler(event: dict[str, Any], context) -> dict[str, Any]:
                 "reason": decision_record.get("reason"),
             },
         )
+    artifacts = dict(item.get("artifacts", {}))
+    xlsx_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     output_key = s3.artifact_key(event["job_id"], "output", "final.xlsx")
-    if not s3.object_exists(output_key):
-        s3.put_bytes(output_key, output, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    # The primary deliverable keeps final.xlsx / the "output" key; any additional
+    # workbooks (extra inputs, standardized currents under `both`) get their own files.
+    for name, body in outputs.items():
+        key = output_key if name == "output" else s3.artifact_key(event["job_id"], "output", f"final-{name}.xlsx")
+        if not s3.object_exists(key):
+            s3.put_bytes(key, body, xlsx_type)
+        artifacts[name] = {"key": key, "content_type": xlsx_type, "size_bytes": len(body), "sha256": sha256(body).hexdigest()}
     audit_key = s3.artifact_key(event["job_id"], "output", "change-report.json")
     summary_key = s3.artifact_key(event["job_id"], "output", "review-summary.md")
     audit_body = {"audit_version": "2", "output_policy": policy, "changes": audit}
@@ -533,13 +608,6 @@ def apply_handler(event: dict[str, Any], context) -> dict[str, Any]:
         s3.put_bytes(audit_key, json.dumps(audit_body, indent=2).encode("utf-8"), "application/json")
     if not s3.object_exists(summary_key):
         s3.put_bytes(summary_key, summary_body.encode("utf-8"), "text/markdown")
-    artifacts = dict(item.get("artifacts", {}))
-    artifacts["output"] = {
-        "key": output_key,
-        "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "size_bytes": len(output),
-        "sha256": sha256(output).hexdigest(),
-    }
     artifacts["audit"] = {"key": audit_key, "content_type": "application/json"}
     artifacts["review_summary"] = {"key": summary_key, "content_type": "text/markdown"}
     updated = dynamo.update_job(
@@ -564,7 +632,7 @@ def validate_handler(event: dict[str, Any], context) -> dict[str, Any]:
     output_key = item.get("artifacts", {}).get("output", {}).get("key")
     if not output_key:
         raise ValueError("output artifact is missing")
-    source = s3.get_bytes(item["files"]["input"]["key"])
+    source = s3.get_bytes(item["files"][_ordered_input_slots(item)[0]]["key"])
     output = s3.get_bytes(output_key)
     config = item.get("config", {})
     expected_sheet = config.get("main_sheet") if config.get("update") else config.get("input_sheet")
