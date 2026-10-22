@@ -37,6 +37,27 @@ describe("post-upload metadata and start boundary (mock adapters, no API schema)
     expect(flow.getSnapshot().configurationSaved).toBe(false);
     expect(flow.getReadiness().canStart).toBe(false);
   });
+  it("tracks and requires independent worksheet/header choices for every current workbook", async () => {
+    const base = mockSnapshot();
+    const workbook = { ...base.workbooks.current!, keyRule: "not-applicable" as const };
+    const adapter = mockMetadataAdapter({ ...base, workbooks: { current: workbook, current_2: workbook } });
+    const flow = createMetadataFlow("mock-job", metadataForm(), adapter, ["current", "current_2"]);
+    await flow.load();
+    expect(flow.roles).toEqual(["current", "current_2"]);
+    expect(flow.getReadiness().blockers).toContain("current_2: select an available worksheet.");
+    for (const role of flow.roles) {
+      expect(flow.selectSheet(role, mockSheet.sheetName)).toBe(true);
+      expect(flow.setHeader(role, { metadataKey: metadataKey(mockSheet), row: 3 })).toBe(true);
+    }
+    expect(flow.getReadiness().canStart).toBe(true);
+    flow.selectSheet("current_2", "Mock alternate sheet");
+    flow.setHeader("current_2", { metadataKey: metadataKey({ ...mockSheet, sheetName: "Mock alternate sheet" }), row: 4 });
+    expect(flow.getReadiness().blockers.join(" ")).toContain("processing pipeline shares that setting");
+    flow.selectSheet("current_2", mockSheet.sheetName);
+    flow.setHeader("current_2", { metadataKey: metadataKey(mockSheet), row: 3 });
+    expect(await flow.save()).toBe(true);
+    expect(adapter.persistSelections).toHaveBeenCalledWith("mock-job", expect.objectContaining({ choices: expect.objectContaining({ current: expect.anything(), current_2: expect.anything() }) }), expect.any(String), expect.any(String), expect.anything());
+  });
   it("reconciles a fresh controller from backend state without replaying Start", async () => {
     const adapter = mockMetadataAdapter({ ...mockSnapshot(), startState: "started", startedJob: { accepted: true, jobId: "mock-job", statusLabel: "Mock running" } });
     const fresh = createMetadataFlow("mock-job", metadataForm(), adapter);
@@ -81,7 +102,7 @@ describe("post-upload metadata and start boundary (mock adapters, no API schema)
     expect(flow.getSnapshot().choices.main).toEqual({ sheetName: "Mock alternate sheet", keyColumnId: null, header: null });
     expect(flow.getReadiness().canStart).toBe(false);
     flow.setHeader("current", null);
-    expect(flow.getSnapshot().choices.current.keyColumnId).toBeNull();
+    expect(flow.getSnapshot().choices.current!.keyColumnId).toBeNull();
   });
   it("does not use old columns after correcting the header and reloads real column metadata through the adapter", async () => {
     const adapter = mockMetadataAdapter(); const flow = await ready(adapter);
@@ -93,7 +114,7 @@ describe("post-upload metadata and start boundary (mock adapters, no API schema)
     adapter.load = vi.fn(async () => ({ ...snapshot, workbooks: { current: { ...snapshot.workbooks.current!, sheets: [refreshed] } } }));
     await flow.load();
     expect(adapter.load).toHaveBeenCalledWith("mock-job", expect.objectContaining({ current: expect.objectContaining({ header: expect.objectContaining({ row: 5 }) }) }), expect.any(AbortSignal));
-    expect(flow.getSnapshot().choices.current.header).toBeNull();
+    expect(flow.getSnapshot().choices.current!.header).toBeNull();
     flow.setHeader("current", { metadataKey: metadataKey(refreshed), row: 5 });
     expect(flow.selectKey("current", "mock-corrected-key")).toBe(true);
     expect(flow.getReadiness().canStart).toBe(true);

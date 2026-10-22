@@ -4,17 +4,20 @@ import { headerConfirmed } from "@/lib/workflow-readiness";
 import type { HeaderConfirmation } from "@/types/workbook";
 import type { WorkbookRole } from "@/uploads/types";
 import { getMetadataReadiness, requiredWorkbookRoles } from "./readiness";
-import type { MetadataAdapter, MetadataFlowState, WorkbookChoice } from "./types";
+import type { MetadataAdapter, MetadataFlowState, WorkbookChoice, WorkbookChoices } from "./types";
 
 const emptyChoice = (): WorkbookChoice => ({ sheetName: null, keyColumnId: null, header: null });
-export function createMetadataFlow(jobId: string, input: WorkflowConfiguration, adapter?: MetadataAdapter) {
+export function createMetadataFlow(jobId: string, input: WorkflowConfiguration, adapter?: MetadataAdapter, currentRoles: readonly WorkbookRole[] = ["current"]) {
   const configuration = workflowConfigurationSchema.parse(input);
-  let state: MetadataFlowState = { phase: "unavailable", choices: { current: emptyChoice(), main: emptyChoice() }, reconcileRequired: false };
+  const roles = requiredWorkbookRoles(configuration, currentRoles);
+  const initialChoices = Object.fromEntries(roles.map((role) => [role, emptyChoice()])) as WorkbookChoices;
+  let state: MetadataFlowState = { phase: "unavailable", choices: initialChoices, reconcileRequired: false };
   let busy = false;
   const listeners = new Set<() => void>();
   const emit = () => listeners.forEach((listener) => listener());
   const mutable = () => !busy && state.phase !== "started";
-  const sheetFor = (role: WorkbookRole) => state.snapshot?.workbooks[role]?.sheets.find((sheet) => sheet.sheetName === state.choices[role].sheetName);
+  const choiceFor = (choices: WorkbookChoices, role: WorkbookRole) => choices[role] ?? emptyChoice();
+  const sheetFor = (role: WorkbookRole) => state.snapshot?.workbooks[role]?.sheets.find((sheet) => sheet.sheetName === choiceFor(state.choices, role).sheetName);
   const updateChoice = (role: WorkbookRole, choice: WorkbookChoice) => { state = { ...state, configurationSaved: false, choices: { ...state.choices, [role]: choice }, error: undefined }; emit(); };
   async function load() {
     if (busy) return false;
@@ -25,22 +28,22 @@ export function createMetadataFlow(jobId: string, input: WorkflowConfiguration, 
     try {
       const snapshot = await adapter.load(jobId, choices, new AbortController().signal);
       if (snapshot.jobId !== jobId || !snapshot.serverRevision.trim()) throw new ApiError("protocol", "Workbook metadata could not be validated.");
-      let current = emptyChoice(); let main = emptyChoice();
-      for (const role of requiredWorkbookRoles(configuration)) {
-        const name = choices[role].sheetName;
+      const nextChoices: Partial<Record<WorkbookRole, WorkbookChoice>> = Object.fromEntries(roles.map((role) => [role, emptyChoice()]));
+      for (const role of roles) {
+        const choice = choiceFor(choices, role);
+        const name = choice.sheetName;
         const saved = snapshot.persistedChoices?.[role];
-        if (saved && (!name || JSON.stringify(choices[role]) === JSON.stringify(saved))) {
-          if (role === "current") current = saved; else main = saved;
+        if (saved && (!name || JSON.stringify(choice) === JSON.stringify(saved))) {
+          nextChoices[role] = saved;
           continue;
         }
         if (snapshot.workbooks[role]?.sheets.filter((sheet) => sheet.sheetName === name).length === 1) {
-          if (role === "current") current = { ...emptyChoice(), sheetName: name };
-          else main = { ...emptyChoice(), sheetName: name };
+          nextChoices[role] = { ...emptyChoice(), sheetName: name };
         }
       }
       // All reloads invalidate local confirmations/keys, including changes to
       // detection, columns, file versions, or server revision.
-      state = { phase: "review", snapshot, choices: { current, main }, configurationSaved: requiredWorkbookRoles(configuration).every((role) => Boolean(snapshot.persistedChoices?.[role]?.header) && JSON.stringify((role === "current" ? current : main)) === JSON.stringify(snapshot.persistedChoices?.[role])), reconcileRequired: snapshot.startState === "unknown" };
+      state = { phase: "review", snapshot, choices: nextChoices as WorkbookChoices, configurationSaved: roles.every((role) => Boolean(snapshot.persistedChoices?.[role]?.header) && JSON.stringify(nextChoices[role]) === JSON.stringify(snapshot.persistedChoices?.[role])), reconcileRequired: snapshot.startState === "unknown" };
       if (snapshot.startState === "started") {
         if (!snapshot.startedJob?.accepted || snapshot.startedJob.jobId !== jobId || !snapshot.startedJob.statusLabel.trim()) throw new ApiError("protocol", "Started job status could not be validated.");
         state = { ...state, phase: "started", startedJob: snapshot.startedJob };
@@ -52,12 +55,13 @@ export function createMetadataFlow(jobId: string, input: WorkflowConfiguration, 
   }
   return {
     configuration,
+    roles,
     getSnapshot: () => state,
-    getReadiness: () => getMetadataReadiness(state, configuration, jobId, adapter),
+    getReadiness: () => getMetadataReadiness(state, configuration, jobId, adapter, currentRoles),
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     load,
     async save() {
-      if (busy || !getMetadataReadiness(state, configuration, jobId, adapter).canStart || !state.snapshot || !adapter?.persistSelections) return false;
+      if (busy || !getMetadataReadiness(state, configuration, jobId, adapter, currentRoles).canStart || !state.snapshot || !adapter?.persistSelections) return false;
       busy = true;
       const key = JSON.stringify(state.choices);
       state = { ...state, phase: "saving", configurationSaved: false, error: undefined }; emit();
@@ -70,7 +74,7 @@ export function createMetadataFlow(jobId: string, input: WorkflowConfiguration, 
       } finally { busy = false; }
     },
     selectSheet(role: WorkbookRole, sheetName: string) {
-      if (!mutable() || !requiredWorkbookRoles(configuration).includes(role)) return false;
+      if (!mutable() || !roles.includes(role)) return false;
       if (state.snapshot?.workbooks[role]?.sheets.filter((sheet) => sheet.sheetName === sheetName).length !== 1) return false;
       updateChoice(role, { sheetName, keyColumnId: null, header: null }); return true;
     },
@@ -78,17 +82,17 @@ export function createMetadataFlow(jobId: string, input: WorkflowConfiguration, 
       if (!mutable()) return false;
       const sheet = sheetFor(role);
       if (!sheet || !sheet.headerRowBounds || (header && !headerConfirmed(sheet, header))) return false;
-      updateChoice(role, { ...state.choices[role], header, keyColumnId: null }); return true;
+      updateChoice(role, { ...choiceFor(state.choices, role), header, keyColumnId: null }); return true;
     },
     selectKey(role: WorkbookRole, id: string | null) {
       if (!mutable()) return false;
-      const sheet = sheetFor(role); const choice = state.choices[role];
+      const sheet = sheetFor(role); const choice = choiceFor(state.choices, role);
       if (!sheet || state.snapshot?.workbooks[role]?.keyRule === "not-applicable") return false;
       if (id !== null && (!headerConfirmed(sheet, choice.header) || sheet.columnsHeaderRow !== choice.header?.row || sheet.columns?.filter((column) => column.id === id).length !== 1)) return false;
       updateChoice(role, { ...choice, keyColumnId: id }); return true;
     },
     async start() {
-      if (busy || !getMetadataReadiness(state, configuration, jobId, adapter).canStart || !state.snapshot || !adapter?.persistSelections || !adapter.start) return false;
+      if (busy || !getMetadataReadiness(state, configuration, jobId, adapter, currentRoles).canStart || !state.snapshot || !adapter?.persistSelections || !adapter.start) return false;
       busy = true;
       const choices = state.choices;
       const key = JSON.stringify([state.snapshot.serverRevision, configuration.comment_name, configuration.outputHeader, configuration.standardize, configuration.update, choices]);

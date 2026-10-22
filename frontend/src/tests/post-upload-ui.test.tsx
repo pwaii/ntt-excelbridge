@@ -66,7 +66,7 @@ describe("post-upload UI with synthetic normalized metadata only", () => {
     await act(async () => button("Confirm header row").click());
     await select("current-metadata-key", "mock-key-id");
     await select("current-metadata-sheet", "Mock alternate sheet");
-    expect(flow.getSnapshot().choices.current.header).toBeNull();
+    expect(flow.getSnapshot().choices.current!.header).toBeNull();
     expect(container.querySelector<HTMLSelectElement>("#current-metadata-key")?.value).toBe("");
     expect(button("Start workflow").disabled).toBe(true);
   });
@@ -78,9 +78,9 @@ describe("post-upload UI with synthetic normalized metadata only", () => {
     const row = container.querySelector<HTMLInputElement>("#current-metadata-header-row")!;
     expect(row.min).toBe("0"); expect(row.max).toBe("19");
     expect(container.textContent).toContain("zero-based row indices");
-    expect(flow.getSnapshot().choices.current.header).toBeNull();
+    expect(flow.getSnapshot().choices.current!.header).toBeNull();
     await act(async () => button("Confirm header row").click());
-    expect(flow.getSnapshot().choices.current.header?.row).toBe(0);
+    expect(flow.getSnapshot().choices.current!.header?.row).toBe(0);
   });
   it("invalidates header/key on correction and uses backend-specific bounds", async () => {
     const flow = createMetadataFlow("mock-job", metadataForm(true), mockMetadataAdapter()); await render(flow);
@@ -88,8 +88,8 @@ describe("post-upload UI with synthetic normalized metadata only", () => {
     await act(async () => button("Confirm header row").click()); await select("current-metadata-key", "mock-key-id");
     const row = container.querySelector<HTMLInputElement>("#current-metadata-header-row")!;
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(row, "5"); row.dispatchEvent(new Event("input", { bubbles: true })); });
-    expect(flow.getSnapshot().choices.current.header).toBeNull();
-    expect(flow.getSnapshot().choices.current.keyColumnId).toBeNull();
+    expect(flow.getSnapshot().choices.current!.header).toBeNull();
+    expect(flow.getSnapshot().choices.current!.keyColumnId).toBeNull();
     await act(async () => button("Confirm header row").click());
     expect(container.querySelector<HTMLSelectElement>("#current-metadata-key")?.disabled).toBe(true);
     expect(button("Start workflow").disabled).toBe(true);

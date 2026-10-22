@@ -4,6 +4,7 @@ import type { WorkbookRole } from "@/uploads/types";
 
 // TEMPORARY frontend adapter models, NOT a metadata/start API contract.
 export interface WorkbookInspection {
+  readonly filename?: string;
   readonly workbookVersion: string;
   readonly uploadConfirmed: boolean;
   readonly sizeBytes?: number;
@@ -33,7 +34,7 @@ export interface WorkbookChoice {
   readonly keyColumnId: string | null;
   readonly header: HeaderConfirmation | null;
 }
-export type WorkbookChoices = Readonly<Record<WorkbookRole, WorkbookChoice>>;
+export type WorkbookChoices = Readonly<Partial<Record<WorkbookRole, WorkbookChoice>>>;
 export interface FinalSelections {
   readonly configuration: WorkflowConfiguration;
   readonly choices: WorkbookChoices;

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createApiClient } from "@/api/http-client";
 import { createJobsApi } from "@/api/jobs-api";
 import { createBackendMetadataAdapter } from "@/metadata/backend-adapter";
+import { metadataKey } from "@/lib/workflow-readiness";
 import { metadataForm } from "./metadata-fixtures";
 import current from "./fixtures/backend/current-create.json";
 import both from "./fixtures/backend/both-create.json";
@@ -94,6 +95,34 @@ describe("jobs API using FastAPI-exported synthetic contract fixtures", () => {
     expect(snapshot.workbooks.current).toMatchObject({ uploadConfirmed: true, keyRule: "required", sheets: [expect.objectContaining({ sheetName: "Data", detectedHeaderRow: 3 })] });
     expect(adapter.persistSelections).toBeTypeOf("function");
     expect(adapter.start).toBeTypeOf("function");
+  });
+
+  it("loads and persists metadata selections for secondary current slots", async () => {
+    const multi = structuredClone(fetched);
+    const secondFile = { ...multi.job.files.input, filename: "current-2.xlsx", key: "jobs/job-1/input/input_2/current-2.xlsx" };
+    (multi.job.files as Record<string, typeof secondFile>).input_2 = secondFile;
+    const { api, fetcher } = setup(multi);
+    fetcher.mockResolvedValueOnce(new Response(JSON.stringify(multi)))
+      .mockResolvedValueOnce(new Response(JSON.stringify(meta)))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...meta, slot: "input_2" })));
+    const adapter = createBackendMetadataAdapter(api);
+    const choices = {
+      current: { sheetName: null, header: null, keyColumnId: null },
+      current_2: { sheetName: null, header: null, keyColumnId: null },
+    };
+    const snapshot = await adapter.load(multi.job.job_id, choices, signal());
+    expect(snapshot.workbooks.current_2).toMatchObject({ filename: "current-2.xlsx", uploadConfirmed: true });
+    expect(fetcher.mock.calls.slice(1).map(([url]) => String(url))).toEqual([
+      expect.stringContaining("/workbooks/input/metadata"), expect.stringContaining("/workbooks/input_2/metadata"),
+    ]);
+
+    const selected = () => ({ sheetName: "Data", header: { metadataKey: metadataKey({ workbookVersion: meta.workbook_version, sheetName: "Data", dataRowCount: 1, detectedHeaderRow: 3, columnsHeaderRow: 3, columns: meta.sheets[0].columns, headerRowBounds: { min: 1, max: 20, indexBase: 1 } }), row: 3 }, keyColumnId: null });
+    fetcher.mockResolvedValueOnce(new Response(JSON.stringify({ ...meta, slot: "input" })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...meta, slot: "input_2" })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...fetched, job: { ...multi.job, configuration_confirmed: true, workbook_selections: { input: { sheet_name: "Data", header_row: 3, header_confirmed: true, key_column: null, workbook_version: meta.workbook_version }, input_2: { sheet_name: "Data", header_row: 3, header_confirmed: true, key_column: null, workbook_version: meta.workbook_version } } } })));
+    await expect(adapter.persistSelections!(multi.job.job_id, { configuration: { comment_name: "Profit", outputHeader: "profit", standardize: false, update: false }, choices: { ...choices, current: selected(), current_2: selected() } }, "selection-key", String(multi.job.revision), signal())).resolves.toMatchObject({ selectionKey: "selection-key" });
+    const saveBody = JSON.parse(fetcher.mock.calls.at(-1)![1]!.body as string);
+    expect(Object.keys(saveBody.selections)).toEqual(["input", "input_2"]);
   });
 
   it("rejects a GET response for a different job", async () => {

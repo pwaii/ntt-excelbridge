@@ -7,13 +7,15 @@ import type { PresignedPutInstruction, UploadConfirmationAdapter, WorkbookRole }
 import { qualitySnapshotSchema } from "@/quality/types";
 
 export type BackendJob = components["schemas"]["JobRecord"];
+export type WorkbookMetadataResponse = Omit<components["schemas"]["WorkbookMetadataResponse"], "slot"> & { slot: WorkbookSlot };
 type CreateRequest = components["schemas"]["CreateJobRequest"];
 type JobResponse = components["schemas"]["JobResponse"];
 type CreateResponse = components["schemas"]["CreateJobResponse"];
 type CompleteResponse = components["schemas"]["UploadCompleteResponse"];
 export type UploadInstructions = Partial<Record<WorkbookRole, PresignedPutInstruction>>;
+export type WorkbookSlot = "input" | "input_2" | "input_3" | "input_4" | "input_5" | "input_6" | "input_7" | "input_8" | "main";
 export const artifactTypes = ["output", "audit", "review_summary", "validation", "quality", "inspection"] as const;
-export type ArtifactType = typeof artifactTypes[number];
+export type ArtifactType = typeof artifactTypes[number] | `output_${number}` | "output_current" | `output_current_${number}`;
 const text = z.string().min(1);
 const fileSchema = z.object({ filename: text, key: text, content_type: z.string().nullable().optional(), size_bytes: z.number().int().nonnegative().nullable().optional(), etag: z.string().nullable().optional(), uploaded: z.boolean().default(false) });
 const selectionSchema = z.object({ sheet_name: text, header_row: z.number().int().min(1).max(20), header_confirmed: z.literal(true), key_column: z.string().nullable().optional(), workbook_version: text });
@@ -33,7 +35,7 @@ const jobSchema = z.object({
 const responseSchema = z.object({ job: jobSchema, request_id: text });
 const createSchema = responseSchema.extend({ uploads: z.array(z.object({ slot: text, filename: text, key: text, url: z.url(), expires_in: z.number().int().positive() })) });
 const completeSchema = responseSchema.extend({ uploaded_slot: z.string().regex(/^(input|input_[2-8]|main)$/) });
-const metadataSchema = z.object({ job_id: text, slot: z.enum(["input", "main"]), workbook_version: text, size_bytes: z.number().int().nonnegative(), header_min: z.number().int(), header_max: z.number().int(), index_base: z.literal(1), key_required: z.boolean(), sheets: z.array(z.object({ name: text, detected_header_row: z.number().int().nullable(), header_row: z.number().int().nullable(), data_row_count: z.number().int().nonnegative(), columns: z.array(z.object({ id: text, label: text })), errors: z.array(z.string()).default([]) })), request_id: text });
+const metadataSchema = z.object({ job_id: text, slot: z.enum(["input", "input_2", "input_3", "input_4", "input_5", "input_6", "input_7", "input_8", "main"]), workbook_version: text, size_bytes: z.number().int().nonnegative(), header_min: z.number().int(), header_max: z.number().int(), index_base: z.literal(1), key_required: z.boolean(), sheets: z.array(z.object({ name: text, detected_header_row: z.number().int().nullable(), header_row: z.number().int().nullable(), data_row_count: z.number().int().nonnegative(), columns: z.array(z.object({ id: text, label: text })), errors: z.array(z.string()).default([]) })), request_id: text });
 const xlsxContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const slotFor = (role: WorkbookRole) => role === "current" ? "input" : role === "main" ? "main" : role.replace("current_", "input_");
 function jobPath(id: string) {
@@ -114,8 +116,8 @@ export function createJobsApi(client: ReturnType<typeof createApiClient>, allowe
       return { manifest: job, requestIds };
     },
   };
-  async function getMetadata(id: string, slot: "input" | "main", query: Record<string, string | number>, signal?: AbortSignal) {
-    const result = await client.request(`${jobPath(id)}/workbooks/${slot}/metadata`, { query, signal, decode: (value): components["schemas"]["WorkbookMetadataResponse"] => metadataSchema.parse(value) });
+  async function getMetadata(id: string, slot: WorkbookSlot, query: Record<string, string | number>, signal?: AbortSignal) {
+    const result = await client.request(`${jobPath(id)}/workbooks/${slot}/metadata`, { query, signal, decode: (value): WorkbookMetadataResponse => metadataSchema.parse(value) as WorkbookMetadataResponse });
     if (result.data.job_id !== id || result.data.slot !== slot) throw new ApiError("protocol", "Workbook metadata identity mismatch.");
     return result.data;
   }

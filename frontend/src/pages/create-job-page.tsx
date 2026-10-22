@@ -73,7 +73,7 @@ export function CreateJobPage() {
             <legend className="sr-only">Job configuration</legend>
             <div className="builder-grid">
               <div className="builder-fields">
-                <FormSection id="current-workbook" title="Current workbook" required>
+                <FormSection id="current-workbook" title={currentFiles.length > 1 ? `Current workbooks (${currentFiles.length})` : "Current workbook"} required>
                   <CurrentWorkbookPicker key={`current-${resetVersion}`} id="current-file" files={currentFiles} onChange={changeCurrentFiles} validationError={errors.currentFile?.message} onSelectionError={(message) => setSelectionErrors((previous) => ({ ...previous, current: message }))} />
                 </FormSection>
                 <FormSection id="output-configuration" title="Column to add" required>
@@ -109,7 +109,7 @@ export function CreateJobPage() {
                 <section aria-labelledby="output-policy-title" className="output-outline">
                   <div className="output-outline-heading"><GitCompareArrows aria-hidden="true" /><h2 id="output-policy-title">Your output</h2></div>
                   <dl className="output-outline-facts">
-                    <div><dt>Based on</dt><dd>{(update ? mainFile : currentFile)?.name || (update ? "Choose a main workbook" : "Choose a current workbook")}</dd></div>
+                    <div><dt>Based on</dt><dd>{update ? mainFile?.name || "Choose a main workbook" : currentFiles.length > 1 ? `${currentFiles.length} current workbooks` : currentFile?.name || "Choose a current workbook"}</dd></div>
                     <div><dt>New column</dt><dd>{outputHeader.trim() || "Name your output column"}</dd></div>
                   </dl>
                   <div className="output-path" aria-hidden="true"><span>Upload</span><ArrowRight /><span>Review</span><ArrowRight /><span>New copy</span></div>

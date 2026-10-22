@@ -30,6 +30,14 @@ it("shows actual completion and only prepares a published artifact after a human
   expect(fetcher).toHaveBeenCalledTimes(2);
   expect(container.textContent).toContain("Check the workbook before using it");
 });
+it("lists every published current-workbook output instead of only the primary artifact", async () => {
+  await render("COMPLETED", { output: { key: "jobs/synthetic/output.xlsx" }, output_2: { key: "jobs/synthetic/output_2.xlsx" }, output_3: { key: "jobs/synthetic/output_3.xlsx" } });
+  const rows = container.querySelectorAll('[aria-label="Artifact downloads"] article');
+  expect(rows).toHaveLength(3);
+  expect(container.textContent).toContain("output_2.xlsx");
+  expect(container.textContent).toContain("output_3.xlsx");
+  expect(container.querySelectorAll('[aria-label="Artifact downloads"] button')).toHaveLength(3);
+});
 it.each(["INSPECTING", "QUALITY_REVIEW_PENDING", "FAILED", "CANCELLED"])("offers progress recovery and no downloads at %s", async (status) => {
   await render(status); expect(container.textContent).toContain("Result is not ready");
   expect(container.querySelector(`a[href="/jobs/${base.job.job_id}"]`)).not.toBeNull();

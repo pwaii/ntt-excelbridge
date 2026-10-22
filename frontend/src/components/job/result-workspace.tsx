@@ -8,7 +8,7 @@ import { WorkflowLoading } from "@/components/ui/workflow-loading";
 import { getOutputPolicy, outputPolicies } from "@/lib/output-policy";
 import { JobStatusBadge } from "./job-status-badge";
 
-const labels: Record<ArtifactType, string> = { output: "Output workbook (.xlsx)", audit: "Change report (.json)", review_summary: "Review summary (.md)", validation: "Output validation (.json)", quality: "Quality report", inspection: "Inspection report" };
+const labels: Record<(typeof artifactTypes)[number], string> = { output: "Output workbook (.xlsx)", audit: "Change report (.json)", review_summary: "Review summary (.md)", validation: "Output validation (.json)", quality: "Quality report", inspection: "Inspection report" };
 type SignedLink = Awaited<ReturnType<JobsApi["getArtifact"]>>;
 export function ResultWorkspace({ api, jobId }: { api: JobsApi; jobId: string }) {
   const [job, setJob] = useState<BackendJob>();
@@ -48,12 +48,14 @@ export function ResultWorkspace({ api, jobId }: { api: JobsApi; jobId: string })
 }
 
 export function CompletedJobOutput({ api, job, showReports = true }: { api: JobsApi; job: BackendJob; showReports?: boolean }) {
+  const outputTypes = Object.keys(job.artifacts ?? {}).filter((type): type is ArtifactType => /^(output|output_\d+|output_current(?:_\d+)?)$/.test(type) && typeof job.artifacts?.[type]?.key === "string");
   const reports = artifactTypes.filter((type) => type !== "output" && typeof job.artifacts?.[type]?.key === "string");
   const counts = [["updated_rows", "Rows updated"], ["skipped_rows", "Rows skipped"], ["rejected_decisions", "Decisions rejected"], ["formula_cells_verified", "Formula cells checked"]].filter(([key]) => typeof job.result_summary?.[key] === "number");
   const outputKey = typeof job.artifacts?.output?.key === "string" ? job.artifacts.output.key as string : undefined;
+  const outputs = outputTypes.length ? outputTypes : outputKey ? ["output" as const] : [];
   return <section aria-label="Completed job output" className="completed-output">
     <div className="completion-heading"><CheckCircle2 className="size-5 shrink-0 text-[var(--success)]" aria-hidden="true" /><div><h2 className="text-base font-semibold">{outputKey ? "Your workbook is ready" : "Processing completed"}</h2><p className="mt-0.5 text-[13px] text-muted-foreground">{outputPolicies[getOutputPolicy(job.config.standardize, job.config.update)].title}.</p></div></div>
-    <div aria-label="Artifact downloads" className="output-file"><ArtifactDownload api={api} jobId={job.job_id} type="output" expectedKey={outputKey} /></div>
+    <div aria-label="Artifact downloads" className="output-files">{outputs.length ? outputs.map((type) => <div key={type} className="output-file"><ArtifactDownload api={api} jobId={job.job_id} type={type} expectedKey={job.artifacts?.[type]?.key as string | undefined} /></div>) : <div className="output-file"><ArtifactDownload api={api} jobId={job.job_id} type="output" /></div>}</div>
     {counts.length > 0 && <dl aria-label="Processing counts" className="result-facts">{counts.map(([key, label]) => <div key={key}><dt>{label}</dt><dd>{job.result_summary?.[key]?.toLocaleString()}</dd></div>)}</dl>}
     <p className="text-[13px] text-muted-foreground">Open the workbook in Excel to calculate formulas and check that the results match your instructions.</p>
     {showReports ? <details className="reports-disclosure"><summary>Supporting reports{reports.length ? ` (${reports.length})` : ""}</summary><div className="mt-2 divide-y">{reports.length ? reports.map((type) => <ArtifactDownload key={type} api={api} jobId={job.job_id} type={type} expectedKey={job.artifacts?.[type]?.key as string} />) : <p className="py-2 text-[13px] text-muted-foreground">No supporting reports are available for this job.</p>}</div></details> : <Link className="w-fit text-[13px] font-medium text-primary hover:underline" to={`/jobs/${encodeURIComponent(job.job_id)}/result`}>View result and downloads</Link>}
@@ -86,10 +88,11 @@ function ArtifactDownload({ api, jobId, type, expectedKey }: { api: JobsApi; job
     } catch (failure) { if (!controller.signal.aborted) setError(message(failure)); }
     finally { if (active.current === controller) active.current = undefined; if (!controller.signal.aborted) setBusy(false); }
   }
-  return <article className="download-row"><div className="flex min-w-0 items-center gap-2.5">{type === "output" ? <FileSpreadsheet className="size-7 shrink-0 text-primary" aria-hidden="true" /> : <Download className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />}<div className="min-w-0"><h3 className="truncate text-sm font-medium">{type === "output" && expectedKey ? expectedKey.split("/").at(-1) : labels[type]}</h3>{type === "output" && <p className="mt-0.5 text-[13px] text-muted-foreground">Output workbook · Excel (.xlsx)</p>}</div></div>
+  const isOutput = type === "output" || type.startsWith("output_");
+  return <article className="download-row"><div className="flex min-w-0 items-center gap-2.5">{isOutput ? <FileSpreadsheet className="size-7 shrink-0 text-primary" aria-hidden="true" /> : <Download className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />}<div className="min-w-0"><h3 className="truncate text-sm font-medium">{isOutput && expectedKey ? expectedKey.split("/").at(-1) : isOutput ? "Output workbook (.xlsx)" : labels[type as keyof typeof labels]}</h3>{isOutput && <p className="mt-0.5 text-[13px] text-muted-foreground">Output workbook · Excel (.xlsx)</p>}</div></div>
     <div className="download-actions">{!available ? <p className="text-[13px] text-muted-foreground">No output file is available. Refresh the result or check job progress.</p> : <>
-      {link && !expired && <a className="download-link" href={link.url} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer" onClick={(event) => { if (link.expiresAt <= Date.now()) { event.preventDefault(); setExpired(true); } }}><Download aria-hidden="true" className="size-3.5" />{type === "output" ? "Download workbook" : "Download report"}<span className="sr-only"> (opens in new tab)</span></a>}
-      <Button variant={type === "output" && (!link || expired) ? "default" : link && !expired ? "ghost" : "outline"} size="sm" disabled={busy} aria-busy={busy} onClick={() => { void prepare(); }}>{busy ? "Preparing link…" : link ? "Refresh download link" : "Prepare download"}{!link && <Download aria-hidden="true" />}</Button>
+      {link && !expired && <a className="download-link" href={link.url} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer" onClick={(event) => { if (link.expiresAt <= Date.now()) { event.preventDefault(); setExpired(true); } }}><Download aria-hidden="true" className="size-3.5" />{isOutput ? "Download workbook" : "Download report"}<span className="sr-only"> (opens in new tab)</span></a>}
+      <Button variant={isOutput && (!link || expired) ? "default" : link && !expired ? "ghost" : "outline"} size="sm" disabled={busy} aria-busy={busy} onClick={() => { void prepare(); }}>{busy ? "Preparing link…" : link ? "Refresh download link" : "Prepare download"}{!link && <Download aria-hidden="true" />}</Button>
     </>}</div>
     {link && expired && <p role="status" className="download-feedback">Link expired. Refresh the download link to continue.</p>}
     {link && !expired && <p className="download-feedback">Ready to download. Link expires at {new Date(link.expiresAt).toLocaleTimeString()}.</p>}

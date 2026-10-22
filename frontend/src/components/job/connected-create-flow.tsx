@@ -33,7 +33,7 @@ export function ConnectedCreateFlow({ configuration, canCreate, onLockedChange, 
     const inspect = () => {
       const created = controller.getSnapshot();
       if (flow.getSnapshot().confirmation === "confirmed" && "receipt" in created) {
-        setMetadataFlow((previous) => previous ?? createMetadataFlow(created.receipt.jobId, created.configuration, createBackendMetadataAdapter(services.api!)));
+        setMetadataFlow((previous) => previous ?? createMetadataFlow(created.receipt.jobId, created.configuration, createBackendMetadataAdapter(services.api!), (created.configuration.currentFiles?.length ? created.configuration.currentFiles : [created.configuration.currentFile]).map((_, index) => index === 0 ? "current" : `current_${index + 1}` as `current_${number}`)));
       }
     };
     inspect(); return flow.subscribe(inspect);

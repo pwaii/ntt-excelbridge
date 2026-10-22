@@ -4,11 +4,11 @@ import { MAX_WORKBOOK_BYTES } from "@/lib/workbook-limits";
 import type { MetadataAdapter, MetadataFlowState } from "./types";
 import type { WorkbookRole } from "@/uploads/types";
 
-export function requiredWorkbookRoles(configuration: WorkflowConfiguration): WorkbookRole[] {
-  return configuration.standardize || configuration.update ? ["current", "main"] : ["current"];
+export function requiredWorkbookRoles(configuration: WorkflowConfiguration, currentRoles: readonly WorkbookRole[] = ["current"]): WorkbookRole[] {
+  return [...currentRoles, ...(configuration.standardize || configuration.update ? ["main" as const] : [])];
 }
 
-export function getMetadataReadiness(state: MetadataFlowState, configuration: WorkflowConfiguration, jobId: string, adapter?: MetadataAdapter) {
+export function getMetadataReadiness(state: MetadataFlowState, configuration: WorkflowConfiguration, jobId: string, adapter?: MetadataAdapter, currentRoles: readonly WorkbookRole[] = ["current"]) {
   const blockers: string[] = [];
   if (!workflowConfigurationSchema.safeParse(configuration).success) blockers.push("Complete the required local configuration.");
   if (!state.snapshot || state.snapshot.jobId !== jobId || !jobId.trim()) blockers.push("A verified backend job and workbook metadata are required.");
@@ -18,7 +18,7 @@ export function getMetadataReadiness(state: MetadataFlowState, configuration: Wo
   if (["loading", "saving", "starting", "started"].includes(state.phase)) blockers.push("Wait for the current operation to finish.");
   if (!adapter?.persistSelections || !adapter.start) blockers.push("A documented selection-persistence and workflow-start contract is required.");
   blockers.push(...state.snapshot?.errors ?? []);
-  for (const role of requiredWorkbookRoles(configuration)) {
+  for (const role of requiredWorkbookRoles(configuration, currentRoles)) {
     const workbook = state.snapshot?.workbooks[role];
     if (!workbook) { blockers.push(`${role}: awaiting backend metadata.`); continue; }
     if (!workbook.uploadConfirmed) blockers.push(`${role}: upload must be server-confirmed.`);
@@ -26,7 +26,13 @@ export function getMetadataReadiness(state: MetadataFlowState, configuration: Wo
     if (typeof workbook.sizeBytes !== "number" || !Number.isSafeInteger(workbook.sizeBytes) || workbook.sizeBytes < 0) blockers.push(`${role}: verified file size is unavailable.`);
     else if (workbook.sizeBytes > MAX_WORKBOOK_BYTES) blockers.push(`${role}: exceeds the 25 MB hard ceiling.`);
     blockers.push(...workbook.errors.map((error) => `${role}: ${error}`));
-    const choice = state.choices[role];
+    const choice = state.choices[role] ?? { sheetName: null, keyColumnId: null, header: null };
+    if (role !== "current" && role !== "main") {
+      const primary = state.choices.current;
+      if (primary?.sheetName && choice.sheetName && choice.sheetName !== primary.sheetName) blockers.push(`${role}: use the primary current workbook's worksheet; the processing pipeline shares that setting.`);
+      if (primary?.header && choice.header && choice.header.row !== primary.header.row) blockers.push(`${role}: use the primary current workbook's header row; the processing pipeline shares that setting.`);
+      if (configuration.update && primary?.keyColumnId && choice.keyColumnId && choice.keyColumnId !== primary.keyColumnId) blockers.push(`${role}: use the primary current workbook's key column; the processing pipeline shares that setting.`);
+    }
     const sheets = workbook.sheets.filter((sheet) => sheet.sheetName === choice.sheetName);
     if (sheets.length !== 1) { blockers.push(`${role}: select an available worksheet.`); continue; }
     const sheet = sheets[0];
