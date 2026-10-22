@@ -443,6 +443,13 @@ def test_apply_emits_one_output_per_input_slot(api):
         assert sheet["D2"].value == "=B2*2"
         assert sheet.max_row == 2  # the duplicate row was removed in both
         book.close()
+    # Each output is individually downloadable through the artifact route.
+    urls = set()
+    for name in ("output", "output_2"):
+        resp = client.get(f"/v1/jobs/{job_id}/artifacts/{name}")
+        assert resp.status_code == 200, resp.text
+        urls.add(resp.json()["key"])
+    assert len(urls) == 2
 
 
 def test_review_rejects_unknown_incomplete_and_stale_decisions(api):
