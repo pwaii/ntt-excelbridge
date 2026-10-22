@@ -163,6 +163,16 @@ def submit_review(
                 503,
                 "Review was recorded and workflow started; reload job status before retrying",
             ) from error
+    else:
+        # No ARN: drive the next segment in-process. Segment 2 calls Bedrock; segment
+        # 3 (apply + validate) does not and runs the job through to COMPLETED.
+        from app.workers.orchestrator import run_apply_segment, run_bedrock_segment  # local: avoids app.main import cycle
+
+        if segment == 2:
+            run_bedrock_segment(job_id, dynamo, s3)
+        else:
+            run_apply_segment(job_id, dynamo, s3)
+        updated = dynamo.get_job(job_id) or updated
     return ReviewResponse(
         job=JobRecord.from_item(updated),
         review_id=review_id,

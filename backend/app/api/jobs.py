@@ -25,7 +25,6 @@ from app.domain.workbooks import WorkbookSelection
 from app.storage.dynamo_store import DynamoStore, JobAlreadyExistsError, RevisionConflictError
 from app.storage.s3_store import S3Store
 from app.storage.sfn_store import WorkflowNotConfiguredError, WorkflowStore
-from app.workers.demo_pipeline import run_demo_pipeline
 
 router = APIRouter(prefix="/v1/jobs", tags=["jobs"])
 logger = logging.getLogger(__name__)
@@ -276,8 +275,11 @@ def start_job(
                     "workflow started; reload job status before retrying",
                 ) from error
             return JobResponse(job=_record(running), request_id=request.state.request_id)
-        completed = run_demo_pipeline(job_id, expected_revision=int(inspecting["revision"]), dynamo=dynamo, s3=s3)
-        return JobResponse(job=_record(completed), request_id=request.state.request_id)
+        # No ARN: run segment 1 in-process, stopping at the quality review gate.
+        from app.workers.orchestrator import run_quality_segment  # local: avoids app.main import cycle
+
+        gated = run_quality_segment(job_id, dynamo=dynamo, s3=s3)
+        return JobResponse(job=_record(gated), request_id=request.state.request_id)
     except WorkflowNotConfiguredError:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="workflow is not configured")
     except HTTPException:

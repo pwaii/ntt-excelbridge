@@ -50,14 +50,21 @@ class WorkbookS3(FakeS3):
             "ContentType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         }
 
+    def object_exists(self, key):
+        return key in self.objects
+
 
 @pytest.fixture
-def api():
+def api(monkeypatch):
+    from app import lambda_handlers as handlers
+
     store, storage = FakeDynamo(), WorkbookS3()
     app.dependency_overrides[get_dynamo_store] = lambda: store
     app.dependency_overrides[get_s3_store] = lambda: storage
     app.dependency_overrides[get_workflow_store] = lambda: WorkflowStore(state_machine_arn="")
     app.dependency_overrides[current_user_id] = lambda: "local-user"
+    # The no-ARN orchestrator drives Lambda handlers, which self-provision stores.
+    monkeypatch.setattr(handlers, "_stores", lambda: (store, storage))
     with TestClient(app) as client:
         yield client, store, storage
     app.dependency_overrides.clear()
@@ -106,6 +113,33 @@ def selections(client, id, both=False, update=False):
     return values
 
 
+def test_quality_segment_fans_out_over_every_input_slot(api):
+    from app.workers.orchestrator import run_quality_segment
+
+    client, store, storage = api
+    response = client.post(
+        "/v1/jobs",
+        json={
+            "config": {"comment_name": "Profit", "output_header": "profit"},
+            "input_filenames": ["current.xlsx", "current-2.xlsx"],
+        },
+    )
+    assert response.status_code == 201
+    id = response.json()["job"]["job_id"]
+    assert set(store.item["files"]) == {"input", "input_2"}
+    for slot, file in store.item["files"].items():
+        storage.objects[file["key"]] = workbook_bytes(slot)
+        client.post(f"/v1/jobs/{id}/uploads/complete", json={"slot": slot})
+    store.item["config"].update({"input_sheet": "Data", "input_header_row": 3})
+
+    gated = run_quality_segment(id, store, storage)
+
+    assert gated["status"] == "QUALITY_REVIEW_PENDING"
+    # Both input slots were inspected and quality-checked into isolated artifacts.
+    assert "inspection" in gated["artifacts"] and "inspection_input_2" in gated["artifacts"]
+    assert "quality" in gated["artifacts"] and "quality_input_2" in gated["artifacts"]
+
+
 @pytest.mark.parametrize(
     "standardize,update", [(False, False), (True, False), (False, True), (True, True)]
 )
@@ -127,15 +161,14 @@ def test_real_route_flow_all_processing_configurations(api, standardize, update)
     )
     assert job["config"]["input_header_row"] == 3
     before = dict(storage.objects)
+    # No-ARN start now runs segment 1 (inspect + quality) and stops at the first gate.
     started = client.post(f"/v1/jobs/{id}/start", params={"expected_revision": job["revision"]})
     assert started.status_code == 200
-    assert started.json()["job"]["status"] == "COMPLETED"
-    base = "main" if update else "input"
-    assert storage.objects[f"jobs/{id}/output/final.xlsx"] == before[job["files"][base]["key"]]
+    assert started.json()["job"]["status"] == "QUALITY_REVIEW_PENDING"
+    # Source workbooks are never mutated by inspection/quality.
     assert all(storage.objects[key] == value for key, value in before.items())
-    revision = store.item["revision"]
-    assert client.post(f"/v1/jobs/{id}/start").status_code == 200
-    assert store.item["revision"] == revision
+    # A second start is rejected: the job is past UPLOADED, now awaiting review.
+    assert client.post(f"/v1/jobs/{id}/start").status_code == 409
     assert client.post(f"/v1/jobs/{id}/uploads/complete", json={"slot": "input"}).status_code == 409
 
 
