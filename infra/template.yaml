@@ -39,10 +39,31 @@ Parameters:
   QuickSightInspectionDatasetId:
     Type: String
     Default: qa-inspections-s3-76bde119
-  QuickSightDashboardId:
+  QuickSightPermissionsDatasetId:
+    Type: String
+    Default: excelbridge-owner-permissions
+    Description: Dataset ID containing UserARN to owner_id RLS grants; configure it as RLS_RULES in QuickSight.
+  QuickSightRlsPermissionsDatasetArn:
+    Type: String
+    Default: arn:aws:quicksight:ap-southeast-1:453995432289:dataset/excelbridge-owner-permissions
+    Description: ARN of the permissions dataset attached to the quality and inspection datasets.
+  QuickSightEmbeddingRoleArn:
     Type: String
     Default: ""
-    Description: Published owner-RLS dashboard ID in QuickSight; leave empty to disable dashboard embedding.
+    Description: IAM role registered as each web customer's QuickSight Reader. Defaults to LambdaExecutionRoleArn.
+  QuickSightReaderGroupName:
+    Type: String
+    Default: website-readers
+    Description: Existing QuickSight group shared with the published dashboard.
+  QuickSightRefreshMode:
+    Type: String
+    Default: scheduled
+    AllowedValues: [scheduled, api]
+    Description: Use scheduled dataset refresh to avoid Capacity pricing; api requires Capacity pricing for near-real-time refresh.
+  QuickSightDashboardId:
+    Type: String
+    Default: excelbridge-quality-dashboard
+    Description: Published owner-RLS dashboard ID in QuickSight.
   LambdaExecutionRoleArn:
     Type: String
     Description: Existing Lambda execution role ARN with the union of permissions required by the API and worker functions.
@@ -69,8 +90,15 @@ Globals:
         QUICKSIGHT_REGION: !Ref QuickSightRegion
         QUICKSIGHT_QUALITY_DATASET_ID: !Ref QuickSightQualityDatasetId
         QUICKSIGHT_INSPECTION_DATASET_ID: !Ref QuickSightInspectionDatasetId
+        QUICKSIGHT_PERMISSIONS_DATASET_ID: !Ref QuickSightPermissionsDatasetId
+        QUICKSIGHT_RLS_PERMISSIONS_DATASET_ARN: !Ref QuickSightRlsPermissionsDatasetArn
+        QUICKSIGHT_EMBEDDING_ROLE_ARN: !If [HasQuickSightEmbeddingRoleArn, !Ref QuickSightEmbeddingRoleArn, !Ref LambdaExecutionRoleArn]
+        QUICKSIGHT_READER_GROUP_NAME: !Ref QuickSightReaderGroupName
+        QUICKSIGHT_REFRESH_MODE: !Ref QuickSightRefreshMode
         QUICKSIGHT_DASHBOARD_ID: !Ref QuickSightDashboardId
-        QUICKSIGHT_OWNER_TAG_KEY: app_user_id
+
+Conditions:
+  HasQuickSightEmbeddingRoleArn: !Not [!Equals [!Ref QuickSightEmbeddingRoleArn, ""]]
 
 Resources:
   DataBucket:

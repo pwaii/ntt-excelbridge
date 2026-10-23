@@ -23,10 +23,12 @@ from app.storage.s3_store import S3Store
 from app.storage.aws_session import get_quicksight_client
 from app.services.quicksight_pipeline import (
     INSPECTION_FIELDS,
+    PERMISSION_FIELDS,
     QUALITY_FIELDS,
     encode_csv,
     flatten_inspection_manifests,
     flatten_quality_reports,
+    owner_permissions,
     inspection_artifact_key,
     quality_artifact_key,
 )
@@ -694,11 +696,12 @@ def failure_handler(event: dict[str, Any], context) -> dict[str, Any]:
 
 
 def quicksight_refresh_handler(event: dict[str, Any], context) -> dict[str, Any]:
-    """Rebuild the stable Quick CSVs and refresh configured SPICE datasets.
+    """Rebuild Quick CSVs and optionally request immediate SPICE ingestion.
 
     S3 events are at-least-once. The object key is validated and a full scan
-    makes retries idempotent. The queue batches bursts; an active SPICE
-    ingestion raises so SQS retries the batch after visibility timeout.
+    makes retries idempotent. Scheduled mode leaves ingestion to QuickSight's
+    dataset schedules; API mode calls CreateIngestion and lets SQS retry active
+    SPICE conflicts.
     """
     incoming = [event]
     if isinstance(event.get("Records"), list):
@@ -740,41 +743,50 @@ def quicksight_refresh_handler(event: dict[str, Any], context) -> dict[str, Any]
 
     quality_rows = flatten_quality_reports(quality_reports)
     inspection_rows = flatten_inspection_manifests(manifests)
+    permission_rows = owner_permissions(owner_cache.values())
     s3.put_bytes("quicksight/quality-issues.csv", encode_csv(quality_rows, QUALITY_FIELDS), "text/csv; charset=utf-8")
     s3.put_bytes("quicksight/inspections.csv", encode_csv(inspection_rows, INSPECTION_FIELDS), "text/csv; charset=utf-8")
+    if settings.quicksight_permissions_dataset_id:
+        if not settings.quicksight_embedding_role_arn:
+            raise ValueError("QUICKSIGHT_EMBEDDING_ROLE_ARN is required when the permissions dataset is configured")
+        s3.put_bytes("quicksight/owner-permissions.csv", encode_csv(permission_rows, PERMISSION_FIELDS), "text/csv; charset=utf-8")
 
     refreshes: dict[str, str] = {}
     account_id = settings.quicksight_account_id
-    quicksight = get_quicksight_client()
     datasets = (
         ("quality", settings.quicksight_quality_dataset_id),
         ("inspection", settings.quicksight_inspection_dataset_id),
+        ("permissions", settings.quicksight_permissions_dataset_id),
     )
     configured = [(label, dataset_id) for label, dataset_id in datasets if dataset_id]
     if configured and not account_id:
         raise ValueError("QUICKSIGHT_ACCOUNT_ID must be configured when a dataset is enabled")
-    for label, dataset_id in datasets:
-        if not dataset_id:
-            refreshes[label] = "not_configured"
-            continue
-        ingestion_id = f"refresh-{label}-{int(time())}-{uuid4().hex[:10]}"
-        try:
-            quicksight.create_ingestion(DataSetId=dataset_id, IngestionId=ingestion_id, AwsAccountId=account_id)
-        except ClientError as error:
-            code = error.response.get("Error", {}).get("Code")
-            if code in {"ConflictException", "ResourceInUseException"}:
-                # SQS retries this event after the current SPICE ingestion ends.
-                # ListIngestions has no resource-level IAM scope in QuickSight,
-                # so use CreateIngestion's dataset-scoped conflict instead.
-                raise RuntimeError(f"Quick SPICE ingestion is already running: {label}") from error
-            raise
-        refreshes[label] = ingestion_id
+    if settings.quicksight_refresh_mode == "scheduled":
+        for label, dataset_id in datasets:
+            refreshes[label] = "waiting_on_quicksight_schedule" if dataset_id else "not_configured"
+    else:
+        quicksight = get_quicksight_client()
+        for label, dataset_id in datasets:
+            if not dataset_id:
+                refreshes[label] = "not_configured"
+                continue
+            ingestion_id = f"refresh-{label}-{int(time())}-{uuid4().hex[:10]}"
+            try:
+                quicksight.create_ingestion(DataSetId=dataset_id, IngestionId=ingestion_id, AwsAccountId=account_id)
+            except ClientError as error:
+                code = error.response.get("Error", {}).get("Code")
+                if code in {"ConflictException", "ResourceInUseException"}:
+                    # SQS retries this event after the current SPICE ingestion ends.
+                    raise RuntimeError(f"Quick SPICE ingestion is already running: {label}") from error
+                raise
+            refreshes[label] = ingestion_id
     return {
         "status": "updated",
         "quality_reports": len(quality_reports),
         "quality_rows": len(quality_rows),
         "inspection_manifests": len(manifests),
         "inspection_rows": len(inspection_rows),
+        "permission_rows": len(permission_rows),
         "event_count": accepted_events,
         "refreshes": refreshes,
     }

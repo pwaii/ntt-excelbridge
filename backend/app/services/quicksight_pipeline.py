@@ -9,6 +9,9 @@ import re
 from collections.abc import Iterable, Mapping
 from typing import Any
 
+from app.services.quicksight_identity import reader_user_arn
+from app.settings import settings
+
 QUALITY_FIELDS = (
     "job_id",
     "owner_id",
@@ -33,6 +36,7 @@ INSPECTION_FIELDS = (
     "blank_count",
     "blank_rate",
 )
+PERMISSION_FIELDS = ("UserARN", "owner_id")
 _QUALITY_NAME = re.compile(r"(?:(input_[2-8])-)?quality-report\.json\Z")
 _INSPECTION_NAME = re.compile(r"(?:(input_[2-8])-)?manifest\.json\Z")
 
@@ -120,6 +124,18 @@ def encode_csv(rows: list[dict[str, Any]], fields: tuple[str, ...]) -> bytes:
     writer.writeheader()
     writer.writerows(rows)
     return buffer.getvalue().encode("utf-8")
+
+
+def owner_permissions(owner_ids: Iterable[str]) -> list[dict[str, str]]:
+    """Build unique QuickSight user-ARN to app-owner RLS grants."""
+    if not settings.quicksight_embedding_role_arn:
+        return []
+    rows = {
+        (reader_user_arn(settings.quicksight_embedding_role_arn, settings.quicksight_region, owner_id), owner_id)
+        for owner_id in owner_ids
+        if owner_id
+    }
+    return [{"UserARN": user_arn, "owner_id": owner_id} for user_arn, owner_id in sorted(rows)]
 
 
 def parse_artifact_json(key: str, body: bytes, area: str, name_pattern: re.Pattern[str]) -> tuple[str, dict[str, Any]] | None:

@@ -162,3 +162,12 @@ Spec: `docs/superpowers/specs/2026-10-16-ai-day7-design.md` · Plan: `docs/super
 - Updated both live dataset schemas with `owner_id` and enabled tag-based RLS (`app_user_id` → `owner_id`, no match-all). Published dashboard `excelbridge-quality-dashboard`, reusing the two visuals from an existing analysis and remapping its dataset to the S3-backed quality dataset. Inspection data is secured and refreshed, but is not yet shown in a dashboard visual.
 - Added a least-privilege inline policy to `xlsx-workflow-demo-lambda` for `DescribeDataSet` on both datasets and `GenerateEmbedUrlForAnonymousUser` on this dashboard. Configured the dashboard ID in the backend stack and deployed the `/analytics/quick` frontend to CloudFront (`d35kjusenp6a9t.cloudfront.net`). Site returns HTTP 200; the embed API returns 401 without Cognito auth as expected.
 - The remaining blocker is account pricing: a live embed API call returns `UnsupportedPricingPlanException` because the QuickSight account has no active Capacity Pricing plan. Backend and UI now return a clear `QUICKSIGHT_CAPACITY_REQUIRED` message. No capacity plan has been activated; enable one before the authenticated dashboard smoke test.
+
+### Registered QuickSight Reader pricing integration — 2026-10-23
+- Replaced the website analytics embed endpoint's anonymous tag-based call with registered-reader embedding. A verified Cognito subject maps to a stable opaque session name; repeat visits reuse that same IAM-backed Quick user.
+- Added idempotent Quick user registration, dashboard reader-group membership, and a per-customer STS role session before minting the registered-user embed URL.
+- Added a `UserARN,owner_id` RLS permissions CSV to the Quick refresh pipeline and a manifest for the S3-backed permissions dataset. Scheduled mode writes updated CSVs without invoking Quick's Capacity-priced ingestion API; API mode remains an opt-in for accounts with Capacity pricing.
+- Added fail-closed checks requiring both report datasets to use the configured user-based `VERSION_2` RLS dataset and retain their text `owner_id` column.
+- Updated SAM parameters, deployment script, frontend messages, IAM policy example, and `docs/quick-dashboard-embedding.md` for Reader per-user setup.
+- No live QuickSight resources, account identity settings, paid subscription, or IAM roles were changed. The AWS-side reader group, dataset RLS attachments, trust/policy updates, and per-user pricing activation remain one-time setup prerequisites.
+- No tests were run in this change.

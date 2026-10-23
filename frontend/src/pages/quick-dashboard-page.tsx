@@ -34,14 +34,16 @@ export function QuickDashboardPage() {
     } catch (failure) {
       if (signal?.aborted) return;
       const status = failure instanceof ApiError ? failure.status : undefined;
-      setError(status === 503 && failure instanceof ApiError && failure.code === "QUICKSIGHT_CAPACITY_REQUIRED"
-        ? "QuickSight needs an active Capacity Pricing plan before it can open embedded dashboards. Ask an administrator to enable a plan for this account."
+      setError(status === 503 && failure instanceof ApiError && failure.code === "QUICKSIGHT_READER_PLAN_REQUIRED"
+        ? "QuickSight could not create a registered Reader session. Ask the administrator to confirm the account has an active Reader subscription and registered-user embedding is enabled."
+        : status === 503 && failure instanceof ApiError && failure.code === "QUICKSIGHT_ENTERPRISE_REQUIRED"
+        ? "Registered Reader embedding requires an eligible QuickSight Enterprise subscription. Ask the administrator to check the account edition."
         : status === 503
-        ? "Quick dashboard access is not ready yet. The published dashboard and owner-level data security must both be configured before the app can show any data."
+        ? "Quick dashboard access is not ready yet. The published dashboard, registered Reader role, and user-based owner security must all be configured before the app can show any data."
         : failure instanceof ApiError && failure.code === "QUICKSIGHT_ORIGIN_NOT_ALLOWED"
           ? "This website is not approved to embed the Quick dashboard. Ask an administrator to add this site’s origin."
           : status === 403
-            ? "Quick blocked the embed request. Ask an administrator to check Quick permissions and anonymous session capacity."
+            ? "Quick blocked the embed request. Ask an administrator to check registered Reader permissions and the Reader subscription."
           : "The Quick dashboard could not be loaded. Retry, or ask an administrator to check the QuickSight integration.");
     } finally {
       if (!signal?.aborted) setLoading(false);
@@ -58,20 +60,20 @@ export function QuickDashboardPage() {
   return <section className="workspace-page">
     <PageHeader
       title="Analytics dashboard"
-      description="Explore your quality findings in Quick. The dashboard is scoped to your account."
+      description="Explore your quality findings in Quick. The dashboard is scoped to your account and uses your website sign-in to reuse one registered Reader identity."
       actions={<Button variant="outline" size="sm" onClick={() => void loadDashboard()} disabled={!ready || loading}><RefreshCw aria-hidden="true" className={loading ? "animate-spin" : ""} />{embedUrl ? "Refresh dashboard" : "Try again"}</Button>}
     />
 
     <div className="mb-4 flex items-start gap-3 rounded-lg border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
       <ShieldCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-primary" />
-      <p>Quick filters this dashboard to rows owned by your signed-in account. The app obtains a short-lived Quick embed session when you open this page.</p>
+      <p>Quick filters this dashboard to rows owned by your signed-in account. Reopening the dashboard reuses the same registered Reader identity; it does not create a new Reader for each login session.</p>
     </div>
 
     {!ready && <p role="note" className="notice mt-4">Sign in with a configured account to open the analytics dashboard.</p>}
     {loading && <p role="status" className="notice mt-4">Connecting to Quick…</p>}
     {error && <div role="alert" className="notice notice-error mt-4 flex items-start gap-3"><AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0" /><div><p>{error}</p><Button variant="outline" size="sm" className="mt-3" onClick={() => void loadDashboard()} disabled={loading}>Retry</Button></div></div>}
     {embedUrl && <div className="mt-5 overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-      <div className="border-b border-border px-4 py-3 text-xs text-muted-foreground">Quick dashboard · secured for your account</div>
+      <div className="border-b border-border px-4 py-3 text-xs text-muted-foreground">Quick dashboard · registered Reader · secured for your account</div>
       <iframe
         title="Quick quality and inspection analytics dashboard"
         src={embedUrl}
