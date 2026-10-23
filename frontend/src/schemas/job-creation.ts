@@ -23,6 +23,7 @@ export const jobCreationSchema = z.object({
   // Keep the existing backend field name; the UI labels this field "Prompt".
   comment_name: z.string().trim().max(200, "Prompt must contain at most 200 characters.").optional().default(""),
   outputHeader: z.string().trim().optional().default(""),
+  addColumn: z.boolean().optional().default(false),
   standardize: z.boolean().optional().default(false),
   update: z.boolean().optional().default(false),
   mainFile: workbookFileSchema.nullable().optional(),
