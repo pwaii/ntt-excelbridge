@@ -148,6 +148,47 @@ def test_apply_accepted_updates_copies_values_and_skips_duplicate_destinations()
     assert any(item["action"] == "updated" for item in audit)
 
 
+def test_apply_accepted_updates_prior_destinations_blocks_cross_file_overwrite():
+    from openpyxl import Workbook
+
+    def _book(title, rows):
+        book = Workbook()
+        ws = book.active
+        ws.title = title
+        for row in rows:
+            ws.append(row)
+        stream = BytesIO()
+        book.save(stream)
+        return stream.getvalue()
+
+    main = _book("Main", [["CustomerID", "Status"], ["A-1", "Old"]])
+    file_a = _book("Current", [["CustomerID", "Status"], ["A-1", "FromA"]])
+    file_b = _book("Current", [["CustomerID", "Status"], ["A-1", "FromB"]])
+
+    def match(did):
+        return [{"decision_id": did, "current_row_id": "Current!2", "selected_main_row_id": "Main!2"}]
+
+    def accept(did):
+        return {did: {"decision": "accept"}}
+
+    # Sequential merge of two files into one main, sharing the destination set.
+    seen: set = set()
+    merged, _ = apply_accepted_updates(
+        main, file_a, match("a"), accept("a"),
+        key_column="CustomerID", main_sheet="Main", current_sheet="Current",
+        prior_destinations=seen,
+    )
+    merged, audit_b = apply_accepted_updates(
+        merged, file_b, match("b"), accept("b"),
+        key_column="CustomerID", main_sheet="Main", current_sheet="Current",
+        prior_destinations=seen,
+    )
+
+    # File A won; File B's cross-file collision was skipped, not silently applied.
+    assert load_workbook(BytesIO(merged), data_only=False)["Main"]["B2"].value == "FromA"
+    assert any(item["action"] == "skipped" for item in audit_b)
+
+
 def test_apply_accepted_updates_requires_explicit_conflict_policy_behavior():
     from openpyxl import Workbook
 

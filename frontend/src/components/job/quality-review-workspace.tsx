@@ -32,6 +32,7 @@ export function QualityReviewWorkspace({ flow, jobId }: { flow: QualityReviewFlo
   const [threshold, setThreshold] = useState("95");
   const [bulkConfirm, setBulkConfirm] = useState(false);
   const [matchFilter, setMatchFilter] = useState("all");
+  const [workbookFilter, setWorkbookFilter] = useState("all");
   const [kind, setKind] = useState("all");
   const [severity, setSeverity] = useState("all");
   const [decision, setDecision] = useState("all");
@@ -45,13 +46,15 @@ export function QualityReviewWorkspace({ flow, jobId }: { flow: QualityReviewFlo
   const details = useRef<HTMLElement>(null);
   useEffect(() => { void flow.load(); return () => flow.dispose(); }, [flow]);
   const items = state.snapshot?.items ?? [];
+  const sourceFiles = useMemo(() => [...new Set(items.map((item) => item.filename).filter((filename): filename is string => Boolean(filename)))].sort((a, b) => a.localeCompare(b)), [items]);
   const filtered = useMemo(() => (state.snapshot?.items ?? []).filter((item) =>
-    (item.kind !== "update-match" || matchFilter === "all" || item.match?.type === matchFilter)
+    (workbookFilter === "all" || item.filename === workbookFilter)
+    && (item.kind !== "update-match" || matchFilter === "all" || item.match?.type === matchFilter)
     && (kind === "all" || item.kind === kind) && (severity === "all" || item.severity === severity)
     && (decision === "all" || (decision === "pending" ? item.status === "proposed" && !state.drafts[item.id] : Boolean(state.drafts[item.id]) || item.status !== "proposed")),
   ).sort((a, b) => sort === "risk"
     ? (a.confidence ?? -1) - (b.confidence ?? -1) || a.id.localeCompare(b.id)
-    : ({ high: 0, medium: 1, low: 2 }[a.severity] - { high: 0, medium: 1, low: 2 }[b.severity]) || a.id.localeCompare(b.id)), [state.snapshot, state.drafts, kind, severity, decision, sort, matchFilter]);
+    : ({ high: 0, medium: 1, low: 2 }[a.severity] - { high: 0, medium: 1, low: 2 }[b.severity]) || a.id.localeCompare(b.id)), [state.snapshot, state.drafts, kind, severity, decision, sort, matchFilter, workbookFilter]);
   const candidates = bulkCandidates(state, Number(threshold) / 100, filtered.map((item) => item.id));
   const required = items.filter((item) => item.requiresDecision && item.status === "proposed");
   const pending = required.filter((item) => !state.drafts[item.id] || decisionError(state.drafts[item.id], item));
@@ -64,10 +67,10 @@ export function QualityReviewWorkspace({ flow, jobId }: { flow: QualityReviewFlo
   const selected = filtered.find((item) => item.id === selectedId) ?? filtered[0];
   const blocker = submissionBlocker(state);
   const locked = state.phase !== "ready" || state.reloadRequired || !reviewGates[state.stage ?? "quality"].includes(state.snapshot?.status ?? "");
-  const activeFilters = kind !== "all" || severity !== "all" || decision !== "all" || matchFilter !== "all";
+  const activeFilters = kind !== "all" || severity !== "all" || decision !== "all" || matchFilter !== "all" || workbookFilter !== "all";
   const hasMatches = items.some((item) => item.kind === "update-match");
   const resetWindow = () => { setPage(0); setOffset(0); if (viewport.current) viewport.current.scrollTop = 0; };
-  function clearFilters() { setKind("all"); setSeverity("all"); setDecision("all"); setMatchFilter("all"); setBulkConfirm(false); resetWindow(); }
+  function clearFilters() { setKind("all"); setSeverity("all"); setDecision("all"); setMatchFilter("all"); setWorkbookFilter("all"); setBulkConfirm(false); resetWindow(); }
   function select(item: QualityItem) { setSelectedId(item.id); setMobileDetailOpen(true); requestAnimationFrame(() => details.current?.focus()); }
   function returnToFindings() {
     setMobileDetailOpen(false);
@@ -105,6 +108,7 @@ export function QualityReviewWorkspace({ flow, jobId }: { flow: QualityReviewFlo
           <div className="review-list-heading"><div><h2 id="quality-findings" className="text-sm font-semibold">{reviewName} findings</h2><p className="mt-1 text-xs text-muted-foreground">{items.length} {items.length === 1 ? "proposal" : "proposals"}</p></div></div>
           <div className="review-filters">
             <label className="text-xs font-medium">Issue type<select className={control} value={kind} onChange={(e) => { setKind(e.target.value); setBulkConfirm(false); resetWindow(); }}><option value="all">All types ({items.length})</option>{kinds.filter((key) => items.some((item) => item.kind === key)).map((key) => <option key={key} value={key}>{labels[key]} ({items.filter((item) => item.kind === key).length})</option>)}</select></label>
+            {sourceFiles.length > 1 && <label className="text-xs font-medium">Current workbook<select className={control} value={workbookFilter} onChange={(e) => { setWorkbookFilter(e.target.value); setBulkConfirm(false); resetWindow(); }}><option value="all">All workbooks ({items.length})</option>{sourceFiles.map((filename) => <option key={filename} value={filename}>{filename} ({items.filter((item) => item.filename === filename).length})</option>)}</select></label>}
             <details className="filter-disclosure"><summary className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium"><SlidersHorizontal className="size-3.5" aria-hidden="true" />Filters & sort{activeFilters && <span className="text-primary">· Active</span>}</summary><div className="mt-3 grid gap-3 sm:grid-cols-2">
               <label className="text-xs font-medium">Severity<select className={control} value={severity} onChange={(e) => { setSeverity(e.target.value); setBulkConfirm(false); resetWindow(); }}><option value="all">All severities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
               <label className="text-xs font-medium">Decision<select className={control} value={decision} onChange={(e) => { setDecision(e.target.value); setBulkConfirm(false); resetWindow(); }}><option value="all">All items</option><option value="pending">Undecided</option><option value="decided">Decided or drafted</option></select></label>
@@ -120,7 +124,7 @@ export function QualityReviewWorkspace({ flow, jobId }: { flow: QualityReviewFlo
                 <thead><tr><th scope="col" className="w-[58%]">Finding</th><th scope="col" className="w-[22%]">Location</th><th scope="col" className="w-[20%]">Decision</th></tr></thead>
                 <tbody>{start > 0 && <tr aria-hidden="true"><td colSpan={3} style={{ height: start * rowHeight, padding: 0 }} /></tr>}
                 {rows.slice(start, end).map((item, index) => <tr key={item.id} aria-rowindex={start + index + 2} aria-selected={selected?.id === item.id} style={{ height: rowHeight }}>
-                  <td><button type="button" className="finding-title" onClick={() => select(item)}>{item.title}</button><span className="mt-1 block truncate text-xs text-muted-foreground">{labels[item.kind]} · {item.confidence === undefined ? "Confidence unavailable" : `${Math.round(item.confidence * 100)}% confidence`}</span></td>
+                  <td><button type="button" className="finding-title" onClick={() => select(item)}>{item.title}</button>{item.filename && <span className="mt-1 block truncate text-xs font-medium text-primary" title={item.filename}>{item.filename}</span>}<span className="mt-1 block truncate text-xs text-muted-foreground">{labels[item.kind]} · {item.confidence === undefined ? "Confidence unavailable" : `${Math.round(item.confidence * 100)}% confidence`}</span></td>
                   <td><span className="block truncate text-xs" title={location(item)}>{location(item)}</span><span className={`mt-1 block text-xs capitalize ${item.severity === "high" ? "text-destructive" : "text-muted-foreground"}`}>{item.severity} priority</span></td>
                   <td className="text-xs">{state.drafts[item.id] ? <span className="inline-flex items-center gap-1 text-primary"><Check className="size-3" aria-hidden="true" />{state.phase === "submitted" ? "Submitted" : "Draft"}: {state.drafts[item.id].decision}</span> : item.requiresDecision && item.status === "proposed" ? "Needs decision" : proposalStatusLabels[item.status]}</td>
                 </tr>)}
@@ -159,7 +163,7 @@ function location(item: QualityItem) { return [item.sheet, item.column, item.row
 function FindingEditor({ item, draft, submitted, disabled, onChange }: { item: QualityItem; draft?: DecisionDraft; submitted: boolean; disabled: boolean; onChange(draft: DecisionDraft | undefined): void }) {
   const error = draft && decisionError(draft, item);
   return <div className="mt-3 space-y-3">
-    <div><h3 className="font-medium">{item.title}</h3><p className="mt-1 break-words text-xs text-muted-foreground">{location(item)} · {proposalStatusLabels[item.status]}</p></div>
+    <div><h3 className="font-medium">{item.title}</h3>{item.filename && <p className="mt-1 break-all text-xs font-medium text-primary">Source workbook: {item.filename}</p>}<p className="mt-1 break-words text-xs text-muted-foreground">{location(item)} · {proposalStatusLabels[item.status]}</p></div>
     <p className="whitespace-pre-wrap break-words text-sm">{item.reason}</p>
     {item.kind !== "formula" && <p className="text-sm leading-relaxed text-muted-foreground">{reviewHelp[item.kind]}</p>}
     {item.pattern !== undefined && <p className="break-words text-sm"><span className="font-medium">Value pattern: </span>{item.pattern}{item.affectedCount === undefined ? "" : ` · ${item.affectedCount} affected cells`}</p>}

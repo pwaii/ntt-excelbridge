@@ -10,6 +10,7 @@ from openpyxl.utils.cell import column_index_from_string, coordinate_from_string
 from app.domain.review_report import CellEvidence, FormulaEvidence, MatchEvidence, ReportItem
 from app.workers.apply_changes import materialize_formula
 from app.workers.formulas import verify_formula
+from app.workers.inspect_workbook import normalize_text
 
 
 def all_children(dynamo, job_id, prefix):
@@ -24,6 +25,92 @@ def all_children(dynamo, job_id, prefix):
             raise HTTPException(503, "Report pagination did not advance")
         seen.add(following)
         cursor = following
+
+
+def _slot_qualified(slot, bare_id):
+    """Primary input keeps bare ids (back-compat); extra inputs are slot-prefixed so
+    two workbooks that share a sheet name never collide on an issue/proposal id."""
+    return bare_id if slot == "input" else f"{slot}::{bare_id}"
+
+
+_QUALITY_KINDS = {
+    "duplicate_rows": "duplicate-row",
+    "blank_row": "blank-row",
+    "blank_column": "blank-column",
+    "type_mismatch": "type-mismatch",
+}
+
+
+def _quality_rows(issues, s3, item, slot, filename, prefix):
+    """Build the review rows for one input slot's quality issues, with cell evidence
+    drawn from that slot's own workbook."""
+    workbook = None
+    source = item.get("files", {}).get(slot, {}).get("key")
+    rows = []
+    try:
+        if source and source.startswith(prefix):
+            workbook = load_workbook(BytesIO(s3.get_bytes(source)), read_only=True, data_only=False)
+        requested_rows = {}
+        for issue in issues:
+            requested_rows.setdefault(issue.get("sheet"), set()).update(issue.get("row_numbers", [])[:3])
+        samples = {}
+        if workbook:
+            for sheet_name, numbers in requested_rows.items():
+                if not numbers or sheet_name not in workbook.sheetnames:
+                    continue
+                for number, values in enumerate(
+                    workbook[sheet_name].iter_rows(
+                        min_row=min(numbers), max_row=max(numbers), max_col=8, values_only=True
+                    ),
+                    min(numbers),
+                ):
+                    if number in numbers:
+                        samples[(sheet_name, number)] = values
+        for issue in issues:
+            if issue.get("kind") not in _QUALITY_KINDS:
+                raise HTTPException(503, "Unsupported quality finding")
+            kind = _QUALITY_KINDS[issue["kind"]]
+            cells = []
+            sheet_name = issue.get("sheet")
+            row_numbers = issue.get("row_numbers", [])
+            if workbook and sheet_name in workbook.sheetnames:
+                for number in row_numbers[:3]:
+                    for column, value in enumerate(samples.get((sheet_name, number), ()), 1):
+                        cells.append(
+                            CellEvidence(
+                                coordinate=f"{get_column_letter(column)}{number}",
+                                before=None if value is None else str(value),
+                                after="Keep first row; remove later duplicates"
+                                if kind == "duplicate-row"
+                                else "Remove row if accepted",
+                            )
+                        )
+            rows.append(
+                ReportItem(
+                    id=_slot_qualified(slot, issue["issue_id"]),
+                    kind=kind,
+                    title=issue["message"],
+                    reason=issue["message"]
+                    + (f" Rows: {row_numbers[:50]}" if row_numbers else "")
+                    + (
+                        " Informational finding; no supported direct mutation is proposed."
+                        if kind in {"type-mismatch", "blank-column"}
+                        else ""
+                    ),
+                    slot=slot,
+                    filename=filename,
+                    sheet=sheet_name,
+                    row=row_numbers[0] if row_numbers else None,
+                    column=str(issue["column"]) if issue.get("column") else None,
+                    cells=cells,
+                    requires_decision=kind not in {"type-mismatch", "blank-column"},
+                    affected_count=len(row_numbers) or None,
+                )
+            )
+        return rows
+    finally:
+        if workbook:
+            workbook.close()
 
 
 def build_report(item, stage, dynamo, s3):
@@ -50,74 +137,18 @@ def build_report(item, stage, dynamo, s3):
                 raise HTTPException(503, "Review source is unavailable")
             workbook = load_workbook(BytesIO(s3.get_bytes(source)), read_only=True, data_only=False)
         if stage == "quality":
-            key = item.get("artifacts", {}).get("quality", {}).get("key")
-            if not key:
+            input_slots = [s for s in (["input"] + [f"input_{i}" for i in range(2, 9)]) if s in item.get("files", {})] or ["input"]
+            found_any = False
+            for slot in input_slots:
+                artifacts_map = item.get("artifacts", {})
+                key = artifacts_map.get("quality" if slot == "input" else f"quality_{slot}", {}).get("key")
+                if not key:
+                    continue
+                found_any = True
+                filename = item.get("files", {}).get(slot, {}).get("filename")
+                rows.extend(_quality_rows(artifact(key).get("issues", []), s3, item, slot, filename, prefix))
+            if not found_any:
                 raise HTTPException(409, "The quality report is not ready")
-            kinds = {
-                "duplicate_rows": "duplicate-row",
-                "blank_row": "blank-row",
-                "blank_column": "blank-column",
-                "type_mismatch": "type-mismatch",
-            }
-            issues = artifact(key).get("issues", [])
-            requested_rows = {}
-            for issue in issues:
-                requested_rows.setdefault(issue.get("sheet"), set()).update(
-                    issue.get("row_numbers", [])[:3]
-                )
-            samples = {}
-            if workbook:
-                for sheet_name, numbers in requested_rows.items():
-                    if not numbers or sheet_name not in workbook.sheetnames:
-                        continue
-                    # One bounded scan per sheet, including real empty cells.
-                    for number, values in enumerate(
-                        workbook[sheet_name].iter_rows(
-                            min_row=min(numbers), max_row=max(numbers), max_col=8, values_only=True
-                        ),
-                        min(numbers),
-                    ):
-                        if number in numbers:
-                            samples[(sheet_name, number)] = values
-            for issue in issues:
-                if issue.get("kind") not in kinds:
-                    raise HTTPException(503, "Unsupported quality finding")
-                kind = kinds[issue["kind"]]
-                cells = []
-                sheet_name = issue.get("sheet")
-                row_numbers = issue.get("row_numbers", [])
-                if workbook and sheet_name in workbook.sheetnames:
-                    for number in row_numbers[:3]:
-                        for column, value in enumerate(samples.get((sheet_name, number), ()), 1):
-                            cells.append(
-                                CellEvidence(
-                                    coordinate=f"{get_column_letter(column)}{number}",
-                                    before=None if value is None else str(value),
-                                    after="Keep first row; remove later duplicates"
-                                    if kind == "duplicate-row"
-                                    else "Remove row if accepted",
-                                )
-                            )
-                rows.append(
-                    ReportItem(
-                        id=issue["issue_id"],
-                        kind=kind,
-                        title=issue["message"],
-                        reason=issue["message"]
-                        + (f" Rows: {row_numbers[:50]}" if row_numbers else "")
-                        + (
-                            " Informational finding; no supported direct mutation is proposed."
-                            if kind in {"type-mismatch", "blank-column"}
-                            else ""
-                        ),
-                        sheet=sheet_name,
-                        row=row_numbers[0] if row_numbers else None,
-                        column=str(issue["column"]) if issue.get("column") else None,
-                        cells=cells,
-                        requires_decision=kind not in {"type-mismatch", "blank-column"},
-                        affected_count=len(row_numbers) or None,
-                    )
-                )
 
         for proposal in all_children(dynamo, item["job_id"], "PROPOSAL#"):
             tool = proposal.get("tool")
@@ -126,12 +157,16 @@ def build_report(item, stage, dynamo, s3):
             ):
                 continue
             payload = artifact(proposal.get("artifact_key"))["payload"]
-            identity = proposal["proposal_id"]
+            proposal_slot = proposal.get("slot", "input")
+            proposal_filename = item.get("files", {}).get(proposal_slot, {}).get("filename")
+            identity = _slot_qualified(proposal_slot, proposal["proposal_id"])
             index = proposal.get("proposal_index")
             if tool == "tool1":
                 rows.append(
                     ReportItem(
                         id=identity,
+                        slot=proposal_slot,
+                        filename=proposal_filename,
                         kind="semantic",
                         title=payload["meaning"],
                         reason=payload["interpretation"],
@@ -144,9 +179,13 @@ def build_report(item, stage, dynamo, s3):
                 if index is None or not 0 <= int(index) < len(payload.get("rules", [])):
                     raise HTTPException(503, "Normalization rule identity is unavailable")
                 rule = payload["rules"][int(index)]
+                if rule["example_original"] == rule["normalized_form"]:
+                    continue
                 rows.append(
                     ReportItem(
                         id=identity,
+                        slot=proposal_slot,
+                        filename=proposal_filename,
                         kind="normalization-rule",
                         title=f"Normalize {payload['column_id']}",
                         column=payload["column_id"],
@@ -165,99 +204,116 @@ def build_report(item, stage, dynamo, s3):
             elif tool == "tool3":
                 formula = payload["formula_template"]
                 syntax, diagnostic = "unverified", None
-                if workbook:
-                    sheet = (
-                        workbook[config["input_sheet"]]
-                        if config.get("input_sheet")
-                        else workbook.worksheets[0]
-                    )
-                    header = config.get("input_header_row") or 1
-                    headers = [cell.value for cell in sheet[header]]
-                    target = payload.get("target_header") or config.get("output_header")
-                    target_column = (
-                        headers.index(target) + 1 if target in headers else sheet.max_column + 1
-                    )
-                    try:
-                        if any(name not in headers for name in payload["referenced_headers"]):
-                            raise ValueError(
-                                "Formula references a header outside the confirmed source"
-                            )
-                        if config.get("update"):
-                            main_key = item.get("files", {}).get("main", {}).get("key")
-                            if not main_key or not main_key.startswith(prefix):
+                # Use the workbook for this proposal's actual slot (not always the primary input)
+                slot_key = item.get("files", {}).get(proposal_slot, {}).get("key")
+                if proposal_slot == "input":
+                    slot_wb, slot_wb_owned = workbook, False
+                elif slot_key and slot_key.startswith(prefix):
+                    slot_wb = load_workbook(BytesIO(s3.get_bytes(slot_key)), read_only=True, data_only=False)
+                    slot_wb_owned = True
+                else:
+                    slot_wb, slot_wb_owned = None, False
+                try:
+                    if slot_wb:
+                        sheet = (
+                            slot_wb[config["input_sheet"]]
+                            if config.get("input_sheet")
+                            else slot_wb.worksheets[0]
+                        )
+                        header = config.get("input_header_row") or 1
+                        headers = [cell.value for cell in sheet[header]]
+                        # Normalize for comparison — inspect_bytes normalizes header names
+                        headers_normalized = {normalize_text(h) for h in headers if h is not None}
+                        target = payload.get("target_header") or config.get("output_header")
+                        target_column = (
+                            headers.index(target) + 1 if target in headers else sheet.max_column + 1
+                        )
+                        try:
+                            if any(name not in headers_normalized for name in payload["referenced_headers"]):
                                 raise ValueError(
-                                    "The main workbook is unavailable for formula verification"
+                                    "Formula references a header outside the confirmed source"
                                 )
-                            main_book = load_workbook(
-                                BytesIO(s3.get_bytes(main_key)), read_only=True, data_only=False
-                            )
-                            try:
-                                main_sheet = (
-                                    main_book[config["main_sheet"]]
-                                    if config.get("main_sheet")
-                                    else main_book.worksheets[0]
-                                )
-                                main_headers = [
-                                    cell.value
-                                    for cell in main_sheet[config.get("main_header_row") or 1]
-                                ]
-                                if any(
-                                    name not in main_headers
-                                    or main_headers.index(name) != headers.index(name)
-                                    for name in payload["referenced_headers"]
-                                ):
+                            if config.get("update"):
+                                main_key = item.get("files", {}).get("main", {}).get("key")
+                                if not main_key or not main_key.startswith(prefix):
                                     raise ValueError(
-                                        "Referenced columns differ in the output workbook; request a new output-specific formula"
+                                        "The main workbook is unavailable for formula verification"
                                     )
-                                main_header = config.get("main_header_row") or 1
-                                main_target = (
-                                    main_headers.index(target) + 1
-                                    if target in main_headers
-                                    else main_sheet.max_column + 1
+                                main_book = load_workbook(
+                                    BytesIO(s3.get_bytes(main_key)), read_only=True, data_only=False
                                 )
-                                if main_sheet.max_row <= main_header:
-                                    raise ValueError(
-                                        "The main sheet has no output rows for this formula"
+                                try:
+                                    main_sheet = (
+                                        main_book[config["main_sheet"]]
+                                        if config.get("main_sheet")
+                                        else main_book.worksheets[0]
                                     )
-                                for output_row in {main_header + 1, main_sheet.max_row}:
-                                    verified = verify_formula(
-                                        materialize_formula(formula, output_row),
-                                        min_row=main_header + 1,
-                                        max_row=main_sheet.max_row,
-                                        max_column=max(main_sheet.max_column, main_target),
-                                        target_column=main_target,
-                                    )
-                                    for reference in verified["references"]:
-                                        letter, _number = coordinate_from_string(
-                                            reference.replace("$", "")
+                                    main_headers = [
+                                        cell.value
+                                        for cell in main_sheet[config.get("main_header_row") or 1]
+                                    ]
+                                    if any(
+                                        name not in main_headers
+                                        or main_headers.index(name) != headers.index(name)
+                                        for name in payload["referenced_headers"]
+                                    ):
+                                        raise ValueError(
+                                            "Referenced columns differ in the output workbook; request a new output-specific formula"
                                         )
-                                        position = column_index_from_string(letter) - 1
-                                        if (
-                                            position >= len(headers)
-                                            or position >= len(main_headers)
-                                            or headers[position] != main_headers[position]
-                                        ):
-                                            raise ValueError(
-                                                "Formula cell references differ in the output workbook"
+                                    main_header = config.get("main_header_row") or 1
+                                    main_target = (
+                                        main_headers.index(target) + 1
+                                        if target in main_headers
+                                        else main_sheet.max_column + 1
+                                    )
+                                    if main_sheet.max_row <= main_header:
+                                        raise ValueError(
+                                            "The main sheet has no output rows for this formula"
+                                        )
+                                    for output_row in {main_header + 1, main_sheet.max_row}:
+                                        verified = verify_formula(
+                                            materialize_formula(formula, output_row),
+                                            min_row=main_header + 1,
+                                            max_row=main_sheet.max_row,
+                                            max_column=max(main_sheet.max_column, main_target),
+                                            target_column=main_target,
+                                        )
+                                        for reference in verified["references"]:
+                                            letter, _number = coordinate_from_string(
+                                                reference.replace("$", "")
                                             )
-                            finally:
-                                main_book.close()
-                        if sheet.max_row <= header:
-                            raise ValueError("The selected sheet has no data rows")
-                        for row in {header + 1, sheet.max_row}:
-                            verify_formula(
-                                materialize_formula(formula, row),
-                                min_row=header + 1,
-                                max_row=sheet.max_row,
-                                max_column=max(sheet.max_column, target_column),
-                                target_column=target_column,
-                            )
-                        syntax = "verified"
-                    except ValueError as error:
-                        syntax, diagnostic = "invalid", str(error)
+                                            position = column_index_from_string(letter) - 1
+                                            if (
+                                                position >= len(headers)
+                                                or position >= len(main_headers)
+                                                or headers[position] != main_headers[position]
+                                            ):
+                                                raise ValueError(
+                                                    "Formula cell references differ in the output workbook"
+                                                )
+                                finally:
+                                    main_book.close()
+                            if sheet.max_row <= header:
+                                raise ValueError("The selected sheet has no data rows")
+                            for row in {header + 1, sheet.max_row}:
+                                verify_formula(
+                                    materialize_formula(formula, row),
+                                    min_row=header + 1,
+                                    max_row=sheet.max_row,
+                                    max_column=max(sheet.max_column, target_column),
+                                    target_column=target_column,
+                                )
+                            syntax = "verified"
+                        except ValueError as error:
+                            syntax, diagnostic = "invalid", str(error)
+                finally:
+                    if slot_wb_owned:
+                        slot_wb.close()
                 rows.append(
                     ReportItem(
                         id=identity,
+                        slot=proposal_slot,
+                        filename=proposal_filename,
                         kind="formula",
                         title=f"Formula: {payload['target_header']}",
                         reason=payload["explanation"],
@@ -280,6 +336,8 @@ def build_report(item, stage, dynamo, s3):
                 rows.append(
                     ReportItem(
                         id=identity,
+                        slot=proposal_slot,
+                        filename=proposal_filename,
                         kind="standardization",
                         title="Standardization mapping"
                         if index is not None
@@ -321,6 +379,8 @@ def build_report(item, stage, dynamo, s3):
                 rows.append(
                     ReportItem(
                         id=identity,
+                        slot=proposal_slot,
+                        filename=proposal_filename,
                         kind="update-match",
                         title=f"{match_type}: {match['current_row_id']}",
                         reason=match["reason"],

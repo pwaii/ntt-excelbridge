@@ -54,7 +54,8 @@ export function ConnectedJobStatus({ jobId }: { jobId: string }) {
   const resumeFlow = useMemo(() => {
     if (!job || job.status !== "UPLOADED" || !services.api) return undefined;
     const config = workflowConfigurationSchema.safeParse({ comment_name: job.config.comment_name, outputHeader: job.config.output_header, standardize: job.config.standardize, update: job.config.update });
-    return config.success ? createMetadataFlow(jobId, config.data, createBackendMetadataAdapter(services.api)) : undefined;
+    const currentRoles = Object.keys(job.files ?? {}).filter((slot) => slot === "input" || /^input_[2-8]$/.test(slot)).sort((a, b) => a === "input" ? -1 : b === "input" ? 1 : Number(a.slice(6)) - Number(b.slice(6))).map((slot) => slot === "input" ? "current" : `current_${slot.slice(6)}` as `current_${number}`);
+    return config.success ? createMetadataFlow(jobId, config.data, createBackendMetadataAdapter(services.api), currentRoles) : undefined;
   }, [job, jobId, services]);
   async function retry() {
     if (!services.api || !ready || active.current || job?.status !== "FAILED" || error) return;
@@ -83,7 +84,7 @@ export function ConnectedJobStatus({ jobId }: { jobId: string }) {
     {job && ["DRAFT", "UPLOADING"].includes(job.status) && <p className="notice text-sm">Upload is incomplete. Selected files cannot be restored after leaving the upload page.</p>}
     {resumeFlow && <PostUploadConfiguration flow={resumeFlow} onStarted={() => { void load(); }} />}
     {job && <details className="section-disclosure"><summary>Workflow details</summary><dl className="job-context"><div><dt>Requested column</dt><dd>{job.config.output_header || job.config.comment_name}</dd></div><div><dt>Worksheet</dt><dd>{job.config.input_sheet || job.workbook_selections?.input?.sheet_name || "Not reported"}</dd></div><div><dt>Last updated</dt><dd><time dateTime={job.updated_at}>{new Date(job.updated_at).toLocaleString()}</time></dd></div></dl><dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2">
-      {Object.entries(job.files ?? {}).map(([slot, file]) => <div key={slot}><dt className="text-xs text-muted-foreground">{slot === "input" ? "Current workbook" : "Main workbook"}</dt><dd className="mt-1 break-all">{file.filename}</dd><dd className="mt-1 text-xs text-muted-foreground">{file.uploaded ? "Upload confirmed" : "Upload not confirmed"}</dd></div>)}
+      {Object.entries(job.files ?? {}).map(([slot, file]) => <div key={slot}><dt className="text-xs text-muted-foreground">{slot === "main" ? "Main workbook" : `Current workbook${slot === "input" ? " 1" : ` ${slot.slice(6)}`}`}</dt><dd className="mt-1 break-all">{file.filename}</dd><dd className="mt-1 text-xs text-muted-foreground">{file.uploaded ? "Upload confirmed" : "Upload not confirmed"}</dd></div>)}
       <div><dt className="text-xs text-muted-foreground">Job ID</dt><dd className="mt-1 break-all">{jobId}</dd></div><div><dt className="text-xs text-muted-foreground">Server status / revision</dt><dd className="mt-1 break-all">{job.status} / {job.revision}</dd></div>
     </dl></details>}
   </section>;

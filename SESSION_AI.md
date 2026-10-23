@@ -101,3 +101,47 @@ Spec: `docs/superpowers/specs/2026-10-16-ai-day7-design.md` · Plan: `docs/super
 - **Region-locked access** — cross-region inference profiles (`us.*`/`apac.*`) hit an org SCP deny; only bare us-east-1 Nova ids work here.
 
 **Still open (not AI-day work):** `CONFIDENCE_FLOOR`/pricing placeholders stay until real tuning + Nova pricing land; BE integration — no worker calls `run_toolN` yet.
+
+## QuickSight / Analytics session — 2026-10-22
+
+### Environment discovered
+- QuickSight account: `453995432289`, identity region `ap-southeast-1` (us-east-1 calls fail with `AccessDeniedException` pointing here).
+- AWS profile: `ChallengerAccess-453995432289` (not `ChallengerAccess` — old name).
+- QuickSight edition: Enterprise. Service role: `aws-quicksight-service-role-v0`.
+- Registered new user `karitt.tha@gmail.com` as ADMIN (was not in the user list; `Active: false` until first console login).
+
+### S3 → QuickSight integration: resolved 2026-10-23
+`create-data-source` (type S3, manifest) now works. Root cause and fix:
+- **Root cause:** QuickSight maintains an internal S3 integration flag separate from the IAM service role policy. The flag was not initialized — the service role policy (`QuickSightS3AccessPolicyPai`) existed but QuickSight's own feature registry had never been activated.
+- **Fix:** QuickSight console → Admin → **AWS resources** ("Allow connections to first-party services") — opening this page initializes the S3 integration flag. After that, `create-data-source` succeeds immediately.
+- **Note:** IAM permissions and bucket policy were correct throughout. The `qs-bucket-policy.json` (service principal policy) was added but is not strictly necessary once the AWS resources page is visited.
+
+**S3 data source:** `qa-s3-7f32316e` → dataset `qa-issues-s3-76bde119` (108 rows, SPICE). Pipeline in `scripts/demo_quicksight_pipeline.py` updated to use this dataset.
+
+### What was built
+| Artifact | Location | Description |
+|---|---|---|
+| `scripts/flatten_quality_reports.py` | repo | Collects all `quality/quality-report.json` from S3, flattens to one CSV row per issue, uploads to `quicksight/quality-issues.csv` |
+| `scripts/flatten_inspections.py` | repo | Collects all `inspection/manifest.json`, flattens to one CSV row per column per job (name, type, blank rate) — written, not yet run |
+| `scripts/demo_quicksight_pipeline.py` | repo | End-to-end demo: flatten → upload CSV to S3 → `create-ingestion` on S3-backed dataset |
+| `scripts/qs-manifest.json` | repo | QuickSight S3 manifest (HTTPS regional URI format) |
+| `quicksight/quality-issues.csv` | `xlsx-workflow-demo-453995432289` S3 | 108 issues across 27 jobs |
+| `quicksight/manifest.json` | `xlsx-workflow-demo-453995432289` S3 | Manifest pointing at quality-issues.csv |
+
+**QuickSight resources:**
+- S3 data source: `qa-s3-7f32316e`
+- S3-backed dataset: `qa-issues-s3-76bde119` (108 rows, SPICE) — used by `demo_quicksight_pipeline.py`
+- Athena data source: `qs-athena` (workgroup: primary, results: `test-probe-453995432289/athena-results/`)
+- Athena-backed dataset: `qs-quality-athena` (108 rows, SPICE) — Glue table: `excelbridge.quality_issues`
+- File-upload dataset: `ad7043d8-6f59-4254-95fa-ab5571ce0908` ("QA report") — stale, superseded by S3-backed dataset
+- Glue database: `excelbridge`; Glue table: `quality_issues` → `s3://xlsx-workflow-demo-453995432289/quicksight/`
+
+**Ground-truth numbers (108 rows as of 2026-10-23):**
+- Total issues: 108 · Jobs with issues: 27
+- By kind: duplicate_rows 42, type_mismatch 24, blank_column 24, blank_row 18
+- By action: keep_first_delete_later 42, manual_review 24, exclude_from_input 24, delete 18
+
+### Next steps
+1. **Automation pipeline**  EventBridge S3 t—rigger on `jobs/*/quality/quality-report.json` → Lambda runs flatten → `create-ingestion` on `qa-issues-s3-76bde119`. Concurrency guard: skip if ingestion already RUNNING. Not yet built.
+2. **`flatten_inspections.py`** — run to add workbook-metadata dataset (columns, types, blank rates per job).
+3. **QuickSight embedding** — Enterprise supports anonymous embedding (`generate-embed-url-for-anonymous-user`). FastAPI generates signed URL; React renders in `<iframe>`. Requires: publish dashboard, create namespace for anonymous access. Not started.

@@ -14,6 +14,7 @@ export const matchTypes = ["exact", "normalized", "ambiguous", "duplicate", "con
 const text = z.string().min(1);
 export const qualityItemSchema = z.object({
   id: text, kind: z.enum([...qualityKinds, ...transformationKinds]), title: text,
+  slot: z.string().optional(), filename: z.string().nullable().optional(),
   severity: z.enum(["high", "medium", "low"]), reason: text,
   sheet: z.string().optional(), row: z.number().int().positive().optional(), column: z.string().optional(),
   cells: z.array(z.object({ coordinate: text, before: z.string().nullable().default(null), after: z.string().nullable().optional() })),

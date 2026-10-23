@@ -43,7 +43,7 @@ def _safe_item_summary(tool: str, item: dict[str, Any]) -> dict[str, Any]:
     return {"kind": "proposal_item"}
 
 
-def run_tool_segment(job_id: str, tool: str, inputs: dict[str, Any], dynamo: DynamoStore, s3: S3Store) -> dict[str, Any]:
+def run_tool_segment(job_id: str, tool: str, inputs: dict[str, Any], dynamo: DynamoStore, s3: S3Store, slot: str = "input") -> dict[str, Any]:
     runners = {
         "tool1": run_tool1,
         "tool2": run_tool2,
@@ -86,6 +86,7 @@ def run_tool_segment(job_id: str, tool: str, inputs: dict[str, Any], dynamo: Dyn
                     "status": "proposed",
                     "output_hash": result.meta.output_hash,
                     "summary": _safe_item_summary(tool, item),
+                    "slot": slot,
                 },
             )
     else:
@@ -100,6 +101,7 @@ def run_tool_segment(job_id: str, tool: str, inputs: dict[str, Any], dynamo: Dyn
                 "artifact_key": key,
                 "status": "proposed",
                 "output_hash": result.meta.output_hash,
+                "slot": slot,
             },
         )
     return {"proposal_id": proposal_id, "proposal_item_ids": item_ids, "artifact_key": key, "tool": tool, "status": "proposed"}

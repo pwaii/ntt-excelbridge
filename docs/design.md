@@ -90,7 +90,7 @@ For the demo, the reference workbook must contain one clearly identifiable data 
 To keep the seven-day demo reliable and within budget:
 
 - `.xlsx` only; `.xls`, `.xlsm`, and password-protected files are rejected.
-- One input workbook and, when needed, one main workbook per job.
+- ~~One input workbook~~ Up to 8 input workbooks (slots `input`, `input_2`…`input_8`) and, when needed, one main workbook per job.
 - One selected input sheet and one selected main sheet per job.
 - Header row is required and must be within the first 20 rows.
 - Formula cells are read as values for detection; formulas are preserved only when OpenPyXL can safely retain them.

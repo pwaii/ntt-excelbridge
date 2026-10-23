@@ -1,0 +1,97 @@
+job_id,issue_id,kind,sheet,column,recommended_action,row_count,message
+04185856-2d91-44f2-b40a-8c1fe75ed63b,BLANK_ROW#Customers#10,blank_row,Customers,,delete,1,row is empty after normalization
+04185856-2d91-44f2-b40a-8c1fe75ed63b,DUPLICATE#Customers#b4e52f058e800586,duplicate_rows,Customers,,keep_first_delete_later,2,rows have the same normalized values
+04185856-2d91-44f2-b40a-8c1fe75ed63b,TYPE_MISMATCH#Customers#7,type_mismatch,Customers,UnitPrice,manual_review,0,column contains incompatible value types
+04185856-2d91-44f2-b40a-8c1fe75ed63b,BLANK_COLUMN#Customers#8,blank_column,Customers,Notes,exclude_from_input,0,column is empty for every data row
+0a6340a6-8b30-45c0-a6e0-92368c48012a,BLANK_ROW#Customers#10,blank_row,Customers,,delete,1,row is empty after normalization
+0a6340a6-8b30-45c0-a6e0-92368c48012a,DUPLICATE#Customers#b4e52f058e800586,duplicate_rows,Customers,,keep_first_delete_later,2,rows have the same normalized values
+0a6340a6-8b30-45c0-a6e0-92368c48012a,TYPE_MISMATCH#Customers#7,type_mismatch,Customers,UnitPrice,manual_review,0,column contains incompatible value types
+0a6340a6-8b30-45c0-a6e0-92368c48012a,BLANK_COLUMN#Customers#8,blank_column,Customers,Notes,exclude_from_input,0,column is empty for every data row
+0df4b952-4699-440a-ad1e-e02841ff8f32,BLANK_ROW#Invoices#7,blank_row,Invoices,,delete,1,row is empty after normalization
+0df4b952-4699-440a-ad1e-e02841ff8f32,DUPLICATE#Invoices#9a065d882764f886,duplicate_rows,Invoices,,keep_first_delete_later,2,rows have the same normalized values
+0df4b952-4699-440a-ad1e-e02841ff8f32,TYPE_MISMATCH#Invoices#5,type_mismatch,Invoices,UnitPrice,manual_review,0,column contains incompatible value types
+0df4b952-4699-440a-ad1e-e02841ff8f32,BLANK_COLUMN#Invoices#8,blank_column,Invoices,Memo,exclude_from_input,0,column is empty for every data row
+113111e7-825c-492b-b0e1-f653cec830f5,DUPLICATE#Sheet1#9c48f04e65c5fc32,duplicate_rows,Sheet1,,keep_first_delete_later,2,rows have the same normalized values
+113111e7-825c-492b-b0e1-f653cec830f5,DUPLICATE#Sheet1#c1b581a876b5a2fc,duplicate_rows,Sheet1,,keep_first_delete_later,2,rows have the same normalized values
+113111e7-825c-492b-b0e1-f653cec830f5,DUPLICATE#Sheet1#e4a1bbe545b7f9be,duplicate_rows,Sheet1,,keep_first_delete_later,2,rows have the same normalized values
+113111e7-825c-492b-b0e1-f653cec830f5,DUPLICATE#Sheet1#e9050272a6cfe905,duplicate_rows,Sheet1,,keep_first_delete_later,2,rows have the same normalized values
+113111e7-825c-492b-b0e1-f653cec830f5,DUPLICATE#Sheet1#aa1ca2b3b3fb2470,duplicate_rows,Sheet1,,keep_first_delete_later,2,rows have the same normalized values
+113111e7-825c-492b-b0e1-f653cec830f5,DUPLICATE#Sheet1#36f42633b2798d6c,duplicate_rows,Sheet1,,keep_first_delete_later,2,rows have the same normalized values
+113111e7-825c-492b-b0e1-f653cec830f5,DUPLICATE#Sheet1#f9655d47d2906df3,duplicate_rows,Sheet1,,keep_first_delete_later,2,rows have the same normalized values
+113111e7-825c-492b-b0e1-f653cec830f5,DUPLICATE#Sheet1#cfe342e52c0d5ce1,duplicate_rows,Sheet1,,keep_first_delete_later,2,rows have the same normalized values
+1959dc27-04ed-4ed2-9b5f-e365a295dd7d,BLANK_ROW#Customers#10,blank_row,Customers,,delete,1,row is empty after normalization
+1959dc27-04ed-4ed2-9b5f-e365a295dd7d,DUPLICATE#Customers#b4e52f058e800586,duplicate_rows,Customers,,keep_first_delete_later,2,rows have the same normalized values
+1959dc27-04ed-4ed2-9b5f-e365a295dd7d,TYPE_MISMATCH#Customers#7,type_mismatch,Customers,UnitPrice,manual_review,0,column contains incompatible value types
+1959dc27-04ed-4ed2-9b5f-e365a295dd7d,BLANK_COLUMN#Customers#8,blank_column,Customers,Notes,exclude_from_input,0,column is empty for every data row
+2a0b127b-7fbb-4afc-b22d-56dac48e231a,DUPLICATE#Sheet1#9c48f04e65c5fc32,duplicate_rows,Sheet1,,keep_first_delete_later,2,rows have the same normalized values
+2a0b127b-7fbb-4afc-b22d-56dac48e231a,DUPLICATE#Sheet1#c1b581a876b5a2fc,duplicate_rows,Sheet1,,keep_first_delete_later,2,rows have the same normalized values
+2a0b127b-7fbb-4afc-b22d-56dac48e231a,DUPLICATE#Sheet1#e4a1bbe545b7f9be,duplicate_rows,Sheet1,,keep_first_delete_later,2,rows have the same normalized values
+2a0b127b-7fbb-4afc-b22d-56dac48e231a,DUPLICATE#Sheet1#e9050272a6cfe905,duplicate_rows,Sheet1,,keep_first_delete_later,2,rows have the same normalized values
+2a0b127b-7fbb-4afc-b22d-56dac48e231a,DUPLICATE#Sheet1#aa1ca2b3b3fb2470,duplicate_rows,Sheet1,,keep_first_delete_later,2,rows have the same normalized values
+2a0b127b-7fbb-4afc-b22d-56dac48e231a,DUPLICATE#Sheet1#36f42633b2798d6c,duplicate_rows,Sheet1,,keep_first_delete_later,2,rows have the same normalized values
+2a0b127b-7fbb-4afc-b22d-56dac48e231a,DUPLICATE#Sheet1#f9655d47d2906df3,duplicate_rows,Sheet1,,keep_first_delete_later,2,rows have the same normalized values
+2a0b127b-7fbb-4afc-b22d-56dac48e231a,DUPLICATE#Sheet1#cfe342e52c0d5ce1,duplicate_rows,Sheet1,,keep_first_delete_later,2,rows have the same normalized values
+3079bd0d-6141-4a06-be88-a82c3dba2126,BLANK_ROW#Customers#10,blank_row,Customers,,delete,1,row is empty after normalization
+3079bd0d-6141-4a06-be88-a82c3dba2126,DUPLICATE#Customers#b4e52f058e800586,duplicate_rows,Customers,,keep_first_delete_later,2,rows have the same normalized values
+3079bd0d-6141-4a06-be88-a82c3dba2126,TYPE_MISMATCH#Customers#7,type_mismatch,Customers,UnitPrice,manual_review,0,column contains incompatible value types
+3079bd0d-6141-4a06-be88-a82c3dba2126,BLANK_COLUMN#Customers#8,blank_column,Customers,Notes,exclude_from_input,0,column is empty for every data row
+31b701e5-531a-412c-89f4-c1acf5f63a59,BLANK_ROW#Customers#10,blank_row,Customers,,delete,1,row is empty after normalization
+31b701e5-531a-412c-89f4-c1acf5f63a59,DUPLICATE#Customers#b4e52f058e800586,duplicate_rows,Customers,,keep_first_delete_later,2,rows have the same normalized values
+31b701e5-531a-412c-89f4-c1acf5f63a59,TYPE_MISMATCH#Customers#7,type_mismatch,Customers,UnitPrice,manual_review,0,column contains incompatible value types
+31b701e5-531a-412c-89f4-c1acf5f63a59,BLANK_COLUMN#Customers#8,blank_column,Customers,Notes,exclude_from_input,0,column is empty for every data row
+39985bc1-b069-46e1-8fa8-730e078e3835,BLANK_ROW#Customers#10,blank_row,Customers,,delete,1,row is empty after normalization
+39985bc1-b069-46e1-8fa8-730e078e3835,DUPLICATE#Customers#b4e52f058e800586,duplicate_rows,Customers,,keep_first_delete_later,2,rows have the same normalized values
+39985bc1-b069-46e1-8fa8-730e078e3835,TYPE_MISMATCH#Customers#7,type_mismatch,Customers,UnitPrice,manual_review,0,column contains incompatible value types
+39985bc1-b069-46e1-8fa8-730e078e3835,BLANK_COLUMN#Customers#8,blank_column,Customers,Notes,exclude_from_input,0,column is empty for every data row
+487d0c5a-6a4a-4025-8473-87f07d856b25,BLANK_ROW#Customers#10,blank_row,Customers,,delete,1,row is empty after normalization
+487d0c5a-6a4a-4025-8473-87f07d856b25,DUPLICATE#Customers#b4e52f058e800586,duplicate_rows,Customers,,keep_first_delete_later,2,rows have the same normalized values
+487d0c5a-6a4a-4025-8473-87f07d856b25,TYPE_MISMATCH#Customers#7,type_mismatch,Customers,UnitPrice,manual_review,0,column contains incompatible value types
+487d0c5a-6a4a-4025-8473-87f07d856b25,BLANK_COLUMN#Customers#8,blank_column,Customers,Notes,exclude_from_input,0,column is empty for every data row
+5af740f1-1231-4f88-bc01-2571bb4e1d14,BLANK_ROW#Customers#10,blank_row,Customers,,delete,1,row is empty after normalization
+5af740f1-1231-4f88-bc01-2571bb4e1d14,DUPLICATE#Customers#b4e52f058e800586,duplicate_rows,Customers,,keep_first_delete_later,2,rows have the same normalized values
+5af740f1-1231-4f88-bc01-2571bb4e1d14,TYPE_MISMATCH#Customers#7,type_mismatch,Customers,UnitPrice,manual_review,0,column contains incompatible value types
+5af740f1-1231-4f88-bc01-2571bb4e1d14,BLANK_COLUMN#Customers#8,blank_column,Customers,Notes,exclude_from_input,0,column is empty for every data row
+5d708b27-a878-4fde-ba8b-790d271b2b7b,BLANK_ROW#Customers#10,blank_row,Customers,,delete,1,row is empty after normalization
+5d708b27-a878-4fde-ba8b-790d271b2b7b,DUPLICATE#Customers#b4e52f058e800586,duplicate_rows,Customers,,keep_first_delete_later,2,rows have the same normalized values
+5d708b27-a878-4fde-ba8b-790d271b2b7b,TYPE_MISMATCH#Customers#7,type_mismatch,Customers,UnitPrice,manual_review,0,column contains incompatible value types
+5d708b27-a878-4fde-ba8b-790d271b2b7b,BLANK_COLUMN#Customers#8,blank_column,Customers,Notes,exclude_from_input,0,column is empty for every data row
+5f973e5c-8c3b-40e8-abe5-6885b3fbcf62,BLANK_ROW#Customers#10,blank_row,Customers,,delete,1,row is empty after normalization
+5f973e5c-8c3b-40e8-abe5-6885b3fbcf62,DUPLICATE#Customers#b4e52f058e800586,duplicate_rows,Customers,,keep_first_delete_later,2,rows have the same normalized values
+5f973e5c-8c3b-40e8-abe5-6885b3fbcf62,TYPE_MISMATCH#Customers#7,type_mismatch,Customers,UnitPrice,manual_review,0,column contains incompatible value types
+5f973e5c-8c3b-40e8-abe5-6885b3fbcf62,BLANK_COLUMN#Customers#8,blank_column,Customers,Notes,exclude_from_input,0,column is empty for every data row
+630803ee-4768-4361-8187-b6c56e391dcf,BLANK_ROW#Customers#10,blank_row,Customers,,delete,1,row is empty after normalization
+630803ee-4768-4361-8187-b6c56e391dcf,DUPLICATE#Customers#b4e52f058e800586,duplicate_rows,Customers,,keep_first_delete_later,2,rows have the same normalized values
+630803ee-4768-4361-8187-b6c56e391dcf,TYPE_MISMATCH#Customers#7,type_mismatch,Customers,UnitPrice,manual_review,0,column contains incompatible value types
+630803ee-4768-4361-8187-b6c56e391dcf,BLANK_COLUMN#Customers#8,blank_column,Customers,Notes,exclude_from_input,0,column is empty for every data row
+69546a06-2634-4fe9-9dd0-7f54a0a560d9,BLANK_ROW#Customers#10,blank_row,Customers,,delete,1,row is empty after normalization
+69546a06-2634-4fe9-9dd0-7f54a0a560d9,DUPLICATE#Customers#b4e52f058e800586,duplicate_rows,Customers,,keep_first_delete_later,2,rows have the same normalized values
+69546a06-2634-4fe9-9dd0-7f54a0a560d9,TYPE_MISMATCH#Customers#7,type_mismatch,Customers,UnitPrice,manual_review,0,column contains incompatible value types
+69546a06-2634-4fe9-9dd0-7f54a0a560d9,BLANK_COLUMN#Customers#8,blank_column,Customers,Notes,exclude_from_input,0,column is empty for every data row
+69e10fa0-f439-4b81-81ad-a12243fd417e,BLANK_ROW#Invoices#7,blank_row,Invoices,,delete,1,row is empty after normalization
+69e10fa0-f439-4b81-81ad-a12243fd417e,DUPLICATE#Invoices#9a065d882764f886,duplicate_rows,Invoices,,keep_first_delete_later,2,rows have the same normalized values
+69e10fa0-f439-4b81-81ad-a12243fd417e,TYPE_MISMATCH#Invoices#5,type_mismatch,Invoices,UnitPrice,manual_review,0,column contains incompatible value types
+69e10fa0-f439-4b81-81ad-a12243fd417e,BLANK_COLUMN#Invoices#8,blank_column,Invoices,Memo,exclude_from_input,0,column is empty for every data row
+6dbd8cc1-6eaa-45b8-b78d-8f38a4648f91,BLANK_ROW#Invoices#7,blank_row,Invoices,,delete,1,row is empty after normalization
+6dbd8cc1-6eaa-45b8-b78d-8f38a4648f91,DUPLICATE#Invoices#9a065d882764f886,duplicate_rows,Invoices,,keep_first_delete_later,2,rows have the same normalized values
+6dbd8cc1-6eaa-45b8-b78d-8f38a4648f91,TYPE_MISMATCH#Invoices#5,type_mismatch,Invoices,UnitPrice,manual_review,0,column contains incompatible value types
+6dbd8cc1-6eaa-45b8-b78d-8f38a4648f91,BLANK_COLUMN#Invoices#8,blank_column,Invoices,Memo,exclude_from_input,0,column is empty for every data row
+742520d7-e49e-4deb-ad17-2b3fe594f591,BLANK_ROW#Invoices#7,blank_row,Invoices,,delete,1,row is empty after normalization
+742520d7-e49e-4deb-ad17-2b3fe594f591,DUPLICATE#Invoices#9a065d882764f886,duplicate_rows,Invoices,,keep_first_delete_later,2,rows have the same normalized values
+742520d7-e49e-4deb-ad17-2b3fe594f591,TYPE_MISMATCH#Invoices#5,type_mismatch,Invoices,UnitPrice,manual_review,0,column contains incompatible value types
+742520d7-e49e-4deb-ad17-2b3fe594f591,BLANK_COLUMN#Invoices#8,blank_column,Invoices,Memo,exclude_from_input,0,column is empty for every data row
+9da3a5bb-6793-41d1-8f3f-50eb541db77b,BLANK_ROW#Customers#10,blank_row,Customers,,delete,1,row is empty after normalization
+9da3a5bb-6793-41d1-8f3f-50eb541db77b,DUPLICATE#Customers#b4e52f058e800586,duplicate_rows,Customers,,keep_first_delete_later,2,rows have the same normalized values
+9da3a5bb-6793-41d1-8f3f-50eb541db77b,TYPE_MISMATCH#Customers#7,type_mismatch,Customers,UnitPrice,manual_review,0,column contains incompatible value types
+9da3a5bb-6793-41d1-8f3f-50eb541db77b,BLANK_COLUMN#Customers#8,blank_column,Customers,Notes,exclude_from_input,0,column is empty for every data row
+b5bf3d36-f3b8-42cf-b4ae-df428926b44d,DUPLICATE#Sheet1#9c48f04e65c5fc32,duplicate_rows,Sheet1,,keep_first_delete_later,2,rows have the same normalized values
+b5bf3d36-f3b8-42cf-b4ae-df428926b44d,DUPLICATE#Sheet1#c1b581a876b5a2fc,duplicate_rows,Sheet1,,keep_first_delete_later,2,rows have the same normalized values
+b5bf3d36-f3b8-42cf-b4ae-df428926b44d,DUPLICATE#Sheet1#e4a1bbe545b7f9be,duplicate_rows,Sheet1,,keep_first_delete_later,2,rows have the same normalized values
+b5bf3d36-f3b8-42cf-b4ae-df428926b44d,DUPLICATE#Sheet1#e9050272a6cfe905,duplicate_rows,Sheet1,,keep_first_delete_later,2,rows have the same normalized values
+b5bf3d36-f3b8-42cf-b4ae-df428926b44d,DUPLICATE#Sheet1#aa1ca2b3b3fb2470,duplicate_rows,Sheet1,,keep_first_delete_later,2,rows have the same normalized values
+b5bf3d36-f3b8-42cf-b4ae-df428926b44d,DUPLICATE#Sheet1#36f42633b2798d6c,duplicate_rows,Sheet1,,keep_first_delete_later,2,rows have the same normalized values
+b5bf3d36-f3b8-42cf-b4ae-df428926b44d,DUPLICATE#Sheet1#f9655d47d2906df3,duplicate_rows,Sheet1,,keep_first_delete_later,2,rows have the same normalized values
+b5bf3d36-f3b8-42cf-b4ae-df428926b44d,DUPLICATE#Sheet1#cfe342e52c0d5ce1,duplicate_rows,Sheet1,,keep_first_delete_later,2,rows have the same normalized values
+cdac91ec-7fa8-4429-b9b7-f5cc821905cf,BLANK_ROW#Invoices#7,blank_row,Invoices,,delete,1,row is empty after normalization
+cdac91ec-7fa8-4429-b9b7-f5cc821905cf,DUPLICATE#Invoices#9a065d882764f886,duplicate_rows,Invoices,,keep_first_delete_later,2,rows have the same normalized values
+cdac91ec-7fa8-4429-b9b7-f5cc821905cf,TYPE_MISMATCH#Invoices#5,type_mismatch,Invoices,UnitPrice,manual_review,0,column contains incompatible value types
+cdac91ec-7fa8-4429-b9b7-f5cc821905cf,BLANK_COLUMN#Invoices#8,blank_column,Invoices,Memo,exclude_from_input,0,column is empty for every data row

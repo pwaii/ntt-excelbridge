@@ -290,6 +290,168 @@ def test_upload_configuration_both_review_gates_and_download_all_modes(api, stan
     assert all(row["status"] != "proposed" for row in persisted if row["id"] in decisions)
 
 
+def _dup_workbook():
+    book = Workbook()
+    sheet = book.active
+    sheet.title = "Data"
+    sheet.append(["ID", "Amount", "Status"])
+    sheet.append(["001", 2, "Old"])
+    sheet.append(["001", 2, "Old"])  # exact duplicate -> a quality issue every slot will raise
+    stream = BytesIO()
+    book.save(stream)
+    book.close()
+    return stream.getvalue()
+
+
+def test_fanout_handlers_isolate_each_input_slot(api):
+    client, store, storage, _ = api
+    response = client.post(
+        "/v1/jobs",
+        json={
+            "config": {
+                "comment_name": "Double Amount",
+                "output_header": "Double",
+                "standardize": False,
+                "update": False,
+            },
+            "input_filenames": ["current.xlsx", "current-2.xlsx"],
+        },
+    )
+    assert response.status_code == 201, response.text
+    job_id = response.json()["job"]["job_id"]
+    assert set(store.item["files"]) == {"input", "input_2"}
+    for slot, file in store.item["files"].items():
+        storage.objects[file["key"]] = _dup_workbook()
+        assert (
+            client.post(f"/v1/jobs/{job_id}/uploads/complete", json={"slot": slot}).status_code
+            == 200
+        )
+    store.item["config"].update({"input_sheet": "Data", "input_header_row": 1})
+
+    # The Map fan-out: inspect + quality run once per input slot.
+    for slot in ("input", "input_2"):
+        handlers.inspect_handler({"job_id": job_id, "slot": slot}, None)
+        handlers.quality_handler({"job_id": job_id, "slot": slot}, None)
+
+    artifacts = store.item["artifacts"]
+    # Each slot wrote its own isolated inspection + quality artifacts.
+    assert artifacts["inspection"]["key"] != artifacts["inspection_input_2"]["key"]
+    assert artifacts["quality"]["key"] != artifacts["quality_input_2"]["key"]
+    # Issues are namespaced by slot; both slots produced some and record their slot.
+    assert any(sk.startswith("ISSUE#input_2#") for sk in store.children)
+    assert any(
+        sk.startswith("ISSUE#") and not sk.startswith("ISSUE#input_2#") for sk in store.children
+    )
+    assert {child["slot"] for child in store.children.values() if child.get("entity_type") == "issue"} == {
+        "input",
+        "input_2",
+    }
+
+
+def test_combined_quality_gate_lists_every_slot_without_id_collision(api):
+    client, store, storage, _ = api
+    response = client.post(
+        "/v1/jobs",
+        json={
+            "config": {"comment_name": "Double Amount", "output_header": "Double",
+                       "standardize": False, "update": False},
+            "input_filenames": ["current.xlsx", "current-2.xlsx"],
+        },
+    )
+    job_id = response.json()["job"]["job_id"]
+    for slot, file in store.item["files"].items():
+        storage.objects[file["key"]] = _dup_workbook()  # identical -> identical issue_ids
+        client.post(f"/v1/jobs/{job_id}/uploads/complete", json={"slot": slot})
+    store.item["config"].update({"input_sheet": "Data", "input_header_row": 1})
+
+    for slot in ("input", "input_2"):
+        handlers.inspect_handler({"job_id": job_id, "slot": slot}, None)
+        handlers.quality_handler({"job_id": job_id, "slot": slot}, None)
+    handlers.quality_gate_handler({"job_id": job_id}, None)
+
+    rows = report(client, store, "quality")
+    # Both workbooks' issues appear (the single-slot report would have shown only one),
+    # grouped by filename, with distinct ids despite sharing the same sheet/issue_id.
+    by_slot = {row["slot"] for row in rows}
+    assert by_slot == {"input", "input_2"}
+    assert {row["filename"] for row in rows} == {"current.xlsx", "current-2.xlsx"}
+    assert len({row["id"] for row in rows}) == len(rows)  # no collision -> no 503
+    assert any(row["id"].startswith("input_2::") for row in rows)
+
+
+def test_apply_emits_one_output_per_input_slot(api):
+    client, store, storage, _ = api
+    response = client.post(
+        "/v1/jobs",
+        json={
+            "config": {
+                "comment_name": "Double Amount",
+                "output_header": "Double",
+                "standardize": False,
+                "update": False,
+            },
+            "input_filenames": ["current.xlsx", "current-2.xlsx"],
+        },
+    )
+    assert response.status_code == 201, response.text
+    job_id = response.json()["job"]["job_id"]
+    for slot, file in store.item["files"].items():
+        storage.objects[file["key"]] = _dup_workbook()
+        client.post(f"/v1/jobs/{job_id}/uploads/complete", json={"slot": slot})
+    store.item["config"].update({"input_sheet": "Data", "input_header_row": 1})
+
+    for slot in ("input", "input_2"):
+        handlers.inspect_handler({"job_id": job_id, "slot": slot}, None)
+        handlers.quality_handler({"job_id": job_id, "slot": slot}, None)
+        # A formula proposal per slot, stamped with its slot so apply filters correctly.
+        key = storage.artifact_key(job_id, "proposals", f"tool3-{slot}.json")
+        storage.put_bytes(
+            key,
+            json.dumps({"payload": {"formula_template": "=B{row}*2", "target_header": "Double"}}).encode(),
+            "application/json",
+        )
+        store.put_child(
+            job_id,
+            f"PROPOSAL#tool3-{slot}",
+            {"proposal_id": f"tool3-{slot}", "tool": "tool3", "artifact_key": key, "slot": slot},
+        )
+
+    # Accept every quality issue and formula proposal across both slots. Secondary
+    # slots use slot-qualified keys (input_2::...), as the combined gate presents them;
+    # the primary slot keeps bare keys. Both slots' identical issue_id stays distinct.
+    def qualify(slot, bare):
+        return bare if slot == "input" else f"{slot}::{bare}"
+
+    decisions = {
+        qualify(child["slot"], child["issue_id"]): {"decision": "accept"}
+        for child in store.children.values()
+        if child.get("entity_type") == "issue"
+    }
+    decisions.update({qualify(slot, f"tool3-{slot}"): {"decision": "accept"} for slot in ("input", "input_2")})
+    store.item["last_review_key"] = storage.artifact_key(job_id, "reviews", "r.json")
+    storage.put_bytes(store.item["last_review_key"], json.dumps({"decisions": decisions}).encode(), "application/json")
+
+    handlers.apply_handler({"job_id": job_id}, None)
+    artifacts = store.item["artifacts"]
+    # neither policy with two inputs -> two independent current-workbook outputs.
+    assert "output" in artifacts and "output_2" in artifacts
+    assert artifacts["output"]["key"] != artifacts["output_2"]["key"]
+    for name in ("output", "output_2"):
+        book = load_workbook(BytesIO(storage.objects[artifacts[name]["key"]]), data_only=False)
+        sheet = book["Data"]
+        assert sheet["D1"].value == "Double"  # formula column added to each output
+        assert sheet["D2"].value == "=B2*2"
+        assert sheet.max_row == 2  # the duplicate row was removed in both
+        book.close()
+    # Each output is individually downloadable through the artifact route.
+    urls = set()
+    for name in ("output", "output_2"):
+        resp = client.get(f"/v1/jobs/{job_id}/artifacts/{name}")
+        assert resp.status_code == 200, resp.text
+        urls.add(resp.json()["key"])
+    assert len(urls) == 2
+
+
 def test_review_rejects_unknown_incomplete_and_stale_decisions(api):
     client, store, storage, _ = api
     job_id = prepare(api)

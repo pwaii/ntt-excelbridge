@@ -53,6 +53,15 @@ it("sorts unknown/low confidence first, filters types and retains hidden drafts"
   change(select("Issue type"), "all"); change(select("Decision"), "pending");
   expect([...container.querySelectorAll("tbody button")].map((element) => element.textContent)).not.toContain("Low confidence");
 });
+it("shows source filenames and filters findings by current workbook", async () => {
+  await render(qualitySnapshot({ items: [qualityItem({ id: "one", filename: "north.xlsx" }), qualityItem({ id: "two", filename: "south.xlsx", title: "South finding" })] }));
+  expect(container.textContent).toContain("north.xlsx");
+  expect(container.textContent).toContain("south.xlsx");
+  change(select("Current workbook"), "south.xlsx");
+  expect(container.querySelectorAll("tbody button")).toHaveLength(1);
+  expect(button("South finding")).toBeTruthy();
+  expect(container.querySelector(".review-details")?.textContent).toContain("Source workbook: south.xlsx");
+});
 it("requires a reason for ignore and shows pattern-level context rather than per-cell decisions", async () => {
   await render(qualitySnapshot({ items: [qualityItem({ kind: "normalization-rule", pattern: "DD/MM/YYYY", affectedCount: 2000 })] }));
   act(() => button("Date format differs").click()); change(select("Decision for this finding"), "ignore");

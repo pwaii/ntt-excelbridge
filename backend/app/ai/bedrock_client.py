@@ -9,10 +9,10 @@ against a Pydantic schema before anything downstream trusts it.
 import json
 import time
 
-import boto3
 from botocore.config import Config
 
 from app.settings import settings
+from app.storage.aws_session import get_session
 
 # Transient-only retries: 'adaptive' retries throttling/5xx and backs off; validation and
 # access-denied are not retried by botocore. We never add our own retry around those.
@@ -47,7 +47,7 @@ def _extract_json(text: str) -> dict:
 
 class BedrockClient:
     def __init__(self, client=None):
-        self._client = client or boto3.client(
+        self._client = client or get_session().client(
             "bedrock-runtime", region_name=settings.aws_region, config=_RETRY_CONFIG
         )
 

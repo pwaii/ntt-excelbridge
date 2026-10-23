@@ -3,23 +3,27 @@ import type { JobsApi } from "@/api/jobs-api";
 import type { components } from "@/api/generated/backend";
 import { metadataKey } from "@/lib/workflow-readiness";
 import type { MetadataAdapter, WorkbookChoices, WorkbookInspection } from "./types";
+import type { WorkbookRole } from "@/uploads/types";
+
+const slotForRole = (role: WorkbookRole) => role === "current" ? "input" : role === "main" ? "main" : role.replace("current_", "input_") as `input_${2|3|4|5|6|7|8}`;
 
 export function createBackendMetadataAdapter(api: JobsApi): MetadataAdapter {
   return {
     async load(id, choices, signal) {
       const { job, request_id } = await api.getJob(id, signal);
-      const workbooks: Partial<Record<"current" | "main", WorkbookInspection>> = {};
-      const persisted: Partial<Record<"current" | "main", WorkbookChoices["current"]>> = {};
-      for (const role of (job.config.standardize || job.config.update ? ["current", "main"] : ["current"]) as ("current" | "main")[]) {
-        const slot = role === "current" ? "input" : "main";
+      const workbooks: Partial<Record<WorkbookRole, WorkbookInspection>> = {};
+      const persisted: Partial<Record<WorkbookRole, WorkbookChoices["current"]>> = {};
+      const roles = Object.keys(choices) as WorkbookRole[];
+      for (const role of roles) {
+        const slot = slotForRole(role);
         if (!job.files?.[slot]?.uploaded) continue;
         const saved = job.workbook_selections?.[slot];
-        const choice = choices[role];
+        const choice = choices[role] ?? { sheetName: null, header: null, keyColumnId: null };
         const name = choice.sheetName ?? saved?.sheet_name;
         const row = choice.header?.row ?? (!choice.sheetName ? saved?.header_row : undefined);
         const data = await api.getMetadata(id, slot, { ...(name ? { sheet_name: name } : {}), ...(row ? { header_row: row } : {}) }, signal);
         const sheets = data.sheets.map((sheet) => ({ workbookVersion: data.workbook_version, sheetName: sheet.name, dataRowCount: sheet.data_row_count, detectedHeaderRow: sheet.detected_header_row, columnsHeaderRow: sheet.header_row ?? undefined, columns: sheet.columns, headerRowBounds: { min: data.header_min, max: data.header_max, indexBase: data.index_base } }));
-        workbooks[role] = { workbookVersion: data.workbook_version, sizeBytes: data.size_bytes, uploadConfirmed: true, sheets, keyRule: data.key_required ? "required" : "optional", warnings: [], errors: data.sheets.filter((sheet) => sheet.name === name).flatMap((sheet) => sheet.errors ?? []) };
+        workbooks[role] = { filename: job.files?.[slot]?.filename, workbookVersion: data.workbook_version, sizeBytes: data.size_bytes, uploadConfirmed: true, sheets, keyRule: data.key_required ? "required" : "optional", warnings: [], errors: data.sheets.filter((sheet) => sheet.name === name).flatMap((sheet) => sheet.errors ?? []) };
         const sheet = sheets.find((item) => item.sheetName === saved?.sheet_name);
         if (job.configuration_confirmed && saved && sheet && saved.workbook_version === data.workbook_version && saved.header_confirmed && sheet.columnsHeaderRow === saved.header_row) persisted[role] = { sheetName: saved.sheet_name, header: { metadataKey: metadataKey(sheet), row: saved.header_row }, keyColumnId: saved.key_column ?? null };
       }
@@ -29,14 +33,16 @@ export function createBackendMetadataAdapter(api: JobsApi): MetadataAdapter {
     },
     async persistSelections(id, input, selectionKey, serverRevision, signal) {
       const selections: components["schemas"]["SaveWorkbookConfiguration"]["selections"] = {};
-      for (const role of (input.configuration.standardize || input.configuration.update ? ["current", "main"] : ["current"]) as ("current" | "main")[]) {
+      for (const role of Object.keys(input.choices) as WorkbookRole[]) {
         const choice = input.choices[role];
+        if (!choice) throw new ApiError("configuration", `Missing worksheet selection for ${role}.`);
         if (!choice.sheetName || !choice.header) throw new ApiError("configuration", "Confirm the worksheet header first.");
-        const metadata = await api.getMetadata(id, role === "current" ? "input" : "main", { sheet_name: choice.sheetName, header_row: choice.header.row }, signal);
+        const slot = slotForRole(role);
+        const metadata = await api.getMetadata(id, slot, { sheet_name: choice.sheetName, header_row: choice.header.row }, signal);
         const sheet = metadata.sheets.find((item) => item.name === choice.sheetName);
         const bound = { workbookVersion: metadata.workbook_version, sheetName: choice.sheetName, dataRowCount: sheet?.data_row_count, detectedHeaderRow: sheet?.detected_header_row, columnsHeaderRow: sheet?.header_row ?? undefined, columns: sheet?.columns, headerRowBounds: { min: metadata.header_min, max: metadata.header_max, indexBase: metadata.index_base } };
         if (metadataKey(bound) !== choice.header.metadataKey) throw new ApiError("protocol", "Workbook metadata changed. Confirm the header again.");
-        selections[role === "current" ? "input" : "main"] = { sheet_name: choice.sheetName, header_row: choice.header.row, header_confirmed: true, key_column: choice.keyColumnId, workbook_version: metadata.workbook_version };
+        selections[slot] = { sheet_name: choice.sheetName, header_row: choice.header.row, header_confirmed: true, key_column: choice.keyColumnId, workbook_version: metadata.workbook_version };
       }
       const revision = Number(serverRevision);
       if (!Number.isSafeInteger(revision)) throw new ApiError("protocol", "Invalid server revision.");

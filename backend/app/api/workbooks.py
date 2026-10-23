@@ -20,9 +20,12 @@ def owned_job(job_id, owner_id, dynamo):
     return item
 
 
+VALID_SLOTS = {"input", "main"} | {f"input_{index}" for index in range(2, 9)}
+
+
 def inspect_slot(item, slot, s3, sheet_name=None, header_row=None):
-    if slot not in {"input", "main"}:
-        raise HTTPException(422, "slot must be input or main")
+    if slot not in VALID_SLOTS:
+        raise HTTPException(422, "slot must be input, input_2 through input_8, or main")
     file = item.get("files", {}).get(slot, {})
     if not file.get("uploaded") or not file.get("key"):
         raise HTTPException(422, "workbook upload must be confirmed first")
@@ -64,11 +67,10 @@ def metadata(
 
 
 def validate_selections(item, selections, s3):
-    required = (
-        {"input", "main"}
-        if item.get("config", {}).get("standardize") or item.get("config", {}).get("update")
-        else {"input"}
-    )
+    # Every uploaded current workbook must be confirmed; main only when a policy needs it.
+    required = {slot for slot in item.get("files", {}) if slot == "input" or slot.startswith("input_")}
+    if item.get("config", {}).get("standardize") or item.get("config", {}).get("update"):
+        required.add("main")
     if set(selections) != required:
         raise HTTPException(422, "Confirm selections for exactly the required workbooks")
     for slot, selection in selections.items():
@@ -102,6 +104,10 @@ def save_configuration(
     validate_selections(item, payload.selections, s3)
     config = dict(item["config"])
     for slot, selection in payload.selections.items():
+        # Secondary inputs (input_2..input_8) are recorded only in workbook_selections;
+        # processing reads the shared input sheet/header/key from config (see spec §1 shortcut).
+        if slot not in {"input", "main"}:
+            continue
         config["input_sheet" if slot == "input" else "main_sheet"] = selection.sheet_name
         config["input_header_row" if slot == "input" else "main_header_row"] = selection.header_row
         # Selection IDs are Excel letters; processing uses actual header labels.

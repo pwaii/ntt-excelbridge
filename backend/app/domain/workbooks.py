@@ -4,6 +4,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+# Up to 8 current workbooks (input, input_2..input_8) plus one optional main.
+SlotName = Literal["input", "input_2", "input_3", "input_4", "input_5", "input_6", "input_7", "input_8", "main"]
+
 
 class WorkbookSelection(BaseModel):
     sheet_name: str = Field(min_length=1)
@@ -15,7 +18,7 @@ class WorkbookSelection(BaseModel):
 
 class SaveWorkbookConfiguration(BaseModel):
     expected_revision: int = Field(ge=0)
-    selections: dict[Literal["input", "main"], WorkbookSelection]
+    selections: dict[SlotName, WorkbookSelection]
 
 
 class WorkbookColumn(BaseModel):
@@ -34,7 +37,7 @@ class WorksheetMetadata(BaseModel):
 
 class WorkbookMetadataResponse(BaseModel):
     job_id: str
-    slot: Literal["input", "main"]
+    slot: SlotName
     workbook_version: str
     size_bytes: int
     header_min: int = 1

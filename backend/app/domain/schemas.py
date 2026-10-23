@@ -11,7 +11,7 @@ from app.domain.enums import MatchType, OutputPolicy, ReviewDecision
 
 # --- Job configuration (§5.1) ---
 class JobConfig(BaseModel):
-    comment_name: str = Field(min_length=1, max_length=200)
+    comment_name: str = Field(default="", max_length=200)
     output_header: str | None = None  # derived from comment_name if empty (§3.1)
     standardize: bool = False
     update: bool = False
@@ -45,7 +45,7 @@ class ReviewItemDecision(BaseModel):
 
 class ReviewRequest(BaseModel):
     expected_revision: int = Field(ge=0)
-    decisions: dict[str, ReviewItemDecision] = Field(min_length=1)  # keyed by issue/proposal id
+    decisions: dict[str, ReviewItemDecision] = Field(default_factory=dict)  # keyed by issue/proposal id
     approved_by: str | None = None  # populated from authenticated Cognito subject
 
 
