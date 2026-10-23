@@ -4,27 +4,25 @@ import { Link, NavLink, Outlet, useLocation, useParams } from "react-router-dom"
 import { Button } from "@/components/ui/button";
 import { WorkbookMark } from "@/components/ui/workbook-mark";
 import { cn } from "@/lib/utils";
-import { jobNavigation } from "@/routes/route-config";
 import { SessionActions } from "@/auth/session-actions";
 import { rememberedJobs } from "@/lib/pending-job";
 
 function Branding() {
   return <Link to="/jobs/new" aria-label="Pilotxl home" className="brand-link"><WorkbookMark className="brand-mark" /><strong>Pilotxl</strong></Link>;
 }
-function JobNavGroup({ jobId, activeJobId, onNavigate }: { jobId: string; activeJobId?: string; onNavigate?: () => void }) {
+function JobNavGroup({ jobId, onNavigate }: { jobId: string; onNavigate?: () => void }) {
   const linkClass = ({ isActive }: { isActive: boolean }) => cn("nav-link", isActive && "nav-link-active");
-  const isActive = jobId === activeJobId;
   return <div className="job-navigation">
-    <p className="nav-group-label">Workflow {jobId.slice(0, 8)}</p>
-    {isActive && jobNavigation.map(({ suffix, label, icon: Icon }) => <NavLink key={suffix} to={`/jobs/${encodeURIComponent(jobId)}${suffix}`} end className={linkClass} onClick={onNavigate}><Icon aria-hidden="true" />{label}</NavLink>)}
-    {!isActive && <NavLink to={`/jobs/${encodeURIComponent(jobId)}`} end className={linkClass} onClick={onNavigate}>View workflow</NavLink>}
+    <NavLink to={`/jobs/${encodeURIComponent(jobId)}`} className={linkClass} onClick={onNavigate}>
+      Workflow {jobId.slice(0, 8)}
+    </NavLink>
   </div>;
 }
-function Navigation({ jobId, jobIds, onNavigate }: { jobId?: string; jobIds: string[]; onNavigate?: () => void }) {
+function Navigation({ jobIds, onNavigate }: { jobIds: string[]; onNavigate?: () => void }) {
   const linkClass = ({ isActive }: { isActive: boolean }) => cn("nav-link", isActive && "nav-link-active");
   return <>
     <NavLink to="/jobs/new" end className={linkClass} onClick={onNavigate}><Plus aria-hidden="true" />Create workflow</NavLink>
-    {jobIds.map(id => <JobNavGroup key={id} jobId={id} activeJobId={jobId} onNavigate={onNavigate} />)}
+    {jobIds.map(id => <JobNavGroup key={id} jobId={id} onNavigate={onNavigate} />)}
 </>;
 }
 export function AppLayout() {
@@ -43,7 +41,7 @@ export function AppLayout() {
     <a href="#main-content" className="skip-link">Skip to content</a>
     {!publicPage && <aside className="app-sidebar">
       <Branding />
-      <nav aria-label="Desktop navigation" className="desktop-navigation"><Navigation jobId={jobId} jobIds={jobIds} /></nav>
+      <nav aria-label="Desktop navigation" className="desktop-navigation"><Navigation jobIds={jobIds} /></nav>
       <div className="sidebar-session"><SessionActions /></div>
     </aside>}
     <div className="app-body">
@@ -54,7 +52,7 @@ export function AppLayout() {
           {!publicPage && <Button ref={menuButton} variant="ghost" size="icon" className="mobile-menu-button lg:hidden" aria-label={mobileOpen ? "Close navigation" : "Open navigation"} aria-expanded={mobileOpen} aria-controls="mobile-navigation" onClick={() => setMobileOpen((open) => !open)}>{mobileOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}</Button>}
           {publicPage && <span className="public-context">Spreadsheet review workspace</span>}
         </div>
-        {!publicPage && <nav id="mobile-navigation" aria-label="Mobile navigation" hidden={!mobileOpen} className="mobile-navigation"><Navigation jobId={jobId} jobIds={jobIds} onNavigate={() => setMobileOpen(false)} /><div className="mobile-session"><SessionActions /></div></nav>}
+        {!publicPage && <nav id="mobile-navigation" aria-label="Mobile navigation" hidden={!mobileOpen} className="mobile-navigation"><Navigation jobIds={jobIds} onNavigate={() => setMobileOpen(false)} /><div className="mobile-session"><SessionActions /></div></nav>}
       </header>
       <div className="app-sheet">
         <main id="main-content" tabIndex={-1} className="app-main"><Outlet /></main>
