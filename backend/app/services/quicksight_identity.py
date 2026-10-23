@@ -11,7 +11,7 @@ def _role_parts(role_arn: str) -> tuple[str, str, str]:
     if not match:
         raise ValueError("QUICKSIGHT_EMBEDDING_ROLE_ARN must be a valid IAM role ARN")
     partition, account_id, role_path = match.groups()
-    return f"arn:{partition}:quicksight", account_id, role_path.rsplit("/", 1)[-1]
+    return partition, account_id, role_path.rsplit("/", 1)[-1]
 
 
 def reader_username(owner_id: str) -> str:

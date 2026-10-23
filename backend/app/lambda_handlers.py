@@ -25,9 +25,11 @@ from app.services.quicksight_pipeline import (
     INSPECTION_FIELDS,
     PERMISSION_FIELDS,
     QUALITY_FIELDS,
+    WORKBOOK_ROW_FIELDS,
     encode_csv,
     flatten_inspection_manifests,
     flatten_quality_reports,
+    flatten_workbook_rows,
     owner_permissions,
     inspection_artifact_key,
     quality_artifact_key,
@@ -743,9 +745,33 @@ def quicksight_refresh_handler(event: dict[str, Any], context) -> dict[str, Any]
 
     quality_rows = flatten_quality_reports(quality_reports)
     inspection_rows = flatten_inspection_manifests(manifests)
+    inspection_by_input: dict[tuple[str, str], dict[str, Any]] = {}
+    for key, _, manifest in manifests:
+        parts = key.split("/")
+        filename = parts[-1]
+        slot = filename.removesuffix("-manifest.json") if filename != "manifest.json" else "input"
+        inspection_by_input[(parts[1], slot)] = manifest
+
+    # Only publish workbooks that belong to jobs with completed quality reports.
+    # The original XLSX cell values are the dashboard data; IDs remain private
+    # linkage columns used by the pipeline and are omitted from dashboard visuals.
+    completed_job_ids = {key.split("/")[1] for key, *_ in quality_reports}
+    workbook_sources: list[tuple[str, str, bytes]] = []
+    for job_id in completed_job_ids:
+        job = dynamo.get_job(job_id)
+        if not job:
+            continue
+        owner_id = str(job.get("owner_id", ""))
+        for slot, file_info in (job.get("files") or {}).items():
+            object_key = str(file_info.get("key", ""))
+            if not file_info.get("uploaded") or not object_key:
+                continue
+            workbook_sources.append((object_key, owner_id, s3.get_bytes(object_key)))
+    workbook_rows = flatten_workbook_rows(workbook_sources, inspection_by_input)
     permission_rows = owner_permissions(owner_cache.values())
     s3.put_bytes("quicksight/quality-issues.csv", encode_csv(quality_rows, QUALITY_FIELDS), "text/csv; charset=utf-8")
     s3.put_bytes("quicksight/inspections.csv", encode_csv(inspection_rows, INSPECTION_FIELDS), "text/csv; charset=utf-8")
+    s3.put_bytes("quicksight/workbook-rows.csv", encode_csv(workbook_rows, WORKBOOK_ROW_FIELDS), "text/csv; charset=utf-8")
     if settings.quicksight_permissions_dataset_id:
         if not settings.quicksight_embedding_role_arn:
             raise ValueError("QUICKSIGHT_EMBEDDING_ROLE_ARN is required when the permissions dataset is configured")
@@ -756,6 +782,7 @@ def quicksight_refresh_handler(event: dict[str, Any], context) -> dict[str, Any]
     datasets = (
         ("quality", settings.quicksight_quality_dataset_id),
         ("inspection", settings.quicksight_inspection_dataset_id),
+        ("workbook_rows", settings.quicksight_workbook_rows_dataset_id),
         ("permissions", settings.quicksight_permissions_dataset_id),
     )
     configured = [(label, dataset_id) for label, dataset_id in datasets if dataset_id]
@@ -786,6 +813,7 @@ def quicksight_refresh_handler(event: dict[str, Any], context) -> dict[str, Any]
         "quality_rows": len(quality_rows),
         "inspection_manifests": len(manifests),
         "inspection_rows": len(inspection_rows),
+        "workbook_rows": len(workbook_rows),
         "permission_rows": len(permission_rows),
         "event_count": accepted_events,
         "refreshes": refreshes,

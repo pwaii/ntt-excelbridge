@@ -2,16 +2,19 @@
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "ManageAppReaderIdentities",
+      "Sid": "DescribeAppReaderIdentities",
       "Effect": "Allow",
-      "Action": [
-        "quicksight:DescribeUser",
-        "quicksight:RegisterUser"
-      ],
-      "Resource": "arn:aws:quicksight:ap-southeast-1:453995432289:user/default/*",
+      "Action": "quicksight:DescribeUser",
+      "Resource": "arn:aws:quicksight:ap-southeast-1:453995432289:user/default/xlsx-workflow-demo-lambda/web-*"
+    },
+    {
+      "Sid": "RegisterAppReaderIdentities",
+      "Effect": "Allow",
+      "Action": "quicksight:RegisterUser",
+      "Resource": "arn:aws:quicksight:ap-southeast-1:453995432289:user/default/xlsx-workflow-demo-lambda/web-*",
       "Condition": {
         "StringEquals": {
-          "quicksight:IamArn": "arn:aws:iam::453995432289:role/REPLACE_WITH_EMBEDDING_ROLE_NAME"
+          "quicksight:IamArn": "arn:aws:iam::453995432289:role/xlsx-workflow-demo-lambda"
         },
         "StringLike": {
           "quicksight:SessionName": "web-*"
@@ -22,7 +25,12 @@
       "Sid": "AssumeRegisteredReaderSessionRole",
       "Effect": "Allow",
       "Action": "sts:AssumeRole",
-      "Resource": "arn:aws:iam::453995432289:role/REPLACE_WITH_EMBEDDING_ROLE_NAME"
+      "Resource": "arn:aws:iam::453995432289:role/xlsx-workflow-demo-lambda",
+      "Condition": {
+        "StringLike": {
+          "sts:RoleSessionName": "web-*"
+        }
+      }
     },
     {
       "Sid": "ReadDashboardDatasetSecurity",
@@ -43,7 +51,7 @@
       "Sid": "EmbedPublishedDashboardForRegisteredReaders",
       "Effect": "Allow",
       "Action": "quicksight:GenerateEmbedUrlForRegisteredUser",
-      "Resource": "arn:aws:quicksight:ap-southeast-1:453995432289:dashboard/excelbridge-quality-dashboard"
+      "Resource": "arn:aws:quicksight:ap-southeast-1:453995432289:user/default/xlsx-workflow-demo-lambda/web-*"
     }
   ]
 }

@@ -39,6 +39,9 @@ Parameters:
   QuickSightInspectionDatasetId:
     Type: String
     Default: qa-inspections-s3-76bde119
+  QuickSightWorkbookRowsDatasetId:
+    Type: String
+    Default: excelbridge-workbook-rows
   QuickSightPermissionsDatasetId:
     Type: String
     Default: excelbridge-owner-permissions
@@ -49,8 +52,9 @@ Parameters:
     Description: ARN of the permissions dataset attached to the quality and inspection datasets.
   QuickSightEmbeddingRoleArn:
     Type: String
-    Default: ""
-    Description: IAM role registered as each web customer's QuickSight Reader. Defaults to LambdaExecutionRoleArn.
+    Default: arn:aws:iam::453995432289:role/xlsx-workflow-demo-lambda
+    Description: IAM role assumed by the API Lambda and registered as each web customer's QuickSight Reader.
+    MinLength: 20
   QuickSightReaderGroupName:
     Type: String
     Default: website-readers
@@ -90,15 +94,13 @@ Globals:
         QUICKSIGHT_REGION: !Ref QuickSightRegion
         QUICKSIGHT_QUALITY_DATASET_ID: !Ref QuickSightQualityDatasetId
         QUICKSIGHT_INSPECTION_DATASET_ID: !Ref QuickSightInspectionDatasetId
+        QUICKSIGHT_WORKBOOK_ROWS_DATASET_ID: !Ref QuickSightWorkbookRowsDatasetId
         QUICKSIGHT_PERMISSIONS_DATASET_ID: !Ref QuickSightPermissionsDatasetId
         QUICKSIGHT_RLS_PERMISSIONS_DATASET_ARN: !Ref QuickSightRlsPermissionsDatasetArn
-        QUICKSIGHT_EMBEDDING_ROLE_ARN: !If [HasQuickSightEmbeddingRoleArn, !Ref QuickSightEmbeddingRoleArn, !Ref LambdaExecutionRoleArn]
+        QUICKSIGHT_EMBEDDING_ROLE_ARN: !Ref QuickSightEmbeddingRoleArn
         QUICKSIGHT_READER_GROUP_NAME: !Ref QuickSightReaderGroupName
         QUICKSIGHT_REFRESH_MODE: !Ref QuickSightRefreshMode
         QUICKSIGHT_DASHBOARD_ID: !Ref QuickSightDashboardId
-
-Conditions:
-  HasQuickSightEmbeddingRoleArn: !Not [!Equals [!Ref QuickSightEmbeddingRoleArn, ""]]
 
 Resources:
   DataBucket:
@@ -186,10 +188,12 @@ Resources:
       SupportedIdentityProviders: [COGNITO]
       CallbackURLs:
         - !Sub '${FrontendOrigin}/auth/callback'
+        - http://localhost:5173/auth/callback
         - http://127.0.0.1:5173/auth/callback
         - https://dg3jy0fov0uhl.cloudfront.net/auth/callback
       LogoutURLs:
         - !Sub '${FrontendOrigin}/login'
+        - http://localhost:5173/login
         - http://127.0.0.1:5173/login
         - https://dg3jy0fov0uhl.cloudfront.net/login
 
@@ -204,9 +208,10 @@ Resources:
     Properties:
       StageName: !Ref Environment
       CorsConfiguration:
-        AllowOrigins: [!Ref FrontendOrigin, http://127.0.0.1:5173]
+        AllowOrigins: [!Ref FrontendOrigin, http://localhost:5173, http://127.0.0.1:5173]
         AllowHeaders: [Authorization, Content-Type, X-Request-Id]
         AllowMethods: [GET, POST, PUT, OPTIONS]
+        ExposeHeaders: [X-Error-Code, X-Request-Id, X-Amzn-RequestId]
       Auth:
         DefaultAuthorizer: CognitoAuthorizer
         Authorizers:
@@ -227,7 +232,7 @@ Resources:
           COGNITO_USER_POOL_ID: !Ref UserPool
           COGNITO_APP_CLIENT_ID: !Ref UserPoolClient
           COGNITO_API_TOKEN_TYPE: access
-          CORS_ORIGINS: !Sub '${FrontendOrigin},http://127.0.0.1:5173'
+          CORS_ORIGINS: !Sub '${FrontendOrigin},http://localhost:5173,http://127.0.0.1:5173'
       Events:
         Api:
           Type: HttpApi

@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     quicksight_region: str = "ap-southeast-1"
     quicksight_quality_dataset_id: str = ""
     quicksight_inspection_dataset_id: str = ""
+    quicksight_workbook_rows_dataset_id: str = ""
     quicksight_permissions_dataset_id: str = ""
     quicksight_dashboard_id: str = ""
     quicksight_embedding_role_arn: str = ""

@@ -1,0 +1,38 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "lambda.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    },
+    {
+      "Sid": "AllowQuickReaderSessionSelfAssumption",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::453995432289:role/xlsx-workflow-demo-lambda"
+      },
+      "Action": "sts:AssumeRole",
+      "Condition": {
+        "StringLike": {
+          "sts:RoleSessionName": "web-*"
+        }
+      }
+    },
+    {
+      "Sid": "AllowApiLambdaToAssumeQuickSightReaderRole",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::453995432289:role/xlsx-lambda-exec"
+      },
+      "Action": "sts:AssumeRole",
+      "Condition": {
+        "StringLike": {
+          "sts:RoleSessionName": "web-*"
+        }
+      }
+    }
+  ]
+}

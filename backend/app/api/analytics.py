@@ -13,7 +13,6 @@ from app.services.quicksight_identity import (
 from app.settings import settings
 from app.storage.aws_session import (
     get_assumed_reader_quicksight_client,
-    get_quicksight_client,
     get_session,
     get_client_config,
 )
@@ -46,7 +45,7 @@ def _ensure_reader(quicksight, account_id: str, owner_id: str) -> str:
             Namespace="default",
             UserName=reader_quicksight_username(role_arn, owner_id),
         ).get("User", {})
-    except quicksight.exceptions.QuickSightUserNotFoundException:
+    except quicksight.exceptions.ResourceNotFoundException:
         try:
             user = quicksight.register_user(
                 AwsAccountId=account_id,
@@ -133,10 +132,20 @@ def quick_dashboard_embed_url(
             headers={"X-Error-Code": "QUICKSIGHT_ORIGIN_NOT_ALLOWED"},
         )
 
-    quicksight = get_quicksight_client()
     try:
+        # The Lambda's execution role is intentionally separate from the IAM
+        # role registered as each QuickSight Reader. Assume the configured
+        # Reader role before making any QuickSight API calls so all of those
+        # calls use the permissions granted to the Reader integration role.
+        assumed = get_session().client("sts", config=get_client_config()).assume_role(
+            RoleArn=role_arn,
+            RoleSessionName=reader_username(owner_id),
+            DurationSeconds=900,
+        )["Credentials"]
+        reader_quicksight = get_assumed_reader_quicksight_client(assumed)
+
         for dataset_id in dataset_ids:
-            dataset = quicksight.describe_data_set(
+            dataset = reader_quicksight.describe_data_set(
                 AwsAccountId=account_id,
                 DataSetId=dataset_id,
             ).get("DataSet", {})
@@ -147,14 +156,8 @@ def quick_dashboard_embed_url(
                     headers={"X-Error-Code": "QUICKSIGHT_RLS_NOT_READY"},
                 )
 
-        user_arn = _ensure_reader(quicksight, account_id, owner_id)
-        _ensure_dashboard_group_membership(quicksight, account_id, owner_id)
-        assumed = get_session().client("sts", config=get_client_config()).assume_role(
-            RoleArn=role_arn,
-            RoleSessionName=reader_username(owner_id),
-            DurationSeconds=900,
-        )["Credentials"]
-        reader_quicksight = get_assumed_reader_quicksight_client(assumed)
+        user_arn = _ensure_reader(reader_quicksight, account_id, owner_id)
+        _ensure_dashboard_group_membership(reader_quicksight, account_id, owner_id)
         result = reader_quicksight.generate_embed_url_for_registered_user(
             AwsAccountId=account_id,
             UserArn=user_arn,

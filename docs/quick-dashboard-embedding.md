@@ -1,9 +1,17 @@
 # QuickSight registered Reader embedding
 
-The app page is `/analytics/quick`. The browser never receives AWS credentials.
-The authenticated backend maps a verified Cognito subject to a deterministic
-QuickSight IAM-federated Reader, ensures that Reader exists, and requests a
-short-lived registered-user embed URL. Repeat sign-ins reuse that Reader.
+The current `/analytics/quick` page is an owner-scoped Excel data explorer. It
+reads original workbook rows through the authenticated backend and does not
+embed QuickSight or provision a Reader when a customer opens the page. The
+browser never receives AWS credentials.
+
+The registered Reader embed endpoint remains available at
+`/v1/analytics/quick/embed-url` for a separately embedded QuickSight dashboard.
+It maps a verified Cognito subject to a deterministic QuickSight IAM-federated
+Reader and reuses that Reader across sign-ins. The current Excel data explorer
+does not call that endpoint. Any Readers provisioned by earlier use remain
+QuickSight users until explicitly removed and may continue to incur account
+charges under the active billing terms.
 
 ## Billing model
 
@@ -83,17 +91,31 @@ permissions CSV schema is exactly `UserARN,owner_id`. Its S3 source uses
 `scripts/qs-permissions-manifest.json` and points to
 `quicksight/owner-permissions.csv`.
 
-## Smoke test
+## Excel data explorer behavior
 
-1. Deploy the updated backend and open `/analytics/quick` while signed in to
-   the website. The first open creates one Reader and can start monthly billing;
-   later opens reuse that same username.
-2. Confirm the signed-in owner's dashboard rows load.
+The `/analytics/quick` page lists only completed input workbooks owned by the
+authenticated account. It reads the original cell values, profiles columns by
+their observed cell types, and suggests an axis pair using header meaning and
+value shapes. The user can choose any two fields from the current worksheet.
+Every plotted mark represents one source row; repeated values are kept as
+separate points. Hovering a point shows that row's other values. Job IDs,
+ownership IDs, and inspection data types are not chart dimensions.
+
+The page reads the uploaded workbook from private S3 through the backend. API
+requests verify the source belongs to the signed-in owner before returning any
+row values. Rows are paged in batches so large worksheets do not require one
+unbounded response.
+
+## Registered Reader smoke test
+
+1. Call `/v1/analytics/quick/embed-url` from an approved application origin.
+   The first call can provision a Reader; later calls reuse that user.
+2. Confirm the signed-in owner's published QuickSight dashboard loads.
 3. Test a second website account and confirm it sees only rows for its own
    Cognito subject. This provisions another Reader and may incur another user
    charge.
-4. If a user sees an empty dashboard, inspect the permissions CSV and the
-   permission dataset's latest ingestion status.
+4. If a user sees an empty embedded dashboard, inspect the permissions CSV and
+   the permission dataset's latest ingestion status.
 
 The AWS Reader group, datasets, RLS attachments, hourly schedules, and IAM
 permissions are configured. Setup did not provision customer Readers. The

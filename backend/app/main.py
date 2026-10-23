@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.artifacts import router as artifacts_router
 from app.api.analytics import router as analytics_router
+from app.api.excel_explorer import router as excel_explorer_router
 from app.api.jobs import router as jobs_router
 from app.api.review_reports import router as review_reports_router
 from app.api.reviews import router as reviews_router
@@ -43,6 +44,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Error-Code", "X-Request-Id", "X-Amzn-RequestId"],
 )
 
 
@@ -119,6 +121,7 @@ app.include_router(workbooks_router)
 app.include_router(uploads_router)
 app.include_router(artifacts_router)
 app.include_router(analytics_router)
+app.include_router(excel_explorer_router)
 app.include_router(reviews_router)
 app.include_router(review_reports_router)
 
