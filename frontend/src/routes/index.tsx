@@ -1,13 +1,18 @@
 import { useEffect } from "react";
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 import { AppLayout } from "@/components/layout/app-layout";
-import { JobTabsLayout } from "@/components/layout/job-tabs-layout";
+import { JobProgressPage } from "@/pages/job-progress-page";
 import { CreateJobPage } from "@/pages/create-job-page";
 import { NotFoundPage } from "@/pages/not-found-page";
 import { SignInPage } from "@/pages/sign-in-page";
 import { getPageTitle } from "@/routes/route-config";
 import { ProtectedRoute } from "@/auth/protected-route";
 import { AuthCallbackPage } from "@/pages/auth-callback-page";
+
+function RedirectToJob() {
+  const { id } = useParams<"id">();
+  return <Navigate to={`/jobs/${encodeURIComponent(id!)}`} replace />;
+}
 
 export function AppRoutes() {
   const { pathname } = useLocation();
@@ -24,7 +29,10 @@ export function AppRoutes() {
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
         <Route element={<ProtectedRoute />}>
           <Route path="/jobs/new" element={<CreateJobPage />} />
-          <Route path="/jobs/:id/*" element={<JobTabsLayout />} />
+          <Route path="/jobs/:id/quality-review" element={<RedirectToJob />} />
+          <Route path="/jobs/:id/transformation-review" element={<RedirectToJob />} />
+          <Route path="/jobs/:id/result" element={<RedirectToJob />} />
+          <Route path="/jobs/:id/*" element={<JobProgressPage />} />
         </Route>
         <Route path="*" element={<NotFoundPage />} />
       </Route>
