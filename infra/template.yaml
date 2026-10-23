@@ -184,8 +184,14 @@ Resources:
       AllowedOAuthFlows: [code]
       AllowedOAuthScopes: [openid, email, profile]
       SupportedIdentityProviders: [COGNITO]
-      CallbackURLs: [!Sub '${FrontendOrigin}/auth/callback']
-      LogoutURLs: [!Sub '${FrontendOrigin}/login']
+      CallbackURLs:
+        - !Sub '${FrontendOrigin}/auth/callback'
+        - http://127.0.0.1:5173/auth/callback
+        - https://dg3jy0fov0uhl.cloudfront.net/auth/callback
+      LogoutURLs:
+        - !Sub '${FrontendOrigin}/login'
+        - http://127.0.0.1:5173/login
+        - https://dg3jy0fov0uhl.cloudfront.net/login
 
   UserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain
