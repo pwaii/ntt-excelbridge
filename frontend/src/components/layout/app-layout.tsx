@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Menu, Plus, ShieldCheck, UserRound, X } from "lucide-react";
+import { BarChart3, Menu, Plus, ShieldCheck, UserRound, X } from "lucide-react";
 import { Link, NavLink, Outlet, useLocation, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { WorkbookMark } from "@/components/ui/workbook-mark";
@@ -14,6 +14,7 @@ function Navigation({ jobId, onNavigate }: { jobId?: string; onNavigate?: () => 
   const linkClass = ({ isActive }: { isActive: boolean }) => cn("nav-link", isActive && "nav-link-active");
   return <>
     <NavLink to="/jobs/new" end className={linkClass} onClick={onNavigate}><Plus aria-hidden="true" />Create workflow</NavLink>
+    <NavLink to="/analytics/quick" end className={linkClass} onClick={onNavigate}><BarChart3 aria-hidden="true" />Analytics dashboard</NavLink>
     {jobId && <div className="job-navigation"><p className="nav-group-label">Current workflow</p>{jobNavigation.map(({ suffix, label, icon: Icon }) => <NavLink key={suffix} to={`/jobs/${encodeURIComponent(jobId)}${suffix}`} end className={linkClass} onClick={onNavigate}><Icon aria-hidden="true" />{label}</NavLink>)}</div>}
     <NavLink to="/login" end className={(state) => cn(linkClass(state), "account-link")} onClick={onNavigate}><UserRound aria-hidden="true" />Account</NavLink>
   </>;

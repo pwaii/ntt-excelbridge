@@ -1,5 +1,6 @@
 import { workbookFileSchema } from "@/schemas/job-creation";
 import { UploadError, type PutUploader, type TransferReceipt } from "./types";
+import { isApprovedS3Origin } from "./approved-origin";
 
 export function createPresignedPutUploader({ allowedOrigins, backendOrigin, createXhr = () => new XMLHttpRequest(), timeoutMs = 120_000 }: {
   allowedOrigins: readonly string[]; // Verified S3 origins from the integration adapter/config, never guessed.
@@ -20,7 +21,7 @@ export function createPresignedPutUploader({ allowedOrigins, backendOrigin, crea
       try { destination = new URL(instruction.url); }
       catch { throw new UploadError("configuration", "Valid backend-issued upload instructions are required."); }
       if (instruction.method !== "PUT" || destination.protocol !== "https:" || destination.username || destination.password || destination.hash
-        || destination.origin === forbiddenOrigin || !allowedOrigins.includes(destination.origin) || !Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+        || destination.origin === forbiddenOrigin || !isApprovedS3Origin(destination, allowedOrigins) || !Number.isFinite(timeoutMs) || timeoutMs <= 0) {
         throw new UploadError("configuration", "Upload instructions must target an approved HTTPS S3 origin with the supported PUT method.");
       }
       if (instruction.expiresAt !== undefined && (!Number.isFinite(instruction.expiresAt) || instruction.expiresAt <= Date.now())) {

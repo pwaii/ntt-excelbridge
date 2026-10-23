@@ -11,6 +11,7 @@ from typing import Any
 
 QUALITY_FIELDS = (
     "job_id",
+    "owner_id",
     "input_slot",
     "issue_id",
     "kind",
@@ -22,6 +23,7 @@ QUALITY_FIELDS = (
 )
 INSPECTION_FIELDS = (
     "job_id",
+    "owner_id",
     "input_slot",
     "sheet",
     "total_rows",
@@ -45,10 +47,22 @@ def _job_and_slot(key: str, area: str, name_pattern: re.Pattern[str]) -> tuple[s
     return parts[1], match.group(1) or "input"
 
 
-def flatten_quality_reports(reports: Iterable[tuple[str, Mapping[str, Any]]]) -> list[dict[str, Any]]:
+def _report_with_owner(report: tuple[Any, ...]) -> tuple[str, str, Mapping[str, Any]]:
+    """Accept the legacy ``(key, report)`` pair and the owner-aware triple."""
+    if len(report) == 2:
+        key, value = report
+        return str(key), "", value
+    if len(report) == 3:
+        key, owner_id, value = report
+        return str(key), str(owner_id or ""), value
+    raise ValueError("report entries must contain a key, optional owner, and report")
+
+
+def flatten_quality_reports(reports: Iterable[tuple[Any, ...]]) -> list[dict[str, Any]]:
     """Return one row per issue, including the source workbook slot."""
     rows: list[dict[str, Any]] = []
-    for key, report in reports:
+    for report_entry in reports:
+        key, owner_id, report = _report_with_owner(report_entry)
         parsed = _job_and_slot(key, "quality", _QUALITY_NAME)
         if not parsed:
             continue
@@ -56,6 +70,7 @@ def flatten_quality_reports(reports: Iterable[tuple[str, Mapping[str, Any]]]) ->
         for issue in report.get("issues", []):
             rows.append({
                 "job_id": job_id,
+                "owner_id": owner_id,
                 "input_slot": input_slot,
                 "issue_id": issue.get("issue_id", ""),
                 "kind": issue.get("kind", ""),
@@ -68,10 +83,11 @@ def flatten_quality_reports(reports: Iterable[tuple[str, Mapping[str, Any]]]) ->
     return rows
 
 
-def flatten_inspection_manifests(manifests: Iterable[tuple[str, Mapping[str, Any]]]) -> list[dict[str, Any]]:
+def flatten_inspection_manifests(manifests: Iterable[tuple[Any, ...]]) -> list[dict[str, Any]]:
     """Return one row per workbook column, retaining workbook slot identity."""
     rows: list[dict[str, Any]] = []
-    for key, manifest in manifests:
+    for manifest_entry in manifests:
+        key, owner_id, manifest = _report_with_owner(manifest_entry)
         parsed = _job_and_slot(key, "inspection", _INSPECTION_NAME)
         if not parsed:
             continue
@@ -84,6 +100,7 @@ def flatten_inspection_manifests(manifests: Iterable[tuple[str, Mapping[str, Any
                 blank_count = column.get("blank_count", 0)
                 rows.append({
                     "job_id": job_id,
+                    "owner_id": owner_id,
                     "input_slot": input_slot,
                     "sheet": sheet.get("name", ""),
                     "total_rows": total_rows,

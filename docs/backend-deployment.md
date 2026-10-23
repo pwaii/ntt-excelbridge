@@ -34,6 +34,19 @@ application; the Step Functions role must be allowed to invoke every worker
 Lambda. The deploying caller needs `iam:PassRole` for the two execution roles
 and, when a CloudFormation service role is supplied, for that service role too.
 
+For the Quick dashboard, add the QuickSight IAM action
+`quicksight:GenerateEmbedUrlForAnonymousUser` to
+the API Lambda execution role and scope `quicksight:DescribeDataSet` to the two
+configured dashboard datasets. The refresh Lambda also needs DynamoDB
+`GetItem` on the metadata table so it can put each job owner's verified Cognito
+subject into the dashboard CSVs. The QuickSight datasets must enable tag-based
+row-level security on `owner_id` with the tag key `app_user_id`; do not configure
+a match-all value. Anonymous embedding also requires an active QuickSight
+Capacity Pricing plan. See
+[`quick-dashboard-embedding.md`](quick-dashboard-embedding.md) for deployed
+resources and smoke-test steps. When the capacity plan is unavailable, the API
+returns `QUICKSIGHT_CAPACITY_REQUIRED` and does not expose an embed URL.
+
 The local API uses the `local-user` fallback only when Cognito is not
 configured. That fallback must not be used as a production authentication
 boundary.

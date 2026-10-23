@@ -39,6 +39,10 @@ Parameters:
   QuickSightInspectionDatasetId:
     Type: String
     Default: qa-inspections-s3-76bde119
+  QuickSightDashboardId:
+    Type: String
+    Default: ""
+    Description: Published owner-RLS dashboard ID in QuickSight; leave empty to disable dashboard embedding.
   LambdaExecutionRoleArn:
     Type: String
     Description: Existing Lambda execution role ARN with the union of permissions required by the API and worker functions.
@@ -65,6 +69,8 @@ Globals:
         QUICKSIGHT_REGION: !Ref QuickSightRegion
         QUICKSIGHT_QUALITY_DATASET_ID: !Ref QuickSightQualityDatasetId
         QUICKSIGHT_INSPECTION_DATASET_ID: !Ref QuickSightInspectionDatasetId
+        QUICKSIGHT_DASHBOARD_ID: !Ref QuickSightDashboardId
+        QUICKSIGHT_OWNER_TAG_KEY: app_user_id
 
 Resources:
   DataBucket:

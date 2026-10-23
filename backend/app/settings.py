@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     quicksight_region: str = "ap-southeast-1"
     quicksight_quality_dataset_id: str = ""
     quicksight_inspection_dataset_id: str = ""
+    quicksight_dashboard_id: str = ""
+    quicksight_owner_tag_key: str = "app_user_id"
     s3_prefix: str = "jobs"
     dynamo_table: str = "xlsx-workflow"
     state_machine_arn: str = ""

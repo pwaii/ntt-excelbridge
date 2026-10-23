@@ -12,6 +12,7 @@ export function getPageTitle(pathname: string) {
   if (matchPath("/auth/callback", pathname)) return "Completing sign in";
   if (matchPath("/login", pathname) || pathname === "/") return "Sign in";
   if (matchPath("/jobs/new", pathname)) return "Create workflow";
+  if (matchPath("/analytics/quick", pathname)) return "Analytics dashboard";
   return jobNavigation.find(({ suffix }) => matchPath(`/jobs/:id${suffix}`, pathname))?.label
     ?? "Page not found";
 }

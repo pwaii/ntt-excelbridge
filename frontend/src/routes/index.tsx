@@ -11,6 +11,7 @@ import { TransformationReviewPage } from "@/pages/transformation-review-page";
 import { getPageTitle } from "@/routes/route-config";
 import { ProtectedRoute } from "@/auth/protected-route";
 import { AuthCallbackPage } from "@/pages/auth-callback-page";
+import { QuickDashboardPage } from "@/pages/quick-dashboard-page";
 
 export function AppRoutes() {
   const { pathname } = useLocation();
@@ -27,6 +28,7 @@ export function AppRoutes() {
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
         <Route element={<ProtectedRoute />}>
           <Route path="/jobs/new" element={<CreateJobPage />} />
+          <Route path="/analytics/quick" element={<QuickDashboardPage />} />
           <Route path="/jobs/:id" element={<JobProgressPage />} />
           <Route path="/jobs/:id/quality-review" element={<QualityReviewPage />} />
           <Route path="/jobs/:id/transformation-review" element={<TransformationReviewPage />} />

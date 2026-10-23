@@ -48,6 +48,7 @@ describe("application routing", () => {
   it.each([
     ["/login", "Sign in"],
     ["/jobs/new", "Create workflow"],
+    ["/analytics/quick", "Analytics dashboard"],
     ["/jobs/job-42", "Job progress"],
     ["/jobs/job-42/quality-review", "Quality review"],
     ["/jobs/job-42/transformation-review", "Transformation review"],
@@ -90,7 +91,7 @@ describe("application routing", () => {
   it("does not invent a current job on workspace pages", () => {
     renderAt("/jobs/new");
     const links = container.querySelectorAll('[aria-label="Desktop navigation"] a');
-    expect([...links].map((link) => link.getAttribute("href"))).toEqual(["/jobs/new", "/login"]);
+    expect([...links].map((link) => link.getAttribute("href"))).toEqual(["/jobs/new", "/analytics/quick", "/login"]);
   });
 
   it("opens mobile navigation and closes it after a client-side route change", () => {

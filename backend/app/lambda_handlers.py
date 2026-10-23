@@ -714,16 +714,29 @@ def quicksight_refresh_handler(event: dict[str, Any], context) -> dict[str, Any]
         return {"status": "ignored", "event_count": len(incoming)}
 
     s3 = S3Store()
+    dynamo = DynamoStore()
+    owner_cache: dict[str, str] = {}
     quality_reports: list[tuple[str, dict[str, Any]]] = []
     manifests: list[tuple[str, dict[str, Any]]] = []
+
+    def owner_for_key(object_key: str) -> str:
+        parts = object_key.split("/")
+        if len(parts) != 4:
+            return ""
+        job_id = parts[1]
+        if job_id not in owner_cache:
+            job = dynamo.get_job(job_id)
+            owner_cache[job_id] = str(job.get("owner_id", "")) if job else ""
+        return owner_cache[job_id]
+
     paginator = s3.client.get_paginator("list_objects_v2")
     for page in paginator.paginate(Bucket=s3.bucket, Prefix=f"{settings.s3_prefix}/"):
         for item in page.get("Contents", []):
             object_key = item["Key"]
             if quality_artifact_key(object_key):
-                quality_reports.append((object_key, json.loads(s3.get_bytes(object_key))))
+                quality_reports.append((object_key, owner_for_key(object_key), json.loads(s3.get_bytes(object_key))))
             elif inspection_artifact_key(object_key):
-                manifests.append((object_key, json.loads(s3.get_bytes(object_key))))
+                manifests.append((object_key, owner_for_key(object_key), json.loads(s3.get_bytes(object_key))))
 
     quality_rows = flatten_quality_reports(quality_reports)
     inspection_rows = flatten_inspection_manifests(manifests)

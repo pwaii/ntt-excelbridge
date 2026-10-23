@@ -39,7 +39,7 @@ export function responseDiagnostics(headers: Headers, payload: unknown) {
   return {
     requestId: diagnostic(headers.get("x-request-id")) ?? diagnostic(headers.get("x-amzn-requestid"))
       ?? diagnostic(body?.request_id) ?? diagnostic(error?.request_id) ?? diagnostic(detail?.request_id),
-    code: diagnostic(error?.code) ?? diagnostic(detail?.code) ?? diagnostic(body?.code)
+    code: diagnostic(headers.get("x-error-code")) ?? diagnostic(error?.code) ?? diagnostic(detail?.code) ?? diagnostic(body?.code)
       ?? diagnostic(body?.error_code) ?? diagnostic(error?.error_code) ?? diagnostic(detail?.error_code),
   };
 }

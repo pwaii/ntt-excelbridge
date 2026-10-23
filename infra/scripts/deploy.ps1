@@ -12,7 +12,8 @@ param(
     [string]$QuickSightAccountId = $(if ($env:QUICKSIGHT_ACCOUNT_ID) { $env:QUICKSIGHT_ACCOUNT_ID } else { "453995432289" }),
     [string]$QuickSightRegion = $(if ($env:QUICKSIGHT_REGION) { $env:QUICKSIGHT_REGION } else { "ap-southeast-1" }),
     [string]$QuickSightQualityDatasetId = $(if ($env:QUICKSIGHT_QUALITY_DATASET_ID) { $env:QUICKSIGHT_QUALITY_DATASET_ID } else { "qa-issues-s3-76bde119" }),
-    [string]$QuickSightInspectionDatasetId = $(if ($env:QUICKSIGHT_INSPECTION_DATASET_ID) { $env:QUICKSIGHT_INSPECTION_DATASET_ID } else { "qa-inspections-s3-76bde119" })
+    [string]$QuickSightInspectionDatasetId = $(if ($env:QUICKSIGHT_INSPECTION_DATASET_ID) { $env:QUICKSIGHT_INSPECTION_DATASET_ID } else { "qa-inspections-s3-76bde119" }),
+    [string]$QuickSightDashboardId = $(if ($env:QUICKSIGHT_DASHBOARD_ID) { $env:QUICKSIGHT_DASHBOARD_ID } else { "" })
 )
 
 $ErrorActionPreference = "Stop"
@@ -66,12 +67,19 @@ Push-Location $repoRoot
 try {
     Invoke-Sam validate --template-file infra/template.yaml
     Invoke-Sam build --template-file infra/template.yaml --region $Region
+    $parameterOverrides = @(
+        "Environment=$Environment", "BedrockModelId=$ModelId", "BedrockHeavyModelId=$HeavyModelId", "FrontendOrigin=$FrontendOrigin", "LambdaExecutionRoleArn=$LambdaExecutionRoleArn", "StateMachineExecutionRoleArn=$StateMachineExecutionRoleArn", "QuickSightAccountId=$QuickSightAccountId", "QuickSightRegion=$QuickSightRegion", "QuickSightQualityDatasetId=$QuickSightQualityDatasetId", "QuickSightInspectionDatasetId=$QuickSightInspectionDatasetId"
+    )
+    if (-not [string]::IsNullOrWhiteSpace($QuickSightDashboardId)) {
+        $parameterOverrides += "QuickSightDashboardId=$QuickSightDashboardId"
+    }
     $deploymentArguments = @(
         "--template-file", ".aws-sam/build/template.yaml",
         "--stack-name", $StackName,
         "--region", $Region,
         "--resolve-s3",
-        "--parameter-overrides", "Environment=$Environment", "BedrockModelId=$ModelId", "BedrockHeavyModelId=$HeavyModelId", "FrontendOrigin=$FrontendOrigin", "LambdaExecutionRoleArn=$LambdaExecutionRoleArn", "StateMachineExecutionRoleArn=$StateMachineExecutionRoleArn", "QuickSightAccountId=$QuickSightAccountId", "QuickSightRegion=$QuickSightRegion", "QuickSightQualityDatasetId=$QuickSightQualityDatasetId", "QuickSightInspectionDatasetId=$QuickSightInspectionDatasetId",
+        "--parameter-overrides"
+    ) + $parameterOverrides + @(
         "--no-fail-on-empty-changeset"
     )
     if (-not [string]::IsNullOrWhiteSpace($CloudFormationServiceRoleArn)) {
