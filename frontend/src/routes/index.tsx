@@ -14,6 +14,11 @@ function RedirectToJob() {
   return <Navigate to={`/jobs/${encodeURIComponent(id!)}`} replace />;
 }
 
+function FreshCreateJobPage() {
+  const { key } = useLocation();
+  return <CreateJobPage key={key} />;
+}
+
 export function AppRoutes() {
   const { pathname } = useLocation();
   useEffect(() => {
@@ -28,7 +33,7 @@ export function AppRoutes() {
         <Route path="/login" element={<SignInPage />} />
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
         <Route element={<ProtectedRoute />}>
-          <Route path="/jobs/new" element={<CreateJobPage />} />
+          <Route path="/jobs/new" element={<FreshCreateJobPage />} />
           <Route path="/jobs/:id/quality-review" element={<RedirectToJob />} />
           <Route path="/jobs/:id/transformation-review" element={<RedirectToJob />} />
           <Route path="/jobs/:id/result" element={<RedirectToJob />} />

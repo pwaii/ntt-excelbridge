@@ -51,7 +51,12 @@ def run_quality_segment(job_id: str, dynamo: DynamoStore, s3: S3Store) -> dict[s
 
 
 def _segment2_tools(config: dict[str, Any]) -> list[str]:
-    tools = ["tool1", "tool2", "tool3"]
+    # Tool 1 (semantics) and Tool 3 (formula) only apply to an "add a column" request, which
+    # is expressed by the prompt (comment_name). With no prompt — e.g. a pure merge/standardize
+    # job — Tool 1 emits a clarifying question that fails schema validation and Tool 3 fabricates
+    # a column from nothing. Tool 2 (type normalization) is prompt-independent and always runs.
+    has_prompt = bool((config.get("comment_name") or "").strip())
+    tools = (["tool1"] if has_prompt else []) + ["tool2"] + (["tool3"] if has_prompt else [])
     if config.get("standardize"):
         tools.append("tool4")
     if config.get("update"):

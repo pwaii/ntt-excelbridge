@@ -29,7 +29,7 @@ def _run(monkeypatch, item, failing):
 
 
 def test_rejected_tool3_does_not_fail_the_segment(monkeypatch):
-    item = {"config": {"standardize": True}, "files": {"input": {"key": "k"}}}
+    item = {"config": {"comment_name": "Add Stock Level", "standardize": True}, "files": {"input": {"key": "k"}}}
     calls, gates = _run(monkeypatch, item, failing="tool3")
     # Ran past the rejected tool3 and still invoked tool4, then opened the transformation gate.
     assert ("tool3", "input") in calls and ("tool4", "input") in calls
@@ -37,6 +37,25 @@ def test_rejected_tool3_does_not_fail_the_segment(monkeypatch):
 
 
 def test_core_tool_failure_still_propagates(monkeypatch):
-    item = {"config": {}, "files": {"input": {"key": "k"}}}
+    item = {"config": {"comment_name": "Add Profit"}, "files": {"input": {"key": "k"}}}
     with pytest.raises(ValueError):
         _run(monkeypatch, item, failing="tool1")
+
+
+def test_empty_prompt_skips_add_column_tools(monkeypatch):
+    # No prompt -> a merge/standardize job: Tool 1 (semantics) and Tool 3 (formula) must not run
+    # (Tool 1 would crash on a clarifying-question response; Tool 3 would fabricate a column).
+    item = {"config": {"comment_name": "", "standardize": True, "update": True},
+            "files": {"input": {"key": "k"}}}
+    calls, gates = _run(monkeypatch, item, failing="__none__")
+    tools_run = {t for t, _ in calls}
+    assert tools_run == {"tool2", "tool4", "tool5"}
+    assert "tool1" not in tools_run and "tool3" not in tools_run
+    assert gates and gates[0]["gate"] == "transformation"
+
+
+def test_prompt_present_runs_add_column_tools(monkeypatch):
+    item = {"config": {"comment_name": "Add a Stock Level column"}, "files": {"input": {"key": "k"}}}
+    calls, _ = _run(monkeypatch, item, failing="__none__")
+    tools_run = {t for t, _ in calls}
+    assert {"tool1", "tool2", "tool3"} <= tools_run

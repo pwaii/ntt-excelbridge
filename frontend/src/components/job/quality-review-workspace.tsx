@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, ChevronLeft, ChevronRight, RefreshCw, Send, X } from "lucide-react";
+import { ArrowRight, ChevronLeft, ChevronRight, Loader2, RefreshCw, Send, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { WorkflowLoading } from "@/components/ui/workflow-loading";
-import { decisionError, reviewGates, submissionBlocker, type QualityReviewFlow } from "@/quality/controller";
+import { bulkCandidates, decisionError, reviewGates, submissionBlocker, type QualityReviewFlow } from "@/quality/controller";
 import { qualityKinds, qualityLabels, transformationKinds, transformationLabels, matchTypes, type DecisionDraft, type QualityItem } from "@/quality/types";
 
 const control = "field-control mt-1.5";
@@ -60,6 +60,12 @@ export function QualityReviewWorkspace({ flow, jobId }: { flow: QualityReviewFlo
   const stagePassed = !!state.snapshot && !reviewGates[state.stage ?? "quality"].includes(state.snapshot.status);
   const activeFilters = kind !== "all" || severity !== "all" || decision !== "all" || matchFilter !== "all" || workbookFilter !== "all";
   const progressPct = required.length ? Math.round(completed / required.length * 100) : 0;
+
+  // "Accept all eligible": bulkCandidates enforces the safety rules (only exact/normalized
+  // matches and syntax-verified formulas, confidence >= floor, skips already-drafted items);
+  // ambiguous/unmatched stay for individual handling. 0.8 matches the backend CONFIDENCE_FLOOR.
+  const acceptable = useMemo(() => bulkCandidates(state, 0.8, items.map(i => i.id)), [state, items]);
+  function acceptAllEligible() { for (const item of acceptable) flow.decide(item.id, { decision: "accept" }); }
 
   const safeIndex = Math.min(currentIndex, Math.max(0, filtered.length - 1));
   const current = filtered[safeIndex];
@@ -122,6 +128,11 @@ export function QualityReviewWorkspace({ flow, jobId }: { flow: QualityReviewFlo
           </div>
           <span className="review-topbar-count">{completed} / {required.length} decided</span>
         </div>
+        {!stagePassed && !locked && acceptable.length > 0 && (
+          <Button size="sm" variant="outline" onClick={acceptAllEligible}>
+            Accept all eligible ({acceptable.length})
+          </Button>
+        )}
         {!blocker && state.phase === "ready" && required.length > 0 && (
           <label className="review-topbar-confirm">
             <input type="checkbox" checked={confirm} onChange={e => setConfirm(e.target.checked)} />
@@ -130,13 +141,14 @@ export function QualityReviewWorkspace({ flow, jobId }: { flow: QualityReviewFlo
         )}
         {stagePassed ? (
           <Button asChild size="sm" variant="outline">
-            <Link to={`/jobs/${encodeURIComponent(jobId)}`}>View job progress <ArrowRight aria-hidden="true" /></Link>
+            <Link to={`/jobs/${encodeURIComponent(jobId)}`}>{transformation ? "See output" : "View job progress"} <ArrowRight aria-hidden="true" /></Link>
           </Button>
         ) : (
           <>
             <Link to={`/jobs/${encodeURIComponent(jobId)}`} className="review-topbar-back">← Progress</Link>
             <Button size="sm" disabled={Boolean(blocker) || (required.length > 0 && !confirm) || locked} aria-busy={state.phase === "submitting"} onClick={() => { void flow.submit(); }}>
-              <Send aria-hidden="true" />{state.phase === "submitting" ? "Submitting…" : "Submit review"}
+              {state.phase === "submitting" ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Send aria-hidden="true" />}
+              {state.phase === "submitting" ? "Submitting…" : "Submit review"}
             </Button>
           </>
         )}
