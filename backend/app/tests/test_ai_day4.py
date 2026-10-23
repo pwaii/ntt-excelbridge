@@ -83,6 +83,17 @@ def test_run_tool3_normalizes_structured_header_references():
     assert result.payload.formula_template == "=IFERROR(A{row}*B{row},0)"
 
 
+def test_run_tool3_collapses_doubled_row_placeholder():
+    # Model doubles the placeholder ("C{row}{row}" -> "C1010" out of range); collapse it (AI-005).
+    resp = (
+        '{"formula_template": "=IFERROR(C{row}{row} + 1, C{row}{row})", '
+        '"target_header": "OnHand", "expected_type": "number", '
+        '"referenced_headers": [], "explanation": "increment", "confidence": 0.9}'
+    )
+    result = run_tool3(T3_FIXTURE, client=_client(resp))
+    assert result.payload.formula_template == "=IFERROR(C{row} + 1, C{row})"
+
+
 def test_run_tool3_rejects_malformed_payload():
     with pytest.raises(ValidationError):
         run_tool3(T3_FIXTURE, client=_client('{"formula_template": "=A", "confidence": 5}'))

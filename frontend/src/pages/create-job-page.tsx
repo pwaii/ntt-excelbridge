@@ -4,7 +4,8 @@ import { ConnectedCreateFlow } from "@/components/job/connected-create-flow";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ChevronDown, Columns2, ArrowLeftRight, RefreshCw } from "lucide-react";
-import { WorkflowSteps } from "@/components/job/workflow-steps";
+import { WorkflowStepper } from "@/components/job/workflow-stepper";
+import type { StageState } from "@/lib/job-stages";
 import { JobFormActions } from "@/components/job/job-form-actions";
 import { CurrentWorkbookPicker } from "@/components/job/current-workbook-picker";
 import { WorkbookFilePicker } from "@/components/job/workbook-file-picker";
@@ -17,11 +18,13 @@ export function CreateJobPage() {
   const auth = useContext(AuthContext);
   const [integrationLocked, setIntegrationLocked] = useState(false);
   const [setupStep, setSetupStep] = useState(0);
+  const [selected, setSelected] = useState(0);
+  const userSelected = useRef(false);
   const { register, watch, reset, handleSubmit, setValue, formState: { errors } } = useForm<JobFormInput, unknown, JobFormValues>({
     defaultValues: defaults, resolver: zodResolver(jobCreationSchema), mode: "onTouched",
   });
   const values = watch();
-  const { outputHeader, currentFile, currentFiles = [], mainFile } = values;
+  const { currentFile, currentFiles = [], mainFile } = values;
   const addColumn = values.addColumn ?? false;
   const standardize = values.standardize ?? false;
   const update = values.update ?? false;
@@ -59,10 +62,27 @@ export function CreateJobPage() {
     }
   }, [requiresMain, setValue]);
 
+  useEffect(() => {
+    if (userSelected.current) return;
+    setSelected(setupStep);
+  }, [setupStep]);
+
+  function handleStepperSelect(i: number) {
+    userSelected.current = true;
+    setSelected(i);
+  }
+
+  const createFlowStages: { label: string; state: StageState }[] = [
+    { label: "Set up", state: setupStep > 0 ? "complete" : "active" },
+    { label: "Upload", state: setupStep > 1 ? "complete" : setupStep === 1 ? "active" : "pending" },
+    { label: "Approve", state: setupStep === 2 ? "active" : "pending" },
+  ];
+
   function resetForm() {
     reset(defaults);
     setSelectionErrors({ current: null, main: null });
     setResetVersion((version) => version + 1);
+    userSelected.current = false;
   }
 
   return (
@@ -70,8 +90,10 @@ export function CreateJobPage() {
       <header className="engagement-masthead">
         <h1 id="page-title" className="page-title">New job</h1>
         <p className="page-description">Choose what you want to do, attach your file, and start the review.</p>
-        <WorkflowSteps current={setupStep} />
+        <WorkflowStepper stages={createFlowStages} selected={selected} onSelect={handleStepperSelect} />
       </header>
+      <div className="stepper-panel">
+      <div hidden={selected !== 0}>
       <form noValidate onSubmit={handleSubmit(() => { if (localFormValid && backendAvailable) void createAction.current?.(); })} className="workflow-builder">
         <details open={!integrationLocked}>
           <summary hidden={!integrationLocked} className="configuration-summary">Submitted job<span className="text-xs font-normal text-muted-foreground">View submitted details</span><ChevronDown className="size-4 shrink-0" aria-hidden="true" /></summary>
@@ -153,7 +175,9 @@ export function CreateJobPage() {
           </fieldset>
         </details>
       </form>
-      {auth && <ConnectedCreateFlow configuration={values} canCreate={Boolean(localFormValid)} onLockedChange={setIntegrationLocked} actionRef={createAction} onAvailabilityChange={setBackendAvailable} onStageChange={setSetupStep} />}
+      </div>
+      {auth && <ConnectedCreateFlow configuration={values} canCreate={Boolean(localFormValid)} onLockedChange={setIntegrationLocked} actionRef={createAction} onAvailabilityChange={setBackendAvailable} onStageChange={setSetupStep} selected={selected} />}
+      </div>
     </section>
   );
 }

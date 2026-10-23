@@ -29,7 +29,7 @@ export function getMetadataReadiness(state: MetadataFlowState, configuration: Wo
     const choice = state.choices[role] ?? { sheetName: null, keyColumnId: null, header: null };
     if (role !== "current" && role !== "main") {
       const primary = state.choices.current;
-      if (primary?.sheetName && choice.sheetName && choice.sheetName !== primary.sheetName) blockers.push(`${role}: use the primary current workbook's worksheet; the processing pipeline shares that setting.`);
+      // Each workbook is a separate file with its own single sheet, so sheet names legitimately differ; the backend reads each slot's own sheet_name.
       if (primary?.header && choice.header && choice.header.row !== primary.header.row) blockers.push(`${role}: use the primary current workbook's header row; the processing pipeline shares that setting.`);
       if (configuration.update && primary?.keyColumnId && choice.keyColumnId && choice.keyColumnId !== primary.keyColumnId) blockers.push(`${role}: use the primary current workbook's key column; the processing pipeline shares that setting.`);
     }

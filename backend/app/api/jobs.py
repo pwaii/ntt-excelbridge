@@ -288,6 +288,7 @@ def start_job(
         # A losing duplicate must not mark the winning execution as failed.
         raise HTTPException(409, "Job changed; refresh status before retrying") from error
     except Exception as error:
+        logger.exception("demo pipeline failed for job %s", job_id, exc_info=error)
         current = dynamo.get_job(job_id)
         if current and current.get("status") not in {
             JobStatus.COMPLETED.value,

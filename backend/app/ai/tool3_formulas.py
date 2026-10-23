@@ -49,7 +49,9 @@ def _normalize_formula_references(payload: Tool3Output, inputs: dict) -> None:
             formula,
             flags=re.IGNORECASE,
         )
-    payload.formula_template = formula
+    # The model sometimes doubles the placeholder ("C{row}{row}" -> "C1010" after substitution,
+    # out of range). {row} is always one row number per reference, so collapse any run of them.
+    payload.formula_template = re.sub(r"(?:\{row\})+", "{row}", formula)
 
 
 def _validate_against_inputs(payload: Tool3Output, inputs: dict) -> None:

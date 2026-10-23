@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, ChevronLeft, ChevronRight, RefreshCw, Send, SlidersHorizontal, X } from "lucide-react";
+import { ArrowRight, ChevronLeft, ChevronRight, RefreshCw, Send, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { WorkflowLoading } from "@/components/ui/workflow-loading";
 import { decisionError, reviewGates, submissionBlocker, type QualityReviewFlow } from "@/quality/controller";

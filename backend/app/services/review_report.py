@@ -33,10 +33,24 @@ def _slot_qualified(slot, bare_id):
     return bare_id if slot == "input" else f"{slot}::{bare_id}"
 
 
+def _slot_sheet_header(item, slot):
+    """This slot's own (sheet_name, header_row). Primary 'input'/'main' live in config;
+    extra inputs keep their selection in workbook_selections. Mirrors lambda_handlers so
+    the report never indexes a secondary workbook with the primary input's sheet name."""
+    config = item.get("config", {})
+    if slot == "input":
+        return config.get("input_sheet"), config.get("input_header_row") or 1
+    if slot == "main":
+        return config.get("main_sheet"), config.get("main_header_row") or 1
+    sel = item.get("workbook_selections", {}).get(slot, {})
+    return sel.get("sheet_name"), sel.get("header_row") or 1
+
+
 _QUALITY_KINDS = {
     "duplicate_rows": "duplicate-row",
     "blank_row": "blank-row",
     "blank_column": "blank-column",
+    "blank_key_field": "blank-key-field",
     "type_mismatch": "type-mismatch",
 }
 
@@ -82,6 +96,8 @@ def _quality_rows(issues, s3, item, slot, filename, prefix):
                                 before=None if value is None else str(value),
                                 after="Keep first row; remove later duplicates"
                                 if kind == "duplicate-row"
+                                else "No automatic change; fill in the key manually"
+                                if kind == "blank-key-field"
                                 else "Remove row if accepted",
                             )
                         )
@@ -94,7 +110,7 @@ def _quality_rows(issues, s3, item, slot, filename, prefix):
                     + (f" Rows: {row_numbers[:50]}" if row_numbers else "")
                     + (
                         " Informational finding; no supported direct mutation is proposed."
-                        if kind in {"type-mismatch", "blank-column"}
+                        if kind in {"type-mismatch", "blank-column", "blank-key-field"}
                         else ""
                     ),
                     slot=slot,
@@ -103,7 +119,7 @@ def _quality_rows(issues, s3, item, slot, filename, prefix):
                     row=row_numbers[0] if row_numbers else None,
                     column=str(issue["column"]) if issue.get("column") else None,
                     cells=cells,
-                    requires_decision=kind not in {"type-mismatch", "blank-column"},
+                    requires_decision=kind not in {"type-mismatch", "blank-column", "blank-key-field"},
                     affected_count=len(row_numbers) or None,
                 )
             )
@@ -213,14 +229,15 @@ def build_report(item, stage, dynamo, s3):
                     slot_wb_owned = True
                 else:
                     slot_wb, slot_wb_owned = None, False
+                slot_sheet, slot_header = _slot_sheet_header(item, proposal_slot)
                 try:
                     if slot_wb:
                         sheet = (
-                            slot_wb[config["input_sheet"]]
-                            if config.get("input_sheet")
+                            slot_wb[slot_sheet]
+                            if slot_sheet
                             else slot_wb.worksheets[0]
                         )
-                        header = config.get("input_header_row") or 1
+                        header = slot_header
                         headers = [cell.value for cell in sheet[header]]
                         # Normalize for comparison — inspect_bytes normalizes header names
                         headers_normalized = {normalize_text(h) for h in headers if h is not None}

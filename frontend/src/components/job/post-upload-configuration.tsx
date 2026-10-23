@@ -100,7 +100,7 @@ export function PostUploadConfiguration({ flow, onStarted }: { flow: MetadataFlo
       <Button variant="ghost" disabled={busy} onClick={() => { void flow.load(); }}><RefreshCw aria-hidden="true" />Reload worksheets</Button>
       <div className="action-buttons">
       <Button variant="outline" disabled={!readiness.canStart || busy || state.configurationSaved} onClick={() => { void flow.save(); }}>{state.configurationSaved ? "Setup saved" : "Save setup"}</Button>
-      <Button disabled={!readiness.canStart || busy} aria-busy={state.phase === "starting"} onClick={() => { void flow.start(); }}>{state.phase === "starting" ? "Starting workflow…" : "Start workflow"}<ArrowRight aria-hidden="true" /></Button>
+      <Button disabled={!readiness.canStart || busy} aria-busy={state.phase === "starting"} onClick={() => { void flow.start(); }}>{state.phase === "starting" ? <><RefreshCw aria-hidden="true" className="processing-indicator" />Starting workflow…</> : <>Start workflow<ArrowRight aria-hidden="true" /></>}</Button>
       </div>
     </div>
       <p className="text-xs text-muted-foreground">Confirm the worksheet and header for each current workbook{flow.configuration.standardize || flow.configuration.update ? " and the main workbook" : ""}. Start saves all selections and begins processing.</p>

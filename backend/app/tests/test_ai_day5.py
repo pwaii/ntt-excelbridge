@@ -143,6 +143,47 @@ def test_run_tool5_emits_cost_log(caplog):
     assert "a@x.com" not in lines[0]
 
 
+def test_run_tool5_pages_large_unresolved_sets(monkeypatch):
+    # A single huge response truncates at the token cap; page it instead (AI-004). Each page
+    # carries one current row, so a per-prompt fake returns just that row's match.
+    from app.ai import tool5_update
+    from app.ai.bedrock_client import BedrockClient
+
+    monkeypatch.setattr(tool5_update.settings, "max_tool5_rows", 1)
+
+    class PerRowFake:
+        def __init__(self):
+            self.calls = []
+
+        def converse(self, **kwargs):
+            self.calls.append(kwargs)
+            text = kwargs["messages"][0]["content"][0]["text"]
+            rid = "c1" if "c1" in text else "c2"  # each page carries exactly one current row
+            return {
+                "output": {"message": {"content": [{"text": (
+                    '{"matches": [{"current_row_id": "' + rid + '", '
+                    '"candidate_main_row_ids": [], "selected_main_row_id": null, '
+                    '"match_type": "unmatched", "confidence": 0.9, '
+                    '"reason": "no candidate", "recommended_action": "skip"}]}'
+                )}]}},
+                "usage": {"inputTokens": 7, "outputTokens": 3},
+            }
+
+    inputs = {
+        "current_rows": [
+            {"current_row_id": "c1", "candidate_main_row_ids": [], "fields": {"Email": "a@x.com"}},
+            {"current_row_id": "c2", "candidate_main_row_ids": [], "fields": {"Email": "b@x.com"}},
+        ],
+        "candidate_rows": [],
+        "match_key": "Email",
+    }
+    fake = PerRowFake()
+    result = run_tool5(inputs, client=BedrockClient(client=fake))
+    assert len(fake.calls) == 2  # one page per row
+    assert {m.current_row_id for m in result.payload.matches} == {"c1", "c2"}
+    assert result.meta.input_tokens == 14 and result.meta.output_tokens == 6  # summed across pages
+
+
 def test_run_tool5_emits_deterministic_matches_without_calling_bedrock():
     from app.ai.bedrock_client import BedrockClient
 

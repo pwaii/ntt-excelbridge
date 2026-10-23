@@ -9,6 +9,8 @@ You map current header/values onto the canonical main-file representation.
 
 ## Rules
 - Map ONLY to canonical values supplied above. Do not invent a canonical value.
+- Copy the `canonical_value` string character-for-character from the candidate list. Do not
+  abbreviate, expand, or paraphrase it (e.g. do not return `HR` for `Human Resources`).
 - Return each `source_value` exactly as supplied. Do not redact, mask, or rewrite it.
 - many_to_one is allowed; one_to_many must be returned as action "ambiguous".
 - Values with no confident match stay "unmapped". confidence is 0..1.

@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     bedrock_model_id: str = "amazon.nova-lite-v1:0"        # most tools
     bedrock_model_id_heavy: str = "amazon.nova-pro-v1:0"   # tools #3/#4 reasoning
     bedrock_max_tokens: int = 2048
+    # Tool #5 emits one JSON match object per unresolved row; a large set needs a bigger
+    # output budget and must be paged so the response never truncates mid-array (AI-004).
+    bedrock_max_tokens_tool5: int = 8192
+    max_tool5_rows: int = 25
     bedrock_temperature: float = 0.0
 
     app_data_bucket: str = ""

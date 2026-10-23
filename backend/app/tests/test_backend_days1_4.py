@@ -31,7 +31,9 @@ def test_quality_rules_detect_duplicate_blank_and_type_issues(tmp_path):
     source, _ = _fixture_bytes(tmp_path)
     report = run_quality_rules(source)
     kinds = {issue["kind"] for issue in report["issues"]}
-    assert {"duplicate_rows", "blank_row", "blank_column", "type_mismatch"} <= kinds
+    # UnitPrice (int+decimal) is NOT a mismatch — numeric types share a group so price
+    # columns are not flagged. Incompatible-type coverage lives in test_quality_rules.py.
+    assert {"duplicate_rows", "blank_row", "blank_column", "blank_key_field"} <= kinds
 
 
 def test_formula_verifier_allows_safe_formula_and_rejects_external_or_volatile():

@@ -67,6 +67,27 @@ Pending stages produce no panel (clicking is disabled). Active stage panel opens
 - `routing.test.tsx` — remove assertions for the three sub-routes
 - `quality-ui.test.tsx`, `transformation-ui.test.tsx` — components are unchanged, only mount location changes; assertions remain valid
 
+## Section 5: Settled implementation decisions
+
+From grilling session 2026-10-23:
+
+- **Mobile**: Desktop only. No responsive stepper.
+- **Failed-state connector**: Grey dashed; remaining pending stages still rendered after the failed node.
+- **Old sub-route disposal**: `<Navigate>` redirects (not 404) for all three removed sub-routes.
+- **Live updates**: Reuse `ConnectedJobStatus` polling as-is.
+- **Connector DOM**: Flexbox spacer `<div>` siblings between stepper items.
+- **Review panel state**: Mount-once/hide (`hidden` attribute) for `QualityReviewPage`, `TransformationReviewPage`, `ResultPage` — same pattern as the `JobTabsLayout` it replaces.
+- **Completed non-review stage panel copy**:
+  - Stage 0 (setup) complete → "Setup complete" / "Your workbooks are ready."
+  - Stage 1 (inspect) complete → "Data check complete" / "No blocking issues were found."
+- **Active non-review stage panel**: `messages[currentJobStatus]` from `job-timeline.tsx` (title + description tuple).
+
+**Additional scope from code inspection:**
+- `jobNavigation` is used in both `route-config.ts` AND `app-layout.tsx` — both files must be changed.
+- `getPageTitle` in `route-config.ts` derives titles from `jobNavigation`; replace with a single `/jobs/:id/*` → `"Job progress"` entry.
+- `JobProgressPage` currently has no `<h1>` — add `<h1 className="sr-only">Job progress</h1>` so routing tests pass.
+- `job-polling.test.tsx` assertions for `QUALITY_REVIEW_PENDING` / `TRANSFORMATION_REVIEW_PENDING` check sub-route links that are being removed — update those assertions.
+
 ## What is not changing
 
 - The review workspace components (`QualityReviewWorkspace`, result workspace) — no internal changes

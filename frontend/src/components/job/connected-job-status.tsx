@@ -17,10 +17,7 @@ import { TransformationReviewPage } from "@/pages/transformation-review-page";
 import { ResultPage } from "@/pages/result-page";
 import { RefreshCw } from "lucide-react";
 
-const completedCopy: Record<string, [string, string]> = {
-  setup: ["Setup complete", "Your workbooks are ready."],
-  inspect: ["Data check complete", "No blocking issues were found."],
-};
+const completedCopy: [string, string] = ["Setup complete", "Your workbooks are checked and ready."];
 
 // Real status reconciliation with capped polling and server-owned workflow state.
 export function ConnectedJobStatus({ jobId }: { jobId: string }) {
@@ -74,7 +71,7 @@ export function ConnectedJobStatus({ jobId }: { jobId: string }) {
     const first = idx >= 0 ? idx : stgs.reduce((best, s, i) => s.state === "complete" ? i : best, -1);
     if (first >= 0) {
       setSelected(first);
-      if (first >= 2) setSeen(prev => { const next = new Set(prev); next.add(first); return next; });
+      if (first >= 1) setSeen(prev => { const next = new Set(prev); next.add(first); return next; });
     }
   }, [job, observed]); // eslint-disable-line react-hooks/exhaustive-deps
   const resumeFlow = useMemo(() => {
@@ -100,7 +97,7 @@ export function ConnectedJobStatus({ jobId }: { jobId: string }) {
   function handleSelect(i: number) {
     userSelected.current = true;
     setSelected(i);
-    if (i >= 2) setSeen(prev => { const next = new Set(prev); next.add(i); return next; });
+    if (i >= 1) setSeen(prev => { const next = new Set(prev); next.add(i); return next; });
   }
   const stages = job ? jobStages(job, observed) : [];
   const msg = job ? (messages[job.status] ?? ["Checking workflow status", "Refresh this page to check for updates."]) : null;
@@ -115,21 +112,14 @@ export function ConnectedJobStatus({ jobId }: { jobId: string }) {
         {selected === 0 && (
           <div className="stage-detail">
             {stages[0]?.state === "complete"
-              ? <><h3>{completedCopy.setup[0]}</h3><p>{completedCopy.setup[1]}</p></>
+              ? <><h3>{completedCopy[0]}</h3><p>{completedCopy[1]}</p></>
               : <><h3>{msg?.[0]}</h3><p>{msg?.[1]}</p></>}
             {resumeFlow && <PostUploadConfiguration flow={resumeFlow} onStarted={() => { void load(); }} />}
           </div>
         )}
-        {selected === 1 && (
-          <div className="stage-detail">
-            {stages[1]?.state === "complete"
-              ? <><h3>{completedCopy.inspect[0]}</h3><p>{completedCopy.inspect[1]}</p></>
-              : <><h3>{msg?.[0]}</h3><p>{msg?.[1]}</p></>}
-          </div>
-        )}
-        {seen.has(2) && <div hidden={selected !== 2}><QualityReviewPage /></div>}
-        {seen.has(3) && <div hidden={selected !== 3}><TransformationReviewPage /></div>}
-        {seen.has(4) && <div hidden={selected !== 4}><ResultPage /></div>}
+        {seen.has(1) && <div hidden={selected !== 1}><QualityReviewPage /></div>}
+        {seen.has(2) && <div hidden={selected !== 2}><TransformationReviewPage /></div>}
+        {seen.has(3) && <div hidden={selected !== 3}><ResultPage /></div>}
       </div>
     </>}
     {job?.error_code && <div role="alert" className="notice notice-error"><p className="font-medium">Processing needs attention</p>{job.error_detail && <p className="mt-1 break-words">{job.error_detail}</p>}<details className="mt-2 text-xs"><summary className="cursor-pointer">Error details</summary><p className="mt-2 break-all">{job.error_code}</p></details></div>}

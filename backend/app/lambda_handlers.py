@@ -71,6 +71,21 @@ def _issue_sk(issue_id: str, slot: str) -> str:
     return f"ISSUE#{issue_id}" if slot == "input" else f"ISSUE#{slot}#{issue_id}"
 
 
+def _slot_sheet_config(item: dict[str, Any], slot: str) -> tuple[str | None, int | None]:
+    """Return (sheet_name, header_row) for a given slot.
+
+    Primary 'input' and 'main' are stored in config; extra input slots store
+    their own selection in workbook_selections.
+    """
+    config = item.get("config", {})
+    if slot == "input":
+        return config.get("input_sheet"), config.get("input_header_row")
+    if slot == "main":
+        return config.get("main_sheet"), config.get("main_header_row")
+    sel = item.get("workbook_selections", {}).get(slot, {})
+    return sel.get("sheet_name"), sel.get("header_row")
+
+
 def inspect_handler(event: dict[str, Any], context) -> dict[str, Any]:
     dynamo, s3 = _stores()
     job_id = event["job_id"]
@@ -79,7 +94,8 @@ def inspect_handler(event: dict[str, Any], context) -> dict[str, Any]:
     if not item:
         raise ValueError("job not found")
     source = s3.get_bytes(item["files"][slot]["key"])
-    manifest = inspect_bytes(source, sheet_name=item.get("config", {}).get("input_sheet"), header_row=item.get("config", {}).get("input_header_row"))
+    sheet_name, header_row = _slot_sheet_config(item, slot)
+    manifest = inspect_bytes(source, sheet_name=sheet_name, header_row=header_row)
     manifest.update({"job_id": job_id, "input_sha256": sha256(source).hexdigest(), "slot": slot})
     key = s3.artifact_key(job_id, "inspection", _artifact_filename("manifest.json", slot))
     if not s3.object_exists(key):
@@ -98,7 +114,8 @@ def quality_handler(event: dict[str, Any], context) -> dict[str, Any]:
     if not item:
         raise ValueError("job not found")
     source = s3.get_bytes(item["files"][slot]["key"])
-    manifest = inspect_bytes(source, sheet_name=item.get("config", {}).get("input_sheet"), header_row=item.get("config", {}).get("input_header_row"))
+    sheet_name, header_row = _slot_sheet_config(item, slot)
+    manifest = inspect_bytes(source, sheet_name=sheet_name, header_row=header_row)
     report = run_quality_rules(source, manifest)
     key = s3.artifact_key(job_id, "quality", _artifact_filename("quality-report.json", slot))
     if not s3.object_exists(key):
@@ -226,7 +243,10 @@ def quality_gate_handler(event: dict[str, Any], context) -> dict[str, Any]:
 
 def _tool_inputs(item: dict[str, Any], s3: S3Store, tool: str, slot: str = "input") -> dict[str, Any]:
     source = s3.get_bytes(item["files"][slot]["key"])
-    manifest = inspect_bytes(source, sheet_name=item.get("config", {}).get("input_sheet"), header_row=item.get("config", {}).get("input_header_row"))
+    # Per-slot sheet/header: a secondary input keeps its own selection, so segment 2 must not
+    # reuse the primary input's sheet name (it may not exist in this slot's workbook).
+    input_sheet, input_header_row = _slot_sheet_config(item, slot)
+    manifest = inspect_bytes(source, sheet_name=input_sheet, header_row=input_header_row)
     first_sheet = manifest["sheets"][0] if manifest["sheets"] else {"headers": [], "columns": []}
     if tool == "tool1":
         return {
@@ -277,11 +297,7 @@ def _tool_inputs(item: dict[str, Any], s3: S3Store, tool: str, slot: str = "inpu
     if tool == "tool4":
         main_file = item.get("files", {}).get("main")
         main_rows = load_canonical_rows(s3.get_bytes(main_file["key"]), item.get("config", {}).get("main_sheet"), item.get("config", {}).get("main_header_row") or 1) if main_file else []
-        current_rows = load_canonical_rows(
-            source,
-            item.get("config", {}).get("input_sheet"),
-            item.get("config", {}).get("input_header_row") or 1,
-        )
+        current_rows = load_canonical_rows(source, input_sheet, input_header_row or 1)
         main_fields = {
             str(field)
             for row in main_rows
@@ -320,7 +336,7 @@ def _tool_inputs(item: dict[str, Any], s3: S3Store, tool: str, slot: str = "inpu
         main_file = item.get("files", {}).get("main")
         if not main_file:
             raise ValueError("main workbook is required for Tool #5")
-        current_rows = load_canonical_rows(s3.get_bytes(item["files"][slot]["key"]), item.get("config", {}).get("input_sheet"), item.get("config", {}).get("input_header_row") or 1)
+        current_rows = load_canonical_rows(s3.get_bytes(item["files"][slot]["key"]), input_sheet, input_header_row or 1)
         main_rows = load_canonical_rows(s3.get_bytes(main_file["key"]), item.get("config", {}).get("main_sheet"), item.get("config", {}).get("main_header_row") or 1)
         key_column = item.get("config", {}).get("key_column")
         if not key_column:
@@ -373,6 +389,9 @@ def _collect_slot_changes(dynamo: DynamoStore, s3: S3Store, job_id: str, slot: s
     mappings/type_rules/update_matches/formula that ``apply`` consumes."""
     decisions = _slot_decisions(decisions, slot)
     source = s3.get_bytes(item["files"][slot]["key"])
+    # This slot's own sheet/header — never the primary input's (slots can differ).
+    sheet_name, header_row = _slot_sheet_config(item, slot)
+    header_row = header_row or 1
     quality_report: dict[str, Any] = {}
     quality_artifact = item.get("artifacts", {}).get(_artifact_map_key("quality", slot), {})
     if quality_artifact.get("key"):
@@ -405,15 +424,15 @@ def _collect_slot_changes(dynamo: DynamoStore, s3: S3Store, job_id: str, slot: s
         if tool == "tool3" and decision_value in {"accept", "edit"}:
             workbook = load_workbook(BytesIO(source), data_only=False)
             try:
-                worksheet = workbook[config.get("input_sheet")] if config.get("input_sheet") else workbook.worksheets[0]
-                headers = [cell.value for cell in worksheet[config.get("input_header_row") or 1]]
+                worksheet = workbook[sheet_name] if sheet_name else workbook.worksheets[0]
+                headers = [cell.value for cell in worksheet[header_row]]
                 target_header = payload.get("target_header") or config.get("output_header") or config.get("comment_name")
                 target_column = headers.index(target_header) + 1 if target_header in headers else (worksheet.max_column or 0) + 1
                 formula = {
                     "formula_template": edited_value if decision_value == "edit" and edited_value else payload.get("formula_template", ""),
                     "target_header": target_header,
                     "target_column": target_column,
-                    "start_row": (config.get("input_header_row") or 1) + 1,
+                    "start_row": header_row + 1,
                     "end_row": worksheet.max_row or 2,
                 }
             finally:
@@ -468,6 +487,8 @@ def _collect_slot_changes(dynamo: DynamoStore, s3: S3Store, job_id: str, slot: s
     ]
     return {
         "source": source,
+        "sheet_name": sheet_name,  # this slot's own sheet/header, not the primary input's
+        "header_row": header_row,
         "quality_report": quality_report,
         "mappings": mappings,
         "type_rules": type_rules,
@@ -543,8 +564,8 @@ def apply_handler(event: dict[str, Any], context) -> dict[str, Any]:
                 type_rules=change["type_rules"],
                 standardization_mappings=change["mappings"] if standardize else [],
                 formula=change["formula"] if not update else None,
-                sheet_name=config.get("input_sheet"),
-                header_row=config.get("input_header_row") or 1,
+                sheet_name=change["sheet_name"],
+                header_row=change["header_row"],
                 include_quality_deletions=policy != "both",
             )
             current_stages[slot] = stage
@@ -576,10 +597,10 @@ def apply_handler(event: dict[str, Any], context) -> dict[str, Any]:
                 change["decisions"],
                 key_column=config["key_column"],
                 main_key_column=config.get("main_key_column"),
-                current_header_row=config.get("input_header_row") or 1,
+                current_header_row=change["header_row"],
                 main_header_row=config.get("main_header_row") or 1,
                 main_sheet=config.get("main_sheet"),
-                current_sheet=config.get("input_sheet"),
+                current_sheet=change["sheet_name"],
                 conflict_policy=config.get("conflict_policy", "reject_all"),
                 prior_destinations=seen_destinations,
             )

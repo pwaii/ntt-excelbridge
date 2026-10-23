@@ -3,7 +3,7 @@ import { createUploadWorkflow } from "@/uploads/workflow";
 import { UploadError, type PutUploader, type TransferReceipt } from "@/uploads/types";
 import { ApiError } from "@/api/errors";
 
-const form = () => ({ currentFile: new File(["current"], "current.xlsx"), mainFile: new File(["main"], "main.xlsx"), comment_name: "Profit", outputHeader: "profit", standardize: false, update: false });
+const form = () => ({ currentFile: new File(["current"], "current.xlsx"), mainFile: new File(["main"], "main.xlsx"), comment_name: "Profit", outputHeader: "profit", addColumn: false, standardize: false, update: false });
 // Internal toy instructions/opaque manifest, not an official server contract.
 const instruction = { method: "PUT", url: "https://mock.s3.us-east-1.amazonaws.com/test-only", headers: {} } as const;
 const instructions = { current: instruction, main: instruction };

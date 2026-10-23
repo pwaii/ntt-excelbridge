@@ -31,8 +31,12 @@ foreach ($roleInput in $roleInputs.GetEnumerator()) {
 # runtime. SAM installs backend/requirements.txt into the build artifact, so a
 # full local development dependency install is not required for deployment.
 $repoPythonScripts = Join-Path $repoRoot ".venv312\Scripts"
+$repoPythonRoot = Join-Path $repoRoot ".venv312"
 if (Test-Path -LiteralPath (Join-Path $repoPythonScripts "python.exe")) {
     $env:Path = "$repoPythonScripts;$env:Path"
+    Write-Host "Using Python from .venv312\Scripts for SAM build"
+} elseif (Test-Path -LiteralPath (Join-Path $repoPythonRoot "python.exe")) {
+    $env:Path = "$repoPythonRoot;$env:Path"
     Write-Host "Using Python from .venv312 for SAM build"
 }
 

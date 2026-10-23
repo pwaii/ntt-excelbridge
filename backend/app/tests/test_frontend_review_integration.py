@@ -502,7 +502,7 @@ def test_gate_requires_complete_decisions_and_ignore_reasons(api):
     rules = [
         {
             "pattern": "Numeric text",
-            "example_original": "2",
+            "example_original": "2.0",
             "normalized_form": "2",
             "reason": "Numeric format",
             "confidence": 1,

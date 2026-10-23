@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type MutableRefObject } from "react";
-import { Link } from "react-router-dom";
 import { useAuth } from "@/auth/context";
 import { createJobServices } from "@/api/job-services";
 import { createJobController } from "@/api/create-job-controller";
@@ -10,7 +9,7 @@ import { jobCreationSchema, type JobFormInput } from "@/schemas/job-creation";
 import type { BackendJob } from "@/api/jobs-api";
 import { UploadProgressPanel } from "./upload-progress-panel";
 import { PostUploadConfiguration } from "./post-upload-configuration";
-import { rememberJob, rememberedJob } from "@/lib/pending-job";
+import { rememberJob } from "@/lib/pending-job";
 
 type UploadFlow = ReturnType<typeof createUploadWorkflow<BackendJob>>;
 function UploadedJob({ flow }: { flow: UploadFlow }) {
@@ -20,7 +19,7 @@ function UploadedJob({ flow }: { flow: UploadFlow }) {
   return state.confirmation === "confirmed" ? <details className="section-disclosure"><summary>Uploaded files</summary><div className="mt-3">{panel}</div></details> : panel;
 }
 
-export function ConnectedCreateFlow({ configuration, canCreate, onLockedChange, actionRef, onAvailabilityChange, onStageChange }: { configuration: JobFormInput; canCreate: boolean; onLockedChange: (value: boolean) => void; actionRef: MutableRefObject<(() => Promise<void>) | undefined>; onAvailabilityChange: (value: boolean) => void; onStageChange?: (step: number) => void }) {
+export function ConnectedCreateFlow({ configuration, canCreate, onLockedChange, actionRef, onAvailabilityChange, onStageChange, selected }: { configuration: JobFormInput; canCreate: boolean; onLockedChange: (value: boolean) => void; actionRef: MutableRefObject<(() => Promise<void>) | undefined>; onAvailabilityChange: (value: boolean) => void; onStageChange?: (step: number) => void; selected: number }) {
   const auth = useAuth();
   const getToken = useRef(auth.getValidToken); getToken.current = auth.getValidToken;
   const services = useMemo(() => createJobServices(import.meta.env, () => getToken.current(), import.meta.env.DEV), []);
@@ -38,7 +37,6 @@ export function ConnectedCreateFlow({ configuration, canCreate, onLockedChange, 
     };
     inspect(); return flow.subscribe(inspect);
   }, [flow, services, controller]);
-  const [resumeId] = useState(rememberedJob);
   const mounted = useRef(true);
   const activeUpload = useRef<UploadFlow>();
   useEffect(() => {
@@ -76,19 +74,13 @@ export function ConnectedCreateFlow({ configuration, canCreate, onLockedChange, 
   actionRef.current = create;
   const available = issues.length === 0 && auth.state.status === "authenticated";
   useEffect(() => { onAvailabilityChange(available); }, [available, onAvailabilityChange]);
-  const id = "receipt" in state ? state.receipt.jobId : undefined;
-  return <section aria-labelledby="backend-create-title" className="mt-5 min-w-0 space-y-4">
-    <div className="space-y-3 text-sm">
-    <h2 id="backend-create-title" className="sr-only">Upload status</h2>
-
-    <details className="mt-3 text-xs text-muted-foreground"><summary className="w-fit cursor-pointer font-medium">How your data is processed</summary><p className="mt-2 max-w-2xl leading-relaxed">When AI analysis is enabled, the backend sends workbook data to Amazon Bedrock. Review proposed changes before approving them.</p></details>
-    {issues.length > 0 && <ul role="note" className="list-disc space-y-1 pl-4 text-xs text-muted-foreground">{issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>}
-    {state.phase === "creating-job" && <p role="status" className="mt-4 text-sm">Preparing upload…</p>}
-    {state.phase === "create-error" && <div role="alert" className="notice notice-error mt-4"><p className="font-medium">{state.error.message}</p>{state.error.requestId && <p className="mt-1 break-all text-xs">Request ID: {state.error.requestId}</p>}{state.outcomeUnknown && <p className="mt-2 text-sm">A job may already have been created. Check job progress or contact support before uploading again.</p>}</div>}
-    {id && <p className="mt-4 break-all text-xs text-muted-foreground"><Link className="text-primary underline underline-offset-4" to={`/jobs/${encodeURIComponent(id)}`}>View job progress</Link></p>}
-    {!id && resumeId && <p className="mt-4 text-xs"><Link className="text-primary underline underline-offset-4" to={`/jobs/${encodeURIComponent(resumeId)}`}>Resume your last workflow</Link>. Refreshing does not restore local file selections.</p>}
+  return <>
+    <div hidden={selected !== 1} className="min-w-0 space-y-3 text-sm">
+      {issues.length > 0 && <ul role="note" className="list-disc space-y-1 pl-4 text-xs text-muted-foreground">{issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>}
+      {state.phase === "creating-job" && <p role="status">Preparing upload…</p>}
+      {state.phase === "create-error" && <div role="alert" className="notice notice-error"><p className="font-medium">{state.error.message}</p>{state.error.requestId && <p className="mt-1 break-all text-xs">Request ID: {state.error.requestId}</p>}{state.outcomeUnknown && <p className="mt-2 text-sm">A job may already have been created. Check job progress or contact support before uploading again.</p>}</div>}
+      {flow && <UploadedJob flow={flow} />}
     </div>
-    {flow && <UploadedJob flow={flow} />}
-    {metadataFlow && <PostUploadConfiguration flow={metadataFlow} />}
-  </section>;
+    {metadataFlow && <div hidden={selected !== 2}><PostUploadConfiguration flow={metadataFlow} /></div>}
+  </>;
 }
