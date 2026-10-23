@@ -1,9 +1,9 @@
 import { Check, FileUp, ListChecks, Settings2 } from "lucide-react";
 
 const steps = [
-  { label: "Configure job", detail: "Files & instructions", icon: Settings2 },
-  { label: "Upload workbooks", detail: "Transfer & verify", icon: FileUp },
-  { label: "Confirm worksheets", detail: "Choose sheets & start", icon: ListChecks },
+  { label: "Set up", detail: "Choose tasks & files", icon: Settings2 },
+  { label: "Upload", detail: "Transfer & verify", icon: FileUp },
+  { label: "Review", detail: "Approve & download", icon: ListChecks },
 ];
 export function WorkflowSteps({ current }: { current: number }) {
   return <ol aria-label="Job setup steps" className="stage-rail">
