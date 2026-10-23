@@ -4,7 +4,7 @@ import type { BackendJob } from "@/api/jobs-api";
 import { Button } from "@/components/ui/button";
 import { jobStages } from "@/lib/job-stages";
 
-const messages: Record<string, [string, string]> = {
+export const messages: Record<string, [string, string]> = {
   DRAFT: ["Add your workbook", "Upload the required files to continue."],
   UPLOADING: ["Uploading workbooks", "Wait for the files to finish uploading."],
   UPLOADED: ["Confirm your worksheets", "Choose the sheets and header rows below before starting."],
