@@ -264,6 +264,23 @@
   .workflow-phases li:nth-child(4) { animation-delay: 165ms; }
   .workflow-phases li:nth-child(5) { animation-delay: 220ms; }
 
+  /* Horizontal circle stepper */
+  .stepper-row { display: flex; align-items: flex-start; padding: 24px 0 8px; }
+  .stepper-item { display: flex; flex-direction: column; align-items: center; gap: 8px; flex-shrink: 0; }
+  .stepper-node { width: 2.5rem; height: 2.5rem; border-radius: 9999px; border: 2px solid var(--border); background: transparent; color: var(--muted-foreground); display: flex; align-items: center; justify-content: center; padding: 0; cursor: default; transition: box-shadow 0.15s; }
+  .stepper-node.step-complete { background: var(--success); border-color: var(--success); color: white; cursor: pointer; }
+  .stepper-node.step-active { background: var(--workflow-accent); border-color: var(--workflow-accent); color: white; cursor: pointer; }
+  .stepper-node.step-failed { background: var(--destructive); border-color: var(--destructive); color: white; cursor: pointer; }
+  .stepper-node[aria-selected="true"] { box-shadow: 0 0 0 3px color-mix(in srgb, var(--workflow-accent) 30%, transparent); }
+  .stepper-label { font-size: 11px; color: var(--muted-foreground); text-align: center; max-width: 5rem; line-height: 1.3; }
+  .step-connector { flex: 1; align-self: flex-start; margin-top: 1.1875rem; border-top: 2px dashed var(--border); min-width: 1rem; }
+  .step-connector[data-left="complete"] { border-top-style: solid; border-top-color: var(--success); }
+  .step-connector[data-left="active"] { border-top-style: solid; border-top-color: var(--border); }
+  .stepper-panel { padding: 16px 0 8px; border-top: 1px solid var(--border); margin-top: 8px; }
+  .stage-detail { padding: 4px 0; }
+  .stage-detail h3 { font-size: 1rem; font-weight: 600; margin-bottom: 4px; }
+  .stage-detail p { font-size: 0.875rem; color: var(--muted-foreground); }
+
   .job-context { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 20px; padding: 16px 0; font-size: 12px; }
   .job-context dt, .job-facts dt { color: var(--muted-foreground); }
   .job-context dd, .job-facts dd { margin-top: 5px; overflow-wrap: anywhere; }
