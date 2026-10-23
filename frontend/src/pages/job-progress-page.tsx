@@ -6,7 +6,8 @@ import { ConnectedJobStatus } from "@/components/job/connected-job-status";
 export function JobProgressPage() {
   const auth = useContext(AuthContext);
   const { id } = useParams();
-  return <section aria-labelledby="workflow-timeline" className="engagement-progress">
+  return <section aria-labelledby="job-progress-heading" className="engagement-progress">
+    <h1 id="job-progress-heading" className="sr-only">Job progress</h1>
     {auth && id ? <ConnectedJobStatus jobId={id} /> : <p className="mt-5 text-sm text-muted-foreground">Sign in to read the backend job status.</p>}
   </section>;
 }
