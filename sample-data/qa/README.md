@@ -1,59 +1,60 @@
 # QA sample fixtures
 
-Synthetic workbooks for upload, pipeline, model-quality, and review-gate testing.
-Regenerate them with `cd backend && python -m scripts.make_qa_fixtures` (use the
-project virtual environment if `python` is not configured). The generator is
-`backend/scripts/make_qa_fixtures.py`; it fixes all row positions below.
+Synthetic, deterministic XLSX files for testing realistic multi-file uploads.
+Regenerate with `cd backend` then `..\.venv312\python.exe -m scripts.make_qa_fixtures`.
+Each job uploads every listed current file together; its main workbook is selected
+separately. All stated row numbers are Excel rows, including headers.
 
-Each stated row is an Excel row number, including the header and the two intro rows
-in `hr/employees.xlsx`. All values are invented for testing.
+## Retail orders — two current exports
 
-## Retail orders: add column
+Upload set: `retail/orders_online.xlsx`, `retail/orders_store.xlsx`. No main workbook.
 
-| File | Data rows | Prompt | Config (JSON) | Stress rows (Excel row -> case -> expected) | Expected per-tool proposal |
+| File | Data rows | Prompt | Config (JSON) | Stress rows | Expected proposal |
 |---|---:|---|---|---|---|
-| `retail/orders.xlsx` | 1,200 | Add a Line Total column = Qty x UnitPrice x (1 - DiscountPct) | `{"output_header":"Line Total","standardize":false,"update":false}` | 1192–1194 -> known answers -> 20.00, 10.20, 89.991; 1195–1196 -> duplicate `OrderID`; 1197 -> blank row; 1198 -> bad date; 1199 -> `Qty="two"`; 1200 -> HYPERLINK formula in Notes; 1201 -> prompt injection in Notes | Tool1 identifies Qty, UnitPrice, DiscountPct. Tool3 proposes the allowlisted row formula `=Qty*UnitPrice*(1-DiscountPct)`; structural rows are flagged before model use. |
+| `retail/orders_online.xlsx` | 600 | Add a Line Total column = Qty x UnitPrice x (1 - DiscountPct) | `{"output_header":"Line Total","standardize":false,"update":false}` | — | Clean online-channel source for Tool1 and Tool3. |
+| `retail/orders_store.xlsx` | 600 | Same job input | Same config | 592–594 known answers: 20.00, 10.20, 89.991; 595–596 duplicate OrderID; 597 blank row; 598 bad date; 599 `Qty="two"`; 600 HYPERLINK-like Notes; 601 prompt injection Notes | Tool3 proposes `=Qty*UnitPrice*(1-DiscountPct)`. Decimals remain intact; structural cases are flagged before model use; Notes are inert data. |
 
-The known answers are `(2, 10.00, 0)`, `(3, 4.25, 0.20)`, and `(1, 99.99,
-0.10)`. OpenPyXL does not calculate formulas, so this fixture only verifies the
-syntax and expected arithmetic for Excel or human confirmation. Notes values are
-inert input data for the workflow.
+OpenPyXL verifies formula syntax but does not calculate it. The three expected numbers
+require Excel or human arithmetic confirmation.
 
-## HR employees: standardize
+## HR employees — two current exports plus canonical master
 
-Canonical master: `hr/hr_master.xlsx`. Its Department values are Engineering, Sales,
-Finance, Human Resources, Marketing, Operations, Legal, and Support; its Status
-values are Active, Inactive, and On Leave.
+Upload set: `hr/employees_corporate.xlsx`, `hr/employees_field.xlsx`. Main workbook:
+`hr/hr_master.xlsx`.
 
-| File | Data rows | Prompt | Config (JSON) | Stress rows (Excel row -> case -> expected) | Expected per-tool proposal |
+| File | Data rows | Prompt | Config (JSON) | Stress rows | Expected proposal |
 |---|---:|---|---|---|---|
-| `hr/employees.xlsx` | 600 | Add a Normalized Department column | `{"standardize":true,"update":false}` | Header at row 3; 596 -> `Service` -> ambiguous; 597 -> `R&D` -> unmapped; 598 -> SQL-like value -> unmapped/rejected; 599–600 -> duplicate `EmpID`; 601 -> blank row; 602 -> bad StartDate; 603 -> valid control row | Tool4 may map safe department variants only to master canonical values. `Service` requires human selection; `R&D` and the injection string cannot invent a canonical value. |
-| `hr/hr_master.xlsx` | 30 | Canonical source for employees | `{"standardize":true,"update":false}` | Canonical Department and Status coverage | Supplies the canonical allowlist. |
+| `hr/employees_corporate.xlsx` | 300 | Add a Normalized Department column | `{"standardize":true,"update":false}` | Header row is 3 | Clean corporate source; exercises header detection. |
+| `hr/employees_field.xlsx` | 300 | Same job input | Same config | 294 `Service` ambiguous; 295 `R&D` unmapped; 296 SQL-like value rejected; 297–298 duplicate EmpID; 299 blank row; 300 bad StartDate; 301 control row | Tool4 maps safe variants only to master canonical values; no canonical value is invented. |
+| `hr/hr_master.xlsx` | 30 | Canonical source | Same config | Canonical Departments and Statuses | Provides Engineering, Sales, Finance, Human Resources, Marketing, Operations, Legal, Support; and Active, Inactive, On Leave. |
 
-## Inventory parts: update
+## Inventory parts — three shipment exports plus catalog
 
-Master: `inventory/catalog.xlsx`; key column: `PartNo`.
+Upload set: `inventory/shipment_north.xlsx`, `inventory/shipment_south.xlsx`,
+`inventory/shipment_west.xlsx`. Main workbook: `inventory/catalog.xlsx`.
 
-| File | Data rows | Prompt | Config (JSON) | Stress rows (Excel row -> case -> expected) | Expected per-tool proposal |
+| File | Data rows | Prompt | Config (JSON) | Stress rows | Expected proposal |
 |---|---:|---|---|---|---|
-| `inventory/shipment.xlsx` | 900 | Update on-hand quantities in the master catalog | `{"update":true,"key_column":"PartNo","conflict_policy":"reject_all"}` | 896–897 -> `P-00777` conflicting updates -> rejected; 898 -> blank PartNo + duplicate catalog description -> ambiguous; 899 -> `P-99999` -> skipped; 900 -> `OnHand="n/a"`; 901 -> blank row | Tool5 may select only supplied catalog row IDs. Exact keys update; duplicate-key conflict is rejected; blank key queues human choice; unmatched key is skipped. |
-| `inventory/catalog.xlsx` | 1,500 | Canonical update target | `{"update":true,"key_column":"PartNo","conflict_policy":"reject_all"}` | 43–44 -> repeated `Universal Filter Assembly` descriptions -> two candidates | Provides unique canonical PartNo values and the intentional description ambiguity. |
+| `inventory/shipment_north.xlsx` | 300 | Update on-hand quantities in the master catalog | `{"update":true,"key_column":"PartNo","conflict_policy":"reject_all"}` | — | Clean northern warehouse export. |
+| `inventory/shipment_south.xlsx` | 300 | Same job input | Same config | — | Clean southern warehouse export. |
+| `inventory/shipment_west.xlsx` | 300 | Same job input | Same config | 296–297 conflicting `P-00777`; 298 blank PartNo + repeated description; 299 `P-99999` skipped; 300 `OnHand="n/a"`; 301 blank row | Tool5 updates exact keys, rejects conflict, queues ambiguity, skips unmatched key, and selects only supplied catalog IDs. |
+| `inventory/catalog.xlsx` | 1,500 | Canonical update target | Same config | 43–44 repeat `Universal Filter Assembly` | Provides unique PartNo values and the intentional matching ambiguity. |
 
-## Clinic visits: standardize and update
+## Clinic visits — four regional exports plus registry
 
-Master: `clinic/registry.xlsx`; key column: `MRN`. Canonical providers are Blue
-Cross Blue Shield, UnitedHealthcare, Aetna, Cigna, and Medicare.
+Upload set: `clinic/visits_north.xlsx`, `clinic/visits_south.xlsx`,
+`clinic/visits_east.xlsx`, `clinic/visits_west.xlsx`. Main workbook:
+`clinic/registry.xlsx`.
 
-| File | Data rows | Prompt | Config (JSON) | Stress rows (Excel row -> case -> expected) | Expected per-tool proposal |
+| File | Data rows | Prompt | Config (JSON) | Stress rows | Expected proposal |
 |---|---:|---|---|---|---|
-| `clinic/visits.xlsx` | 1,000 | Normalize the insurance provider and update the patient registry | `{"standardize":true,"update":true,"key_column":"MRN"}` | 995 -> `United` -> ambiguous; 996 -> `SelfPay` -> unmapped; 997 -> blank MRN + duplicate patient name -> ambiguous; 998–999 -> duplicate MRN conflict; 1000 -> bad VisitDate; 1001 -> prompt injection in Notes | Tool4 produces a standardization gate before Tool5. Safe provider variants map to registry values; exact MRNs update; conflicts are rejected; blank MRN queues selection. |
-| `clinic/registry.xlsx` | 800 | Canonical update target | `{"standardize":true,"update":true,"key_column":"MRN"}` | 42–43 -> `Taylor Morgan` duplicate names -> matching ambiguity | Supplies canonical provider values and candidate registry IDs. |
+| `clinic/visits_north.xlsx` | 250 | Normalize the insurance provider and update the patient registry | `{"standardize":true,"update":true,"key_column":"MRN"}` | — | Clean regional source. |
+| `clinic/visits_south.xlsx` | 250 | Same job input | Same config | — | Clean regional source. |
+| `clinic/visits_east.xlsx` | 250 | Same job input | Same config | — | Clean regional source. |
+| `clinic/visits_west.xlsx` | 250 | Same job input | Same config | 245 `United` ambiguous; 246 `SelfPay` unmapped; 247 blank MRN + duplicate name; 248–249 duplicate MRN conflict; 250 bad VisitDate; 251 Notes injection | Tool4 standardization gate runs before Tool5 update gate. Exact MRNs update; ambiguous rows queue human selection; conflicts reject. |
+| `clinic/registry.xlsx` | 800 | Canonical update target | Same config | 42–43 repeat `Taylor Morgan` | Supplies canonical provider spellings and candidate registry IDs. |
 
-## Pipeline expectations
-
-Structural rules run before any LLM request: duplicate rows/keys, blank rows, type
-mismatches, and malformed dates must be surfaced for review. Tool4 returns only
-canonical values already present in the matching master workbook; ambiguous proposals
-need a human decision, and unknown values remain unmapped or rejected. Tool5 can only
-select backend-provided candidate IDs. Rows without a matching update key are skipped;
-inserting new master rows is deferred.
+Structural checks run before any LLM call. Tool4 maps only to canonical values that
+exist in the main workbook; Tool5 can only choose backend-provided candidate IDs.
+Unmatched update rows are skipped rather than inserted. All fixtures contain invented
+data only.

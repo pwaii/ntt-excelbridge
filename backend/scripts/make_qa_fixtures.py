@@ -29,13 +29,36 @@ VISIT_HEADERS = ["MRN", "PatientName", "InsuranceProvider", "VisitDate", "VisitT
 REGISTRY_HEADERS = ["MRN", "PatientName", "InsuranceProvider", "LastVisit"]
 FIXTURE_TIMESTAMP = datetime(2026, 10, 23, 0, 0, 0)
 
+SCENARIO_CURRENT_INPUTS = {
+    "retail": ("retail/orders_online.xlsx", "retail/orders_store.xlsx"),
+    "hr": ("hr/employees_corporate.xlsx", "hr/employees_field.xlsx"),
+    "inventory": (
+        "inventory/shipment_north.xlsx",
+        "inventory/shipment_south.xlsx",
+        "inventory/shipment_west.xlsx",
+    ),
+    "clinic": (
+        "clinic/visits_north.xlsx",
+        "clinic/visits_south.xlsx",
+        "clinic/visits_east.xlsx",
+        "clinic/visits_west.xlsx",
+    ),
+}
+
 FIXTURE_SPECS = {
-    "retail/orders.xlsx": {"title": "Orders", "headers": RETAIL_HEADERS, "header_row": 1, "rows": 1200},
-    "hr/employees.xlsx": {"title": "Employees", "headers": HR_HEADERS, "header_row": 3, "rows": 600},
+    "retail/orders_online.xlsx": {"title": "Online Orders", "headers": RETAIL_HEADERS, "header_row": 1, "rows": 600},
+    "retail/orders_store.xlsx": {"title": "Store Orders", "headers": RETAIL_HEADERS, "header_row": 1, "rows": 600},
+    "hr/employees_corporate.xlsx": {"title": "Corporate Employees", "headers": HR_HEADERS, "header_row": 3, "rows": 300},
+    "hr/employees_field.xlsx": {"title": "Field Employees", "headers": HR_HEADERS, "header_row": 1, "rows": 300},
     "hr/hr_master.xlsx": {"title": "HR Master", "headers": HR_HEADERS, "header_row": 1, "rows": 30},
-    "inventory/shipment.xlsx": {"title": "Shipment", "headers": INVENTORY_HEADERS, "header_row": 1, "rows": 900},
+    "inventory/shipment_north.xlsx": {"title": "North Shipment", "headers": INVENTORY_HEADERS, "header_row": 1, "rows": 300},
+    "inventory/shipment_south.xlsx": {"title": "South Shipment", "headers": INVENTORY_HEADERS, "header_row": 1, "rows": 300},
+    "inventory/shipment_west.xlsx": {"title": "West Shipment", "headers": INVENTORY_HEADERS, "header_row": 1, "rows": 300},
     "inventory/catalog.xlsx": {"title": "Catalog", "headers": INVENTORY_HEADERS, "header_row": 1, "rows": 1500},
-    "clinic/visits.xlsx": {"title": "Visits", "headers": VISIT_HEADERS, "header_row": 1, "rows": 1000},
+    "clinic/visits_north.xlsx": {"title": "North Visits", "headers": VISIT_HEADERS, "header_row": 1, "rows": 250},
+    "clinic/visits_south.xlsx": {"title": "South Visits", "headers": VISIT_HEADERS, "header_row": 1, "rows": 250},
+    "clinic/visits_east.xlsx": {"title": "East Visits", "headers": VISIT_HEADERS, "header_row": 1, "rows": 250},
+    "clinic/visits_west.xlsx": {"title": "West Visits", "headers": VISIT_HEADERS, "header_row": 1, "rows": 250},
     "clinic/registry.xlsx": {"title": "Registry", "headers": REGISTRY_HEADERS, "header_row": 1, "rows": 800},
 }
 
@@ -212,8 +235,8 @@ def _write_workbook(path: Path, headers: list[str], rows: Iterable[tuple[Any, ..
     _save_workbook(_build(headers, list(rows), title), path)
 
 
-def _write_hr_employees(path: Path) -> None:
-    workbook: Workbook = _build(HR_HEADERS, _hr_rows(), "Employees")
+def _write_hr_employees(path: Path, rows: list[tuple[Any, ...]], title: str) -> None:
+    workbook: Workbook = _build(HR_HEADERS, rows, title)
     worksheet = workbook.active
     worksheet.insert_rows(1, 2)
     # Non-string metadata keeps the existing header detector from mistaking either
@@ -226,15 +249,30 @@ def _write_hr_employees(path: Path) -> None:
 def write_fixtures(out_dir: Path) -> list[Path]:
     """Write every QA workbook below *out_dir* and return paths in stable order."""
 
-    outputs = [out_dir / relative_path for relative_path in FIXTURE_SPECS]
-    _write_workbook(outputs[0], RETAIL_HEADERS, _retail_rows(), "Orders")
-    _write_hr_employees(outputs[1])
-    _write_workbook(outputs[2], HR_HEADERS, _hr_master_rows(), "HR Master")
-    _write_workbook(outputs[3], INVENTORY_HEADERS, _shipment_rows(), "Shipment")
-    _write_workbook(outputs[4], INVENTORY_HEADERS, _catalog_rows(), "Catalog")
-    _write_workbook(outputs[5], VISIT_HEADERS, _visit_rows(), "Visits")
-    _write_workbook(outputs[6], REGISTRY_HEADERS, _registry_rows(), "Registry")
-    return outputs
+    outputs = {relative_path: out_dir / relative_path for relative_path in FIXTURE_SPECS}
+
+    retail_rows = _retail_rows()
+    _write_workbook(outputs["retail/orders_online.xlsx"], RETAIL_HEADERS, retail_rows[:600], "Online Orders")
+    _write_workbook(outputs["retail/orders_store.xlsx"], RETAIL_HEADERS, retail_rows[600:1190] + retail_rows[1190:], "Store Orders")
+
+    hr_rows = _hr_rows()
+    _write_hr_employees(outputs["hr/employees_corporate.xlsx"], hr_rows[:300], "Corporate Employees")
+    _write_workbook(outputs["hr/employees_field.xlsx"], HR_HEADERS, hr_rows[300:592] + hr_rows[592:], "Field Employees")
+    _write_workbook(outputs["hr/hr_master.xlsx"], HR_HEADERS, _hr_master_rows(), "HR Master")
+
+    shipment_rows = _shipment_rows()
+    _write_workbook(outputs["inventory/shipment_north.xlsx"], INVENTORY_HEADERS, shipment_rows[:300], "North Shipment")
+    _write_workbook(outputs["inventory/shipment_south.xlsx"], INVENTORY_HEADERS, shipment_rows[300:600], "South Shipment")
+    _write_workbook(outputs["inventory/shipment_west.xlsx"], INVENTORY_HEADERS, shipment_rows[600:894] + shipment_rows[894:], "West Shipment")
+    _write_workbook(outputs["inventory/catalog.xlsx"], INVENTORY_HEADERS, _catalog_rows(), "Catalog")
+
+    visit_rows = _visit_rows()
+    _write_workbook(outputs["clinic/visits_north.xlsx"], VISIT_HEADERS, visit_rows[:250], "North Visits")
+    _write_workbook(outputs["clinic/visits_south.xlsx"], VISIT_HEADERS, visit_rows[250:500], "South Visits")
+    _write_workbook(outputs["clinic/visits_east.xlsx"], VISIT_HEADERS, visit_rows[500:750], "East Visits")
+    _write_workbook(outputs["clinic/visits_west.xlsx"], VISIT_HEADERS, visit_rows[750:993] + visit_rows[993:], "West Visits")
+    _write_workbook(outputs["clinic/registry.xlsx"], REGISTRY_HEADERS, _registry_rows(), "Registry")
+    return list(outputs.values())
 
 
 def main() -> None:
