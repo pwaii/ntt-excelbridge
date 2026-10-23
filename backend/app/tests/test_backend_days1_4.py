@@ -105,7 +105,10 @@ def test_tool4_inputs_are_limited_to_shared_fields(tmp_path):
         "tool4",
     )
     fields = {item["field"] for item in inputs["source_values"]}
-    assert fields == {"CustomerID", "FullName", "Country"}
+    # Only categorical shared columns remain. Country repeats with variants (U.S.A. vs United
+    # States) so it is standardized; CustomerID (unique ids) and FullName (unique company names)
+    # are high-cardinality and excluded — standardization normalizes vocabularies, not unique values.
+    assert fields == {"Country"}
     assert {item["value"] for item in inputs["source_values"]} >= {"United States", "U.S.A."}
     assert all(column["name"] in fields for column in inputs["samples"])
 

@@ -117,8 +117,8 @@ export function ConnectedJobStatus({ jobId }: { jobId: string }) {
             {resumeFlow && <PostUploadConfiguration flow={resumeFlow} onStarted={() => { void load(); }} />}
           </div>
         )}
-        {seen.has(1) && <div hidden={selected !== 1}><QualityReviewPage /></div>}
-        {seen.has(2) && <div hidden={selected !== 2}><TransformationReviewPage /></div>}
+        {seen.has(1) && <div hidden={selected !== 1}><QualityReviewPage onSubmitted={() => { void load(); }} /></div>}
+        {seen.has(2) && <div hidden={selected !== 2}><TransformationReviewPage onSubmitted={() => { void load(); }} /></div>}
         {seen.has(3) && <div hidden={selected !== 3}><ResultPage /></div>}
       </div>
     </>}

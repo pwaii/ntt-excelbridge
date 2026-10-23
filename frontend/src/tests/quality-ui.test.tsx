@@ -129,7 +129,7 @@ it("shows an honest empty report and never enables an empty review submission", 
   expect(container.textContent).toContain("contains no findings");
   expect(container.querySelector('[aria-busy]')).toBeNull();
   expect(container.querySelector("select")).toBeNull();
-  expect(container.querySelector(`a[href="/jobs/${qualityJobId}"]`)?.textContent).toContain("View job progress");
+  expect(container.querySelector(`a[href="/jobs/${qualityJobId}"]`)).toBeNull();
 });
 
 it("shows loading and failure states without displaying raw thrown values", async () => {

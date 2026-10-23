@@ -35,14 +35,14 @@ export function ResultWorkspace({ api, jobId }: { api: JobsApi; jobId: string })
     {loading && <WorkflowLoading label="Loading your result..." />}
     {error && <p role="alert" className="notice notice-error">{error}</p>}
     {job && <>
-      {job.status === "COMPLETED" ? <CompletedJobOutput key={`${job.job_id}-${job.revision}`} api={api} job={job} /> : <section aria-label="Result summary" className="pending-result"><JobStatusBadge status={job.status} /><h2 className="mt-3 text-base font-semibold">Result is not ready</h2><p className="mt-1 text-sm text-muted-foreground">{["FAILED", "CANCELLED", "COST_GUARD_REACHED"].includes(job.status) ? "Processing stopped. Open job progress to see the error and recovery options." : "Processing or a review is still in progress."}</p><Button asChild className="mt-4" size="sm"><Link to={`/jobs/${encodeURIComponent(jobId)}`}>View job progress</Link></Button></section>}
+      {job.status === "COMPLETED" ? <CompletedJobOutput key={`${job.job_id}-${job.revision}`} api={api} job={job} /> : <section aria-label="Result summary" className="pending-result"><JobStatusBadge status={job.status} /><h2 className="mt-3 text-base font-semibold">Result is not ready</h2><p className="mt-1 text-sm text-muted-foreground">{["FAILED", "CANCELLED", "COST_GUARD_REACHED"].includes(job.status) ? "Processing stopped." : "Processing or a review is still in progress."}</p></section>}
       <details aria-label="Processing evidence" className="section-disclosure"><summary>Job details and verification</summary><div className="mt-3 space-y-3 text-[13px] text-muted-foreground">
         {!job.result_summary && <p>Detailed processing counts, formula syntax results and review outcomes are not reported for this job. Check the workbook before using it.</p>}
         <p>Use the change report and review summary to inspect recorded decisions.</p>
         <dl className="job-facts"><div><dt>Created</dt><dd><time dateTime={job.created_at}>{new Date(job.created_at).toLocaleString()}</time></dd></div><div><dt>Last updated</dt><dd><time dateTime={job.updated_at}>{new Date(job.updated_at).toLocaleString()}</time></dd></div><div><dt>Job ID</dt><dd className="break-all">{jobId}</dd></div><div><dt>Server status / revision</dt><dd>{job.status} / {job.revision}</dd></div></dl>
         {job.output_hash && <p className="break-all">Output hash: {job.output_hash}</p>}
       </div></details>
-      {job.status === "COMPLETED" && <div className="flex flex-wrap items-center gap-3 text-[13px]"><Link className="text-primary hover:underline" to="/jobs/new">Create another workflow</Link><span className="text-muted-foreground" aria-hidden="true">·</span><Link className="text-muted-foreground hover:text-foreground hover:underline" to={`/jobs/${encodeURIComponent(jobId)}`}>View job progress</Link></div>}
+      {job.status === "COMPLETED" && <div className="flex flex-wrap items-center gap-3 text-[13px]"><Link className="text-primary hover:underline" to="/jobs/new">Create another workflow</Link></div>}
     </>}
   </div>;
 }

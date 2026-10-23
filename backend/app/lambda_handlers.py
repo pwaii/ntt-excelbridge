@@ -295,25 +295,48 @@ def _tool_inputs(item: dict[str, Any], s3: S3Store, tool: str, slot: str = "inpu
             "constraints": {"allowed_target_types": ["string", "integer", "number", "date", "datetime", "boolean"]},
         }
     if tool == "tool4":
+        config = item.get("config", {})
         main_file = item.get("files", {}).get("main")
-        main_rows = load_canonical_rows(s3.get_bytes(main_file["key"]), item.get("config", {}).get("main_sheet"), item.get("config", {}).get("main_header_row") or 1) if main_file else []
+        main_rows = load_canonical_rows(s3.get_bytes(main_file["key"]), config.get("main_sheet"), config.get("main_header_row") or 1) if main_file else []
         current_rows = load_canonical_rows(source, input_sheet, input_header_row or 1)
-        main_fields = {
+        # Key columns are matched by Tool #5, never standardized. Excluding them stops the model
+        # from "normalizing" ID values (e.g. MRN-00591 -> MRN-00091) and keeps the candidate set
+        # small enough that the response doesn't truncate at the token cap.
+        key_fields = {str(k).casefold() for k in (config.get("key_column"), config.get("main_key_column")) if k}
+        # Only standardize columns present in BOTH workbooks (and non-key); candidates come from
+        # those same columns so values compete against their own vocabulary, not, e.g., dates from
+        # a main-only column.
+        current_field_names = {str(field) for row in current_rows for field in row if field != "row_id"}
+        shared_fields = {
             str(field)
             for row in main_rows
             for field in row
-            if field != "row_id"
+            if field != "row_id" and str(field).casefold() not in key_fields and str(field) in current_field_names
         }
+        # Standardization applies only to CATEGORICAL columns — a small set of values repeated
+        # across many rows (Department, Status) — not identifiers, dates, or unique text (EmpID,
+        # StartDate, Name), which yield identity or invented mappings. Decide from the current
+        # workbook's cardinality: keep a field only if its values repeat (distinct values are at
+        # most half the populated rows), measured over enough rows for the ratio to mean something.
+        def _is_categorical(field: str) -> bool:
+            values = [
+                str(row[field]).strip()
+                for row in current_rows
+                if field in row and row[field] is not None and str(row[field]).strip()
+            ]
+            return len(values) >= 4 and len(set(values)) <= 0.5 * len(values)
+
+        shared_fields = {field for field in shared_fields if _is_categorical(field)}
         shared_columns = [
             column
             for column in first_sheet.get("columns", [])
-            if column.get("name") in main_fields
+            if column.get("name") in shared_fields
         ]
         source_values = sorted(
             {
                 (str(field), str(row[field]))
                 for row in current_rows
-                for field in main_fields
+                for field in shared_fields
                 if field in row and row[field] is not None and str(row[field]).strip()
             }
         )
@@ -321,7 +344,7 @@ def _tool_inputs(item: dict[str, Any], s3: S3Store, tool: str, slot: str = "inpu
             {
                 str(row[field])
                 for row in main_rows
-                for field in main_fields
+                for field in shared_fields
                 if row.get(field) is not None and str(row[field]).strip()
             }
         )

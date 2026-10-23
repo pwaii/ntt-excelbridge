@@ -9,8 +9,10 @@ export const mockSheet: WorkbookMetadata = {
   headerRowBounds: { min: 1, max: 20, indexBase: 1 }, columnsHeaderRow: 3,
   columns: [{ id: "mock-key-id", label: "Mock business key" }],
 };
+// A second current workbook with its own header row (4, not 3) — each slot is independent.
+export const mockAlternateSheet: WorkbookMetadata = { ...mockSheet, sheetName: "Mock alternate sheet", detectedHeaderRow: 4, columnsHeaderRow: 4 };
 export function mockSnapshot(): MetadataSnapshot {
-  const workbook = { workbookVersion: "mock-version", uploadConfirmed: true, sizeBytes: 100, sheets: [mockSheet, { ...mockSheet, sheetName: "Mock alternate sheet" }], keyRule: "required" as const, warnings: [], errors: [] };
+  const workbook = { workbookVersion: "mock-version", uploadConfirmed: true, sizeBytes: 100, sheets: [mockSheet, mockAlternateSheet], keyRule: "required" as const, warnings: [], errors: [] };
   return { jobId: "mock-job", serverRevision: "mock-server-revision", startState: "not-started", workbooks: { current: workbook, main: workbook }, errors: [] };
 }
 export function mockMetadataAdapter(snapshot = mockSnapshot()): MetadataAdapter {

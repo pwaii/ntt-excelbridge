@@ -350,6 +350,10 @@ def build_report(item, stage, dynamo, s3):
                 mappings = payload.get("mappings", [])
                 # Legacy grouped proposals retain their actual parent decision ID.
                 selected = [mappings[int(index)]] if index is not None else mappings
+                # Skip no-op mappings: an unmapped value (blank canonical_value) applies no change,
+                # so surfacing it only clutters the gate (e.g. a date/name column with no match).
+                if selected and all(not str(mapping.get("canonical_value") or "").strip() for mapping in selected):
+                    continue
                 rows.append(
                     ReportItem(
                         id=identity,

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, ChevronLeft, ChevronRight, Loader2, RefreshCw, Send, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, RefreshCw, Send, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { WorkflowLoading } from "@/components/ui/workflow-loading";
 import { bulkCandidates, decisionError, reviewGates, submissionBlocker, type QualityReviewFlow } from "@/quality/controller";
@@ -8,7 +8,7 @@ import { qualityKinds, qualityLabels, transformationKinds, transformationLabels,
 
 const control = "field-control mt-1.5";
 
-export function QualityReviewWorkspace({ flow, jobId }: { flow: QualityReviewFlow; jobId: string }) {
+export function QualityReviewWorkspace({ flow, jobId, onSubmitted }: { flow: QualityReviewFlow; jobId: string; onSubmitted?: () => void }) {
   const state = useSyncExternalStore(flow.subscribe, flow.getSnapshot);
   const transformation = state.stage === "transformation";
   const kinds = transformation ? transformationKinds : qualityKinds;
@@ -30,6 +30,7 @@ export function QualityReviewWorkspace({ flow, jobId }: { flow: QualityReviewFlo
   const [confirm, setConfirm] = useState(false);
 
   useEffect(() => { void flow.load(); return () => flow.dispose(); }, [flow]);
+  useEffect(() => { if (state.phase === "submitted") onSubmitted?.(); }, [state.phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const items = state.snapshot?.items ?? [];
   const sourceFiles = useMemo(() =>
@@ -139,11 +140,7 @@ export function QualityReviewWorkspace({ flow, jobId }: { flow: QualityReviewFlo
             I confirm
           </label>
         )}
-        {stagePassed ? (
-          <Button asChild size="sm" variant="outline">
-            <Link to={`/jobs/${encodeURIComponent(jobId)}`}>{transformation ? "See output" : "View job progress"} <ArrowRight aria-hidden="true" /></Link>
-          </Button>
-        ) : (
+        {!stagePassed && (
           <>
             <Link to={`/jobs/${encodeURIComponent(jobId)}`} className="review-topbar-back">← Progress</Link>
             <Button size="sm" disabled={Boolean(blocker) || (required.length > 0 && !confirm) || locked} aria-busy={state.phase === "submitting"} onClick={() => { void flow.submit(); }}>
@@ -190,20 +187,21 @@ export function QualityReviewWorkspace({ flow, jobId }: { flow: QualityReviewFlo
             <section role="status" className="notice notice-success flex flex-wrap items-center justify-between gap-4 p-5">
               <div>
                 <h2 className="font-semibold">Review submitted</h2>
-                <p className="mt-1 text-sm">{completed} decisions saved. Open job progress for the next step.</p>
+                <p className="mt-1 text-sm">{completed} decisions saved. Check job progress for the next step.</p>
                 <details className="mt-2 text-xs"><summary>Submission details</summary>
                   <p className="mt-2">Review ID: {state.reviewId}. Status: {state.reportedStatus}. Check job progress for processing status.</p>
                 </details>
               </div>
-              <Button asChild><Link to={`/jobs/${encodeURIComponent(jobId)}`}>View job progress <ArrowRight aria-hidden="true" /></Link></Button>
+              {onSubmitted
+                ? <Button variant="outline" size="sm" onClick={onSubmitted}>Check job progress</Button>
+                : <Link className="text-sm font-medium text-primary hover:underline" to={`/jobs/${encodeURIComponent(jobId)}`}>Check job progress</Link>}
             </section>
           )}
           {state.snapshot && items.length === 0 && (
             <div className="empty-state p-8" aria-label="Empty review">
               <h2 className="font-semibold text-lg">{state.snapshot.complete ? "This report contains no findings." : "No review items are available yet."}</h2>
-              <p className="mt-2 text-sm text-muted-foreground">{state.snapshot.complete ? "Nothing to decide. Open job progress for the next step." : "This report is incomplete — reload to check for remaining items."}</p>
+              <p className="mt-2 text-sm text-muted-foreground">{state.snapshot.complete ? "Nothing to decide. Submit the review to continue." : "This report is incomplete — reload to check for remaining items."}</p>
               <div className="mt-5 flex gap-2">
-                <Button asChild><Link to={`/jobs/${encodeURIComponent(jobId)}`}>View job progress <ArrowRight aria-hidden="true" /></Link></Button>
                 <Button variant="ghost" onClick={() => { void flow.load(); }}><RefreshCw aria-hidden="true" />Reload</Button>
               </div>
             </div>

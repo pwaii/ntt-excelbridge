@@ -43,7 +43,7 @@ export function PostUploadConfiguration({ flow, onStarted }: { flow: MetadataFlo
     </div>
     {state.phase === "loading" && <WorkflowLoading label="Loading worksheets..." />}
     {state.error && <p role="alert" className="notice notice-error">{state.error.message}{state.error.requestId && <span className="mt-1 block break-all text-xs">Request ID: {state.error.requestId}</span>}</p>}
-    {flow.roles.filter((role) => role !== "main").length > 1 && <p className="notice text-xs leading-relaxed">For now, all current workbooks must use the same worksheet name, header row, and (for updates) key column. The backend applies the primary current workbook's settings to every current file.</p>}
+    {flow.roles.filter((role) => role !== "main").length > 1 && <p className="notice text-xs leading-relaxed">Each current workbook can use its own worksheet and header row. For updates, all current workbooks must use the same key column so records match the main workbook consistently.</p>}
     {!state.snapshot && state.phase !== "loading" && <p className="text-sm text-muted-foreground">Worksheet details are unavailable. Reload worksheets to try again.</p>}
     <fieldset disabled={busy} hidden={state.phase === "loading" && !state.snapshot} className="worksheet-grid min-w-0">
       <legend className="sr-only">Workbook configuration</legend>

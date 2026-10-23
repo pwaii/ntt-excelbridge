@@ -8,7 +8,6 @@ from app.ai.adapter import render_prompt, sha256_hex
 from app.ai.bedrock_client import BedrockClient
 from app.ai.policy import (
     CONFIDENCE_FLOOR,
-    MAX_OUTPUT_TOKENS,
     estimate_cost_usd,
     safe_log,
 )
@@ -57,7 +56,7 @@ def run_tool4(
 
     prompt = render_prompt(TOOL, PROMPT_VERSION, _FIELDS, inputs)
     data, raw, usage, latency_ms = client.converse_json(
-        model_id, prompt, MAX_OUTPUT_TOKENS, settings.bedrock_temperature
+        model_id, prompt, settings.bedrock_max_tokens_tool4, settings.bedrock_temperature
     )
     payload = Tool4Output(**data)  # trust boundary: reject anything off-shape
     _validate_against_inputs(payload, inputs)  # reject invented canonical values
