@@ -10,6 +10,7 @@ from urllib.parse import unquote_plus
 from uuid import uuid4
 from typing import Any
 
+from botocore.exceptions import ClientError
 from openpyxl import load_workbook
 
 from app.domain.enums import JobStatus
@@ -739,21 +740,21 @@ def quicksight_refresh_handler(event: dict[str, Any], context) -> dict[str, Any]
     configured = [(label, dataset_id) for label, dataset_id in datasets if dataset_id]
     if configured and not account_id:
         raise ValueError("QUICKSIGHT_ACCOUNT_ID must be configured when a dataset is enabled")
-    active_datasets = []
-    for label, dataset_id in configured:
-        active = quicksight.list_ingestions(DataSetId=dataset_id, AwsAccountId=account_id).get("Ingestions", [])
-        if any(row.get("IngestionStatus") in {"INITIALIZED", "QUEUED", "RUNNING"} for row in active):
-            active_datasets.append(label)
-    if active_datasets:
-        # Leave the SQS message in the queue. It will be retried after the
-        # current ingestion has had time to finish, then refresh the newest CSV.
-        raise RuntimeError(f"Quick SPICE ingestion is already running: {', '.join(active_datasets)}")
     for label, dataset_id in datasets:
         if not dataset_id:
             refreshes[label] = "not_configured"
             continue
         ingestion_id = f"refresh-{label}-{int(time())}-{uuid4().hex[:10]}"
-        quicksight.create_ingestion(DataSetId=dataset_id, IngestionId=ingestion_id, AwsAccountId=account_id)
+        try:
+            quicksight.create_ingestion(DataSetId=dataset_id, IngestionId=ingestion_id, AwsAccountId=account_id)
+        except ClientError as error:
+            code = error.response.get("Error", {}).get("Code")
+            if code in {"ConflictException", "ResourceInUseException"}:
+                # SQS retries this event after the current SPICE ingestion ends.
+                # ListIngestions has no resource-level IAM scope in QuickSight,
+                # so use CreateIngestion's dataset-scoped conflict instead.
+                raise RuntimeError(f"Quick SPICE ingestion is already running: {label}") from error
+            raise
         refreshes[label] = ingestion_id
     return {
         "status": "updated",

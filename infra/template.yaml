@@ -30,12 +30,15 @@ Parameters:
     Type: String
     Default: "453995432289"
     AllowedPattern: "^[0-9]{12}$"
+  QuickSightRegion:
+    Type: String
+    Default: ap-southeast-1
   QuickSightQualityDatasetId:
     Type: String
     Default: qa-issues-s3-76bde119
   QuickSightInspectionDatasetId:
     Type: String
-    Default: ""
+    Default: qa-inspections-s3-76bde119
   LambdaExecutionRoleArn:
     Type: String
     Description: Existing Lambda execution role ARN with the union of permissions required by the API and worker functions.
@@ -59,6 +62,7 @@ Globals:
         BEDROCK_MODEL_ID: !Ref BedrockModelId
         BEDROCK_MODEL_ID_HEAVY: !Ref BedrockHeavyModelId
         QUICKSIGHT_ACCOUNT_ID: !Ref QuickSightAccountId
+        QUICKSIGHT_REGION: !Ref QuickSightRegion
         QUICKSIGHT_QUALITY_DATASET_ID: !Ref QuickSightQualityDatasetId
         QUICKSIGHT_INSPECTION_DATASET_ID: !Ref QuickSightInspectionDatasetId
 
@@ -254,7 +258,6 @@ Resources:
       Handler: app.lambda_handlers.quicksight_refresh_handler
       Role: !Ref LambdaExecutionRoleArn
       Timeout: 300
-      ReservedConcurrentExecutions: 1
       Events:
         QualityReportQueue:
           Type: SQS
@@ -262,6 +265,8 @@ Resources:
             Queue: !GetAtt QuickSightRefreshQueue.Arn
             BatchSize: 10
             MaximumBatchingWindowInSeconds: 60
+            ScalingConfig:
+              MaximumConcurrency: 2
 
   QuickSightRefreshDeadLetterQueue:
     Type: AWS::SQS::Queue

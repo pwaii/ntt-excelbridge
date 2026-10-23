@@ -25,6 +25,7 @@ class Settings(BaseSettings):
 
     app_data_bucket: str = ""
     quicksight_account_id: str = ""
+    quicksight_region: str = "ap-southeast-1"
     quicksight_quality_dataset_id: str = ""
     quicksight_inspection_dataset_id: str = ""
     s3_prefix: str = "jobs"

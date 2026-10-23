@@ -27,7 +27,8 @@ from app.services.quicksight_pipeline import (  # noqa: E402
 )
 
 BUCKET = os.getenv("APP_DATA_BUCKET", "xlsx-workflow-demo-453995432289")
-REGION = os.getenv("AWS_REGION", "ap-southeast-1")
+S3_REGION = os.getenv("AWS_REGION", "us-east-1")
+QUICKSIGHT_REGION = os.getenv("QUICKSIGHT_REGION", "ap-southeast-1")
 ACCOUNT = os.getenv("QUICKSIGHT_ACCOUNT_ID", "453995432289")
 DATASETS = {
     "quality": os.getenv("QUICKSIGHT_QUALITY_DATASET_ID", "qa-issues-s3-76bde119"),
@@ -36,8 +37,8 @@ DATASETS = {
 
 
 def main() -> int:
-    s3 = boto3.client("s3", region_name=REGION)
-    qs = boto3.client("quicksight", region_name=REGION)
+    s3 = boto3.client("s3", region_name=S3_REGION)
+    qs = boto3.client("quicksight", region_name=QUICKSIGHT_REGION)
     quality_reports = []
     manifests = []
     for page in s3.get_paginator("list_objects_v2").paginate(Bucket=BUCKET, Prefix="jobs/"):

@@ -50,4 +50,8 @@ def get_stepfunctions_client():
 
 @lru_cache(maxsize=1)
 def get_quicksight_client():
-    return get_session().client("quicksight", config=get_client_config())
+    return get_session().client(
+        "quicksight",
+        region_name=settings.quicksight_region,
+        config=get_client_config(),
+    )

@@ -142,13 +142,15 @@ Spec: `docs/superpowers/specs/2026-10-16-ai-day7-design.md` · Plan: `docs/super
 - By action: keep_first_delete_later 42, manual_review 24, exclude_from_input 24, delete 18
 
 ### Next steps
-1. **Automation pipeline**  EventBridge S3 t—rigger on `jobs/*/quality/quality-report.json` → Lambda runs flatten → `create-ingestion` on `qa-issues-s3-76bde119`. Concurrency guard: skip if ingestion already RUNNING. Not yet built.
-2. **`flatten_inspections.py`** — run to add workbook-metadata dataset (columns, types, blank rates per job).
-3. **QuickSight embedding** — Enterprise supports anonymous embedding (`generate-embed-url-for-anonymous-user`). FastAPI generates signed URL; React renders in `<iframe>`. Requires: publish dashboard, create namespace for anonymous access. Not started.
+1. **QuickSight embedding** — publish dashboards and add authenticated dashboard embedding after row-level security maps dashboard rows to the app user. Anonymous embedding is unsafe because the flattened datasets aggregate all jobs in the bucket.
 
 ### Quick integration follow-through — 2026-10-23
 - Added `backend/app/services/quicksight_pipeline.py` to flatten primary and `input_2`–`input_8` quality/inspection artifacts. Both CSVs always write headers, including when there are no rows.
-- Added a buffered S3 EventBridge → SQS → Lambda refresh path in `infra/template.yaml`. Events batch for up to 60 seconds; the handler rebuilds both CSVs and queues a retry when a SPICE ingestion is already running.
+- Added a buffered S3 EventBridge → SQS → Lambda refresh path in `infra/template.yaml`. Events batch for up to 60 seconds; a Quick ingestion conflict leaves the SQS event for retry.
 - Added `scripts/qs-inspections-manifest.json` and refreshed the manual demo pipeline to use the same multi-slot flattening logic.
-- **Not deployed:** AWS profile `ChallengerAccess-453995432289` is absent here; the available `finpilot` SSO profile is expired. Deployment also needs the externally managed Lambda role updated with S3/SQS/Quick permissions, per README.
-- **Not completed:** create the inspection dataset and dashboards in Quick; add authenticated dashboard embedding after row-level security maps dashboard rows to the app user. Current CSVs aggregate all jobs in the bucket, so anonymous embedding is not safe.
+- Deployed to `xlsx-workflow-demo` in us-east-1 using the `finpilot` SSO profile; Quick resources remain in ap-southeast-1. The stack now has the EventBridge rule, SQS queue/DLQ, and refresh Lambda.
+- Extended quality dataset `qa-issues-s3-76bde119` with `input_slot`; created S3 source `qa-inspections-source-76bde119` and dataset `qa-inspections-s3-76bde119`.
+- A live invocation with a real four-input job exposed that Quick `ListIngestions` has no resource-level IAM scope. The Lambda now relies on Quick's dataset-scoped `CreateIngestion` response and SQS retry instead of account-wide listing permission; the external Lambda role grant is scoped to the two dataset ingestion ARN patterns.
+- The first inspection dataset ingestion failed because the CSV did not exist yet. The deployed worker then published both CSVs and both new SPICE ingestions completed successfully.
+- Live refresh result: 56 quality reports → 154 rows and 56 inspection manifests → 424 rows. For four-input job `ffe13591-8570-4ab9-9117-edf19b075865`, the quality CSV has rows in `input`/`input_2`/`input_3`/`input_4`; inspection has 8 rows per slot. Both datasets refreshed with `COMPLETED` status.
+- Authenticated dashboard embedding remains pending row-level security; flattened reports aggregate all jobs in the bucket, so anonymous embedding is unsafe.

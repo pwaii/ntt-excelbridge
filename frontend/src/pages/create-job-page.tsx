@@ -25,7 +25,7 @@ export function CreateJobPage() {
     defaultValues: defaults, resolver: zodResolver(jobCreationSchema), mode: "onTouched",
   });
   const values = watch();
-  const { comment_name, outputHeader, currentFile, currentFiles = [], mainFile } = values;
+  const { outputHeader, currentFile, currentFiles = [], mainFile } = values;
   const standardize = values.standardize ?? false;
   const update = values.update ?? false;
   const createAction = useRef<(() => Promise<void>)>();
@@ -110,7 +110,7 @@ export function CreateJobPage() {
                   <div className="output-outline-heading"><GitCompareArrows aria-hidden="true" /><h2 id="output-policy-title">Your output</h2></div>
                   <dl className="output-outline-facts">
                     <div><dt>Based on</dt><dd>{update ? mainFile?.name || "Choose a main workbook" : currentFiles.length > 1 ? `${currentFiles.length} current workbooks` : currentFile?.name || "Choose a current workbook"}</dd></div>
-                    <div><dt>New column</dt><dd>{outputHeader.trim() || "Name your output column"}</dd></div>
+                    <div><dt>New column</dt><dd>{outputHeader?.trim() || "Name your output column"}</dd></div>
                   </dl>
                   <div className="output-path" aria-hidden="true"><span>Upload</span><ArrowRight /><span>Review</span><ArrowRight /><span>New copy</span></div>
                   <div aria-live="polite" aria-atomic="true"><details className="output-policy-disclosure"><summary>{policy.title}<ChevronDown aria-hidden="true" /></summary><p>{policy.description}</p></details></div>
