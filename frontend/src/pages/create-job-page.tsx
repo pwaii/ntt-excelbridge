@@ -65,9 +65,6 @@ export function CreateJobPage() {
     setResetVersion((version) => version + 1);
   }
 
-  const sectionLetters = "ABCDEFGH";
-  let sectionIndex = 0;
-
   return (
     <section aria-labelledby="page-title" className="engagement">
       <header className="engagement-masthead">
@@ -81,32 +78,8 @@ export function CreateJobPage() {
           <fieldset disabled={integrationLocked} className="builder-fieldset">
             <legend className="sr-only">Job details</legend>
 
-            <div className="task-selector" role="group" aria-labelledby="task-selector-label">
-              <p id="task-selector-label" className="task-selector-label">What do you want to do? <span aria-hidden="true" className="task-selector-required">*</span></p>
-              <div className="task-cards">
-                <label className="task-card">
-                  <input type="checkbox" {...register("addColumn")} aria-describedby="task-add-column-desc" />
-                  <span className="task-card-icon" aria-hidden="true"><Columns2 /></span>
-                  <span className="task-card-title">Add a column</span>
-                  <span id="task-add-column-desc" className="task-card-desc">Use AI to calculate or fill in new data for every row.</span>
-                </label>
-                <label className="task-card">
-                  <input type="checkbox" {...register("standardize")} aria-describedby="task-standardize-desc" />
-                  <span className="task-card-icon" aria-hidden="true"><ArrowLeftRight /></span>
-                  <span className="task-card-title">Standardize my file</span>
-                  <span id="task-standardize-desc" className="task-card-desc">Align headers and values to match a master file.</span>
-                </label>
-                <label className="task-card">
-                  <input type="checkbox" {...register("update")} aria-describedby="task-update-desc" />
-                  <span className="task-card-icon" aria-hidden="true"><RefreshCw /></span>
-                  <span className="task-card-title">Update master file</span>
-                  <span id="task-update-desc" className="task-card-desc">Push approved values from your file back to the master.</span>
-                </label>
-              </div>
-            </div>
-
-            <section aria-labelledby="li-your-file-title" className="ledger-item">
-              <span className="ledger-ref" aria-hidden="true">{sectionLetters[sectionIndex++]}</span>
+            <section aria-labelledby="li-your-file-title" className="ledger-item" style={{ borderBottom: "none" }}>
+              <span className="ledger-ref" aria-hidden="true">A</span>
               <div className="ledger-main">
                 <div className="ledger-head"><h2 id="li-your-file-title" className="ledger-label">Your file</h2><span className="ledger-flag">Required</span></div>
                 <div className="ledger-body">
@@ -115,23 +88,50 @@ export function CreateJobPage() {
               </div>
             </section>
 
-            {requiresMain && (
-              <section aria-labelledby="li-master-file-title" className="ledger-item">
-                <span className="ledger-ref" aria-hidden="true">{sectionLetters[sectionIndex++]}</span>
-                <div className="ledger-main">
-                  <div className="ledger-head"><h2 id="li-master-file-title" className="ledger-label">Master file</h2><span className="ledger-flag">Required</span></div>
+            <div className="ledger-item">
+              <span aria-hidden="true" />
+              <div className="task-selector" role="group" aria-labelledby="task-selector-label">
+                <p id="task-selector-label" className="task-selector-label">What do you want to do? <span aria-hidden="true" className="task-selector-required">*</span></p>
+                <div className="task-cards">
+                  <label className="task-card">
+                    <input type="checkbox" {...register("addColumn")} aria-describedby="task-add-column-desc" />
+                    <span className="task-card-icon" aria-hidden="true"><Columns2 /></span>
+                    <span className="task-card-title">Add a column</span>
+                    <span id="task-add-column-desc" className="task-card-desc">Use AI to calculate or fill in new data for every row.</span>
+                  </label>
+                  <label className="task-card">
+                    <input type="checkbox" {...register("standardize")} aria-describedby="task-standardize-desc" />
+                    <span className="task-card-icon" aria-hidden="true"><ArrowLeftRight /></span>
+                    <span className="task-card-title">Standardize my file</span>
+                    <span id="task-standardize-desc" className="task-card-desc">Align headers and values to match a master file.</span>
+                  </label>
+                  <label className="task-card">
+                    <input type="checkbox" {...register("update")} aria-describedby="task-update-desc" />
+                    <span className="task-card-icon" aria-hidden="true"><RefreshCw /></span>
+                    <span className="task-card-title">Update master file</span>
+                    <span id="task-update-desc" className="task-card-desc">Push approved values from your file back to the master.</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <section aria-labelledby="li-master-file-title" className="ledger-item">
+              <span className="ledger-ref" aria-hidden="true">B</span>
+              <div className="ledger-main">
+                <div className="ledger-head"><h2 id="li-master-file-title" className="ledger-label">Master file</h2>{requiresMain && <span className="ledger-flag">Required</span>}</div>
+                {requiresMain && (
                   <div className="ledger-body">
                     <WorkbookFilePicker key={`main-${resetVersion}`} id="main-file" label="Master file" file={mainFile ?? null} onChange={(file) => changeFile("mainFile", file)} validationError={errors.mainFile?.message} onSelectionError={(message) => setSelectionErrors((previous) => ({ ...previous, main: message }))} />
                   </div>
-                </div>
-              </section>
-            )}
+                )}
+              </div>
+            </section>
 
-            {addColumn && (
-              <section aria-labelledby="li-what-to-add-title" className="ledger-item">
-                <span className="ledger-ref" aria-hidden="true">{sectionLetters[sectionIndex++]}</span>
-                <div className="ledger-main">
-                  <div className="ledger-head"><h2 id="li-what-to-add-title" className="ledger-label">What to add</h2><span className="ledger-flag">Optional</span></div>
+            <section aria-labelledby="li-what-to-add-title" className="ledger-item">
+              <span className="ledger-ref" aria-hidden="true">C</span>
+              <div className="ledger-main">
+                <div className="ledger-head"><h2 id="li-what-to-add-title" className="ledger-label">What to add</h2>{addColumn && <span className="ledger-flag">Optional</span>}</div>
+                {addColumn && (
                   <div className="ledger-body">
                     <label htmlFor="prompt" className="field-label">What should the new column contain?</label>
                     <textarea id="prompt" {...register("comment_name")} aria-invalid={Boolean(errors.comment_name)} aria-describedby={errors.comment_name ? "prompt-error" : "prompt-hint"} rows={3} className="field-control instruction-field" placeholder="For example, calculate Profit as Revenue minus Cost." />
@@ -141,11 +141,12 @@ export function CreateJobPage() {
                       <input id="output-header" {...register("outputHeader")} aria-invalid={Boolean(errors.outputHeader)} className="field-control field-mono" aria-describedby={errors.outputHeader ? "output-header-error" : "output-header-hint"} placeholder="e.g. Profit" />
                       {errors.outputHeader ? <p id="output-header-error" role="alert" className="field-error">{errors.outputHeader.message}</p> : <p id="output-header-hint" className="field-hint">Leave blank and we'll name it from your description above.</p>}
                     </div>
-                    {update && <p role="note" className="update-note">Unmatched current rows are skipped and reported, not inserted automatically.</p>}
                   </div>
-                </div>
-              </section>
-            )}
+                )}
+              </div>
+            </section>
+
+            {update && <p role="note" className="update-note">Unmatched current rows are skipped and reported, not inserted automatically.</p>}
 
             <LargeFileWarning />
             {!integrationLocked && <JobFormActions canStart={Boolean(localFormValid) && backendAvailable} onReset={resetForm} missingRequirements={missingRequirements} />}

@@ -44,6 +44,25 @@ def _artifact_map_key(base: str, slot: str) -> str:
     return base if slot == "input" else f"{base}_{slot}"
 
 
+def _output_download_filename(artifact_name: str, files: dict[str, Any]) -> str:
+    """Derive a user-facing download filename from the artifact name and source files."""
+    if artifact_name == "output":
+        slot = "main" if "main" in files else "input"
+    elif artifact_name.startswith("output_current"):
+        slot = "input" + artifact_name.removeprefix("output_current")
+    elif artifact_name.startswith("output_"):
+        slot = "input_" + artifact_name.removeprefix("output_")
+    else:
+        return f"{artifact_name}.xlsx"
+    file_info = files.get(slot) or files.get("input", {})
+    stem = str(file_info.get("filename", "output.xlsx")).removesuffix(".xlsx")
+    try:
+        n = 1 if slot in ("input", "main") else int(slot.removeprefix("input_"))
+    except ValueError:
+        n = 1
+    return f"{stem}-output_{n}.xlsx"
+
+
 def _artifact_filename(name: str, slot: str) -> str:
     return name if slot == "input" else f"{slot}-{name}"
 
@@ -599,11 +618,10 @@ def apply_handler(event: dict[str, Any], context) -> dict[str, Any]:
         )
     artifacts = dict(item.get("artifacts", {}))
     xlsx_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    output_key = s3.artifact_key(event["job_id"], "output", "final.xlsx")
-    # The primary deliverable keeps final.xlsx / the "output" key; any additional
-    # workbooks (extra inputs, standardized currents under `both`) get their own files.
+    files = item.get("files", {})
+    output_key = s3.artifact_key(event["job_id"], "output", _output_download_filename("output", files))
     for name, body in outputs.items():
-        key = output_key if name == "output" else s3.artifact_key(event["job_id"], "output", f"final-{name}.xlsx")
+        key = s3.artifact_key(event["job_id"], "output", _output_download_filename(name, files))
         if not s3.object_exists(key):
             s3.put_bytes(key, body, xlsx_type)
         artifacts[name] = {"key": key, "content_type": xlsx_type, "size_bytes": len(body), "sha256": sha256(body).hexdigest()}
