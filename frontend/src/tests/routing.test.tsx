@@ -49,48 +49,42 @@ describe("application routing", () => {
     ["/login", "Sign in"],
     ["/jobs/new", "New job"],
     ["/jobs/job-42", "Job progress"],
-    ["/jobs/job-42/quality-review", "Quality review"],
-    ["/jobs/job-42/transformation-review", "Transformation review"],
-    ["/jobs/job-42/result", "Result"],
+    ["/jobs/job-42/quality-review", "Job progress"],        // redirects to /jobs/:id
+    ["/jobs/job-42/transformation-review", "Job progress"], // redirects to /jobs/:id
+    ["/jobs/job-42/result", "Job progress"],                // redirects to /jobs/:id
+    ["/jobs/job-42/unknown", "Job progress"],               // wildcard catch-all
     ["/unknown", "Page not found"],
-    ["/jobs/job-42/unknown", "Page not found"],
   ])("renders %s with a matching heading and title", (path, heading) => {
     renderAt(path);
     expect(container.querySelectorAll("h1")).toHaveLength(1);
     expect(container.querySelector("h1")?.textContent).toBe(heading);
     expect(document.title).toBe(`${heading} | Pilotxl`);
     expect(document.activeElement?.id).toBe("main-content");
-    if (["Transformation review", "Result"].includes(heading)) {
-      expect(container.textContent).toContain("Sign in again or ask your administrator");
-      expect(container.textContent).not.toContain("Coming soon");
-      expect(container.querySelector("form")).toBeNull();
-    }
   });
 
   it("redirects the root to login without calling authentication services", () => {
     renderAt("/");
     expect(window.location.pathname).toBe("/login");
     expect(container.querySelector("h1")?.textContent).toBe("Sign in");
-    expect(container.textContent).toContain("You’re signed in");
+    expect(container.textContent).toContain("You're signed in");
     expect(container.querySelector("form")).toBeNull();
   });
 
-  it("keeps job navigation scoped to the current ID and marks only the exact active page", () => {
-    renderAt("/jobs/customer%20report/quality-review");
+  it("shows a single workflow link per job with no sub-links", () => {
+    renderAt("/jobs/customer%20report");
     const navigation = container.querySelector('[aria-label="Desktop navigation"]');
-    expect(navigation?.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
-    expect(navigation?.querySelector('[aria-current="page"]')?.textContent).toContain("Quality review");
-    expect(navigation?.querySelector('a[href="/jobs/customer%20report/result"]')).not.toBeNull();
-    click(navigation?.querySelector('a[href="/jobs/customer%20report/result"]') ?? null);
-    expect(window.location.pathname).toBe("/jobs/customer%20report/result");
-    expect(container.querySelector("h1")?.textContent).toBe("Result");
-    expect(navigation?.querySelector('[aria-current="page"]')?.textContent).toContain("Result");
+    const jobLink = navigation?.querySelector('a[href="/jobs/customer%20report"]');
+    expect(jobLink).not.toBeNull();
+    expect(jobLink?.getAttribute("aria-current")).toBe("page");
+    expect(navigation?.querySelector('a[href*="quality-review"]')).toBeNull();
+    expect(navigation?.querySelector('a[href*="transformation-review"]')).toBeNull();
+    expect(navigation?.querySelector('a[href*="result"]')).toBeNull();
   });
 
   it("does not invent a current job on workspace pages", () => {
     renderAt("/jobs/new");
     const links = container.querySelectorAll('[aria-label="Desktop navigation"] a');
-    expect([...links].map((link) => link.getAttribute("href"))).toEqual(["/jobs/new", "/login"]);
+    expect([...links].map((link) => link.getAttribute("href"))).toEqual(["/jobs/new"]);
   });
 
   it("opens mobile navigation and closes it after a client-side route change", () => {

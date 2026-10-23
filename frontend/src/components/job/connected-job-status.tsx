@@ -35,7 +35,7 @@ export function ConnectedJobStatus({ jobId }: { jobId: string }) {
   const [seen, setSeen] = useState(new Set<number>());
   const active = useRef<AbortController>();
   const delay = useRef(2000);
-  const autoSelected = useRef(false);
+  const userSelected = useRef(false);
   const ready = auth.state.status === "authenticated" && auth.configurationIssues.length === 0 && (auth.mode === "local-development" || Boolean(import.meta.env.VITE_COGNITO_API_TOKEN_TYPE));
   const load = useCallback(async () => {
     if (!services.api || !ready || active.current) return;
@@ -53,7 +53,7 @@ export function ConnectedJobStatus({ jobId }: { jobId: string }) {
   }, [services, ready, jobId]);
   useEffect(() => {
     delay.current = 2000;
-    autoSelected.current = false;
+    userSelected.current = false;
     setJob(undefined);
     setObserved([]);
     setSelected(-1);
@@ -66,15 +66,17 @@ export function ConnectedJobStatus({ jobId }: { jobId: string }) {
     const timer = setTimeout(() => { delay.current = Math.min(15_000, delay.current * 2); void load(); }, delay.current);
     return () => clearTimeout(timer);
   }, [job, error, load]);
-  // Auto-select active/failed stage on first job load.
+  // Track the active/failed stage automatically until the user clicks a circle.
   useEffect(() => {
-    if (!job || autoSelected.current) return;
-    autoSelected.current = true;
+    if (!job || userSelected.current) return;
     const stgs = jobStages(job, observed);
     const idx = stgs.findIndex(s => s.state === "active" || s.state === "failed");
     const first = idx >= 0 ? idx : stgs.reduce((best, s, i) => s.state === "complete" ? i : best, -1);
-    if (first >= 0) { setSelected(first); setSeen(new Set(first >= 2 ? [first] : [])); }
-  }, [job]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (first >= 0) {
+      setSelected(first);
+      if (first >= 2) setSeen(prev => { const next = new Set(prev); next.add(first); return next; });
+    }
+  }, [job, observed]); // eslint-disable-line react-hooks/exhaustive-deps
   const resumeFlow = useMemo(() => {
     if (!job || job.status !== "UPLOADED" || !services.api) return undefined;
     const config = workflowConfigurationSchema.safeParse({ comment_name: job.config.comment_name, outputHeader: job.config.output_header, standardize: job.config.standardize, update: job.config.update });
@@ -96,6 +98,7 @@ export function ConnectedJobStatus({ jobId }: { jobId: string }) {
     }
   }
   function handleSelect(i: number) {
+    userSelected.current = true;
     setSelected(i);
     if (i >= 2) setSeen(prev => { const next = new Set(prev); next.add(i); return next; });
   }
