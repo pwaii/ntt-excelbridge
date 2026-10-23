@@ -9,9 +9,18 @@ import { workflowConfigurationSchema } from "@/schemas/job-creation";
 import { createMetadataFlow } from "@/metadata/controller";
 import { createBackendMetadataAdapter } from "@/metadata/backend-adapter";
 import { PostUploadConfiguration } from "./post-upload-configuration";
-import { JobTimeline } from "./job-timeline";
-import { CompletedJobOutput } from "./result-workspace";
+import { WorkflowStepper } from "./workflow-stepper";
+import { messages } from "./job-timeline";
+import { jobStages } from "@/lib/job-stages";
+import { QualityReviewPage } from "@/pages/quality-review-page";
+import { TransformationReviewPage } from "@/pages/transformation-review-page";
+import { ResultPage } from "@/pages/result-page";
 import { RefreshCw } from "lucide-react";
+
+const completedCopy: Record<string, [string, string]> = {
+  setup: ["Setup complete", "Your workbooks are ready."],
+  inspect: ["Data check complete", "No blocking issues were found."],
+};
 
 // Real status reconciliation with capped polling and server-owned workflow state.
 export function ConnectedJobStatus({ jobId }: { jobId: string }) {
@@ -22,8 +31,11 @@ export function ConnectedJobStatus({ jobId }: { jobId: string }) {
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
   const [observed, setObserved] = useState<string[]>([]);
+  const [selected, setSelected] = useState(-1);
+  const [seen, setSeen] = useState(new Set<number>());
   const active = useRef<AbortController>();
   const delay = useRef(2000);
+  const autoSelected = useRef(false);
   const ready = auth.state.status === "authenticated" && auth.configurationIssues.length === 0 && (auth.mode === "local-development" || Boolean(import.meta.env.VITE_COGNITO_API_TOKEN_TYPE));
   const load = useCallback(async () => {
     if (!services.api || !ready || active.current) return;
@@ -41,8 +53,11 @@ export function ConnectedJobStatus({ jobId }: { jobId: string }) {
   }, [services, ready, jobId]);
   useEffect(() => {
     delay.current = 2000;
+    autoSelected.current = false;
     setJob(undefined);
     setObserved([]);
+    setSelected(-1);
+    setSeen(new Set());
     void load();
     return () => { const controller = active.current; active.current = undefined; controller?.abort(); };
   }, [load]);
@@ -51,6 +66,15 @@ export function ConnectedJobStatus({ jobId }: { jobId: string }) {
     const timer = setTimeout(() => { delay.current = Math.min(15_000, delay.current * 2); void load(); }, delay.current);
     return () => clearTimeout(timer);
   }, [job, error, load]);
+  // Auto-select active/failed stage on first job load.
+  useEffect(() => {
+    if (!job || autoSelected.current) return;
+    autoSelected.current = true;
+    const stgs = jobStages(job, observed);
+    const idx = stgs.findIndex(s => s.state === "active" || s.state === "failed");
+    const first = idx >= 0 ? idx : stgs.reduce((best, s, i) => s.state === "complete" ? i : best, -1);
+    if (first >= 0) { setSelected(first); setSeen(new Set(first >= 2 ? [first] : [])); }
+  }, [job]); // eslint-disable-line react-hooks/exhaustive-deps
   const resumeFlow = useMemo(() => {
     if (!job || job.status !== "UPLOADED" || !services.api) return undefined;
     const config = workflowConfigurationSchema.safeParse({ comment_name: job.config.comment_name, outputHeader: job.config.output_header, standardize: job.config.standardize, update: job.config.update });
@@ -71,18 +95,42 @@ export function ConnectedJobStatus({ jobId }: { jobId: string }) {
       if (!controller.signal.aborted) setLoading(false);
     }
   }
+  function handleSelect(i: number) {
+    setSelected(i);
+    if (i >= 2) setSeen(prev => { const next = new Set(prev); next.add(i); return next; });
+  }
+  const stages = job ? jobStages(job, observed) : [];
+  const msg = job ? (messages[job.status] ?? ["Checking workflow status", "Refresh this page to check for updates."]) : null;
   return <section aria-labelledby="backend-job-status" className="job-workspace">
     <div className="workspace-toolbar"><h2 id="backend-job-status" className="sr-only">Job details</h2><span className="truncate text-xs text-muted-foreground">{job?.files?.input?.filename ?? "Connecting to your workflow"}</span><Button type="button" variant="ghost" size="sm" disabled={!ready || !services.api || loading} aria-busy={loading} onClick={() => { void load(); }}><RefreshCw aria-hidden="true" />Refresh job status</Button></div>
     {!ready && <p role="note" className="notice">Sign in to load this workflow. If it remains unavailable, check your connection settings.</p>}
     {loading && !job && <WorkflowLoading label="Loading your workflow..." />}
     {error && <p role="alert" className="notice notice-error break-words">{error}</p>}
-    {job?.status === "COMPLETED" && services.api && <CompletedJobOutput key={`${jobId}-${job.revision}`} job={job} api={services.api} showReports={false} />}
-    {job && <JobTimeline job={job} observed={observed} showSummary={job.status !== "COMPLETED"} />}
-
+    {job && <>
+      <WorkflowStepper stages={stages} selected={selected} onSelect={handleSelect} />
+      <div className="stepper-panel">
+        {selected === 0 && (
+          <div className="stage-detail">
+            {stages[0]?.state === "complete"
+              ? <><h3>{completedCopy.setup[0]}</h3><p>{completedCopy.setup[1]}</p></>
+              : <><h3>{msg?.[0]}</h3><p>{msg?.[1]}</p></>}
+            {resumeFlow && <PostUploadConfiguration flow={resumeFlow} onStarted={() => { void load(); }} />}
+          </div>
+        )}
+        {selected === 1 && (
+          <div className="stage-detail">
+            {stages[1]?.state === "complete"
+              ? <><h3>{completedCopy.inspect[0]}</h3><p>{completedCopy.inspect[1]}</p></>
+              : <><h3>{msg?.[0]}</h3><p>{msg?.[1]}</p></>}
+          </div>
+        )}
+        {seen.has(2) && <div hidden={selected !== 2}><QualityReviewPage /></div>}
+        {seen.has(3) && <div hidden={selected !== 3}><TransformationReviewPage /></div>}
+        {seen.has(4) && <div hidden={selected !== 4}><ResultPage /></div>}
+      </div>
+    </>}
     {job?.error_code && <div role="alert" className="notice notice-error"><p className="font-medium">Processing needs attention</p>{job.error_detail && <p className="mt-1 break-words">{job.error_detail}</p>}<details className="mt-2 text-xs"><summary className="cursor-pointer">Error details</summary><p className="mt-2 break-all">{job.error_code}</p></details></div>}
     {job?.status === "FAILED" && <div className="flex flex-wrap items-center gap-3"><Button type="button" variant="outline" disabled={!ready || !services.api || loading || Boolean(error)} onClick={() => { void retry(); }}>Retry failed processing</Button><p className="text-xs text-muted-foreground">No need to upload again.</p></div>}
-    {job && ["DRAFT", "UPLOADING"].includes(job.status) && <p className="notice text-sm">Upload is incomplete. Selected files cannot be restored after leaving the upload page.</p>}
-    {resumeFlow && <PostUploadConfiguration flow={resumeFlow} onStarted={() => { void load(); }} />}
     {job && <details className="section-disclosure"><summary>Workflow details</summary><dl className="job-context"><div><dt>Requested column</dt><dd>{job.config.output_header || job.config.comment_name}</dd></div><div><dt>Worksheet</dt><dd>{job.config.input_sheet || job.workbook_selections?.input?.sheet_name || "Not reported"}</dd></div><div><dt>Last updated</dt><dd><time dateTime={job.updated_at}>{new Date(job.updated_at).toLocaleString()}</time></dd></div></dl><dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2">
       {Object.entries(job.files ?? {}).map(([slot, file]) => <div key={slot}><dt className="text-xs text-muted-foreground">{slot === "main" ? "Main workbook" : `Current workbook${slot === "input" ? " 1" : ` ${slot.slice(6)}`}`}</dt><dd className="mt-1 break-all">{file.filename}</dd><dd className="mt-1 text-xs text-muted-foreground">{file.uploaded ? "Upload confirmed" : "Upload not confirmed"}</dd></div>)}
       <div><dt className="text-xs text-muted-foreground">Job ID</dt><dd className="mt-1 break-all">{jobId}</dd></div><div><dt className="text-xs text-muted-foreground">Server status / revision</dt><dd className="mt-1 break-all">{job.status} / {job.revision}</dd></div>
