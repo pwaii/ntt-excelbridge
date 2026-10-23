@@ -47,7 +47,7 @@ function click(element: Element | null) {
 describe("application routing", () => {
   it.each([
     ["/login", "Sign in"],
-    ["/jobs/new", "Create workflow"],
+    ["/jobs/new", "New job"],
     ["/jobs/job-42", "Job progress"],
     ["/jobs/job-42/quality-review", "Quality review"],
     ["/jobs/job-42/transformation-review", "Transformation review"],
@@ -103,7 +103,7 @@ describe("application routing", () => {
     expect(navigation?.hidden).toBe(false);
     click(navigation?.querySelector('a[href="/jobs/new"]') ?? null);
     expect(window.location.pathname).toBe("/jobs/new");
-    expect(container.querySelector("h1")?.textContent).toBe("Create workflow");
+    expect(container.querySelector("h1")?.textContent).toBe("New job");
     expect(navigation?.hidden).toBe(true);
     expect(menu?.getAttribute("aria-expanded")).toBe("false");
   });
