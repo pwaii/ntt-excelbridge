@@ -8,7 +8,10 @@ param(
     [string]$FrontendOrigin = $(if ($env:FRONTEND_ORIGIN) { $env:FRONTEND_ORIGIN } else { "http://localhost:5173" }),
     [string]$CloudFormationServiceRoleArn = $(if ($env:CLOUDFORMATION_SERVICE_ROLE_ARN) { $env:CLOUDFORMATION_SERVICE_ROLE_ARN } else { "" }),
     [string]$LambdaExecutionRoleArn = $(if ($env:LAMBDA_EXECUTION_ROLE_ARN) { $env:LAMBDA_EXECUTION_ROLE_ARN } else { "" }),
-    [string]$StateMachineExecutionRoleArn = $(if ($env:STATE_MACHINE_EXECUTION_ROLE_ARN) { $env:STATE_MACHINE_EXECUTION_ROLE_ARN } else { "" })
+    [string]$StateMachineExecutionRoleArn = $(if ($env:STATE_MACHINE_EXECUTION_ROLE_ARN) { $env:STATE_MACHINE_EXECUTION_ROLE_ARN } else { "" }),
+    [string]$QuickSightAccountId = $(if ($env:QUICKSIGHT_ACCOUNT_ID) { $env:QUICKSIGHT_ACCOUNT_ID } else { "453995432289" }),
+    [string]$QuickSightQualityDatasetId = $(if ($env:QUICKSIGHT_QUALITY_DATASET_ID) { $env:QUICKSIGHT_QUALITY_DATASET_ID } else { "qa-issues-s3-76bde119" }),
+    [string]$QuickSightInspectionDatasetId = $(if ($env:QUICKSIGHT_INSPECTION_DATASET_ID) { $env:QUICKSIGHT_INSPECTION_DATASET_ID } else { "" })
 )
 
 $ErrorActionPreference = "Stop"
@@ -67,7 +70,7 @@ try {
         "--stack-name", $StackName,
         "--region", $Region,
         "--resolve-s3",
-        "--parameter-overrides", "Environment=$Environment", "BedrockModelId=$ModelId", "BedrockHeavyModelId=$HeavyModelId", "FrontendOrigin=$FrontendOrigin", "LambdaExecutionRoleArn=$LambdaExecutionRoleArn", "StateMachineExecutionRoleArn=$StateMachineExecutionRoleArn",
+        "--parameter-overrides", "Environment=$Environment", "BedrockModelId=$ModelId", "BedrockHeavyModelId=$HeavyModelId", "FrontendOrigin=$FrontendOrigin", "LambdaExecutionRoleArn=$LambdaExecutionRoleArn", "StateMachineExecutionRoleArn=$StateMachineExecutionRoleArn", "QuickSightAccountId=$QuickSightAccountId", "QuickSightQualityDatasetId=$QuickSightQualityDatasetId", "QuickSightInspectionDatasetId=$QuickSightInspectionDatasetId",
         "--no-fail-on-empty-changeset"
     )
     if (-not [string]::IsNullOrWhiteSpace($CloudFormationServiceRoleArn)) {

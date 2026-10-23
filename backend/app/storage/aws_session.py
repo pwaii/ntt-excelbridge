@@ -46,3 +46,8 @@ def get_dynamodb_resource():
 @lru_cache(maxsize=1)
 def get_stepfunctions_client():
     return get_session().client("stepfunctions", config=get_client_config())
+
+
+@lru_cache(maxsize=1)
+def get_quicksight_client():
+    return get_session().client("quicksight", config=get_client_config())

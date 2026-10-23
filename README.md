@@ -79,6 +79,40 @@ Open `http://localhost:5173/jobs/new`. The S3 bucket must include the CORS
 configuration in `infra/template.yaml` (or an equivalent rule) for the
 frontend origin; otherwise the browser will block the direct `PUT` request.
 
+## Amazon Quick analytics
+
+The QuickSight S3 integration for account `453995432289` was initialized from
+the QuickSight console under **Admin → AWS resources**. The S3-backed quality
+dataset is `qa-issues-s3-76bde119`; the S3 source manifest must point to
+`quicksight/quality-issues.csv` in the application bucket and the stack must be
+deployed in `ap-southeast-1` to address those Quick resources.
+
+The SAM stack enables S3 EventBridge events and adds a buffered path:
+quality-report object-created event → EventBridge → SQS → refresh Lambda. The
+queue batches events for up to one minute; the Lambda scans all jobs, folds
+quality reports and inspection manifests from every current-workbook slot into
+stable CSVs, then requests SPICE ingestion. An active ingestion leaves the SQS
+batch queued for retry so a later run refreshes the newest CSV. Repeated errors
+move messages to the configured dead-letter queue for inspection and redrive.
+
+The Lambda execution role is supplied from outside this template. Add least-
+privilege permissions for `s3:ListBucket` on the app bucket, `s3:GetObject` on
+`jobs/*`, `s3:PutObject` on `quicksight/*`, SQS receive/delete/attributes on the
+refresh queue, and Quick `ListIngestions`/`CreateIngestion` on the configured
+dataset ARNs. The existing Quick service role must retain read access to the
+CSV object and manifest. The stack does not create or broaden IAM policies.
+
+Before enabling refreshes, edit the existing quality dataset schema to include
+the new `input_slot` column. In Quick, create a second S3-backed dataset using
+[`scripts/qs-inspections-manifest.json`](scripts/qs-inspections-manifest.json)
+for `quicksight/inspections.csv`, then deploy with
+`QuickSightInspectionDatasetId` set to its dataset ID. The pipeline writes that
+CSV even before the second dataset is configured. Build and publish dashboards
+from the datasets: quality issues by kind/action/job/input slot, plus column
+types and blank rates by job/input slot. Do not expose an anonymous embedded
+dashboard until row-level security is mapped to the app's authenticated users;
+the flattened reports currently aggregate all jobs in the whole bucket.
+
 ## Backend Days 1–7 progress
 
 The backend includes deterministic workbook inspection and quality reporting,

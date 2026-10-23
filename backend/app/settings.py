@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     bedrock_temperature: float = 0.0
 
     app_data_bucket: str = ""
+    quicksight_account_id: str = ""
+    quicksight_quality_dataset_id: str = ""
+    quicksight_inspection_dataset_id: str = ""
     s3_prefix: str = "jobs"
     dynamo_table: str = "xlsx-workflow"
     state_machine_arn: str = ""

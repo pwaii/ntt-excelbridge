@@ -145,3 +145,10 @@ Spec: `docs/superpowers/specs/2026-10-16-ai-day7-design.md` · Plan: `docs/super
 1. **Automation pipeline**  EventBridge S3 t—rigger on `jobs/*/quality/quality-report.json` → Lambda runs flatten → `create-ingestion` on `qa-issues-s3-76bde119`. Concurrency guard: skip if ingestion already RUNNING. Not yet built.
 2. **`flatten_inspections.py`** — run to add workbook-metadata dataset (columns, types, blank rates per job).
 3. **QuickSight embedding** — Enterprise supports anonymous embedding (`generate-embed-url-for-anonymous-user`). FastAPI generates signed URL; React renders in `<iframe>`. Requires: publish dashboard, create namespace for anonymous access. Not started.
+
+### Quick integration follow-through — 2026-10-23
+- Added `backend/app/services/quicksight_pipeline.py` to flatten primary and `input_2`–`input_8` quality/inspection artifacts. Both CSVs always write headers, including when there are no rows.
+- Added a buffered S3 EventBridge → SQS → Lambda refresh path in `infra/template.yaml`. Events batch for up to 60 seconds; the handler rebuilds both CSVs and queues a retry when a SPICE ingestion is already running.
+- Added `scripts/qs-inspections-manifest.json` and refreshed the manual demo pipeline to use the same multi-slot flattening logic.
+- **Not deployed:** AWS profile `ChallengerAccess-453995432289` is absent here; the available `finpilot` SSO profile is expired. Deployment also needs the externally managed Lambda role updated with S3/SQS/Quick permissions, per README.
+- **Not completed:** create the inspection dataset and dashboards in Quick; add authenticated dashboard embedding after row-level security maps dashboard rows to the app user. Current CSVs aggregate all jobs in the bucket, so anonymous embedding is not safe.

@@ -26,6 +26,16 @@ Parameters:
   FrontendOrigin:
     Type: String
     Default: http://localhost:5173
+  QuickSightAccountId:
+    Type: String
+    Default: "453995432289"
+    AllowedPattern: "^[0-9]{12}$"
+  QuickSightQualityDatasetId:
+    Type: String
+    Default: qa-issues-s3-76bde119
+  QuickSightInspectionDatasetId:
+    Type: String
+    Default: ""
   LambdaExecutionRoleArn:
     Type: String
     Description: Existing Lambda execution role ARN with the union of permissions required by the API and worker functions.
@@ -48,6 +58,9 @@ Globals:
         APP_DATA_BUCKET: !Ref DataBucket
         BEDROCK_MODEL_ID: !Ref BedrockModelId
         BEDROCK_MODEL_ID_HEAVY: !Ref BedrockHeavyModelId
+        QUICKSIGHT_ACCOUNT_ID: !Ref QuickSightAccountId
+        QUICKSIGHT_QUALITY_DATASET_ID: !Ref QuickSightQualityDatasetId
+        QUICKSIGHT_INSPECTION_DATASET_ID: !Ref QuickSightInspectionDatasetId
 
 Resources:
   DataBucket:
@@ -75,6 +88,9 @@ Resources:
             Status: Enabled
             Prefix: jobs/
             ExpirationInDays: 14
+      NotificationConfiguration:
+        EventBridgeConfiguration:
+          EventBridgeEnabled: true
 
   MetadataTable:
     Type: AWS::DynamoDB::Table
@@ -232,6 +248,70 @@ Resources:
       Handler: app.lambda_handlers.failure_handler
       Role: !Ref LambdaExecutionRoleArn
 
+  QuickSightRefreshFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handlers.quicksight_refresh_handler
+      Role: !Ref LambdaExecutionRoleArn
+      Timeout: 300
+      ReservedConcurrentExecutions: 1
+      Events:
+        QualityReportQueue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt QuickSightRefreshQueue.Arn
+            BatchSize: 10
+            MaximumBatchingWindowInSeconds: 60
+
+  QuickSightRefreshDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+
+  QuickSightRefreshQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 1800
+      MessageRetentionPeriod: 345600
+      SqsManagedSseEnabled: true
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt QuickSightRefreshDeadLetterQueue.Arn
+        maxReceiveCount: 10
+
+  QuickSightRefreshQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues: [!Ref QuickSightRefreshQueue]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt QuickSightRefreshQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !GetAtt QuickSightRefreshRule.Arn
+
+  QuickSightRefreshRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Batch quality report updates before refreshing Quick SPICE datasets.
+      EventPattern:
+        source: [aws.s3]
+        detail-type: [Object Created]
+        detail:
+          bucket:
+            name: [!Ref DataBucket]
+          object:
+            key:
+              - wildcard: "jobs/*/quality/*quality-report.json"
+      Targets:
+        - Id: QuickSightRefreshQueueTarget
+          Arn: !GetAtt QuickSightRefreshQueue.Arn
+
   ApiLogGroup:
     Type: AWS::Logs::LogGroup
     DeletionPolicy: Delete
@@ -294,6 +374,14 @@ Resources:
     UpdateReplacePolicy: Delete
     Properties:
       LogGroupName: !Sub /aws/lambda/${FailureFunction}
+      RetentionInDays: 14
+
+  QuickSightRefreshLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${QuickSightRefreshFunction}
       RetentionInDays: 14
 
   WorkflowStateMachine:
