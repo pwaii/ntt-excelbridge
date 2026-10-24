@@ -38,7 +38,8 @@
       "Action": "quicksight:DescribeDataSet",
       "Resource": [
         "arn:aws:quicksight:ap-southeast-1:453995432289:dataset/qa-issues-s3-76bde119",
-        "arn:aws:quicksight:ap-southeast-1:453995432289:dataset/qa-inspections-s3-76bde119"
+        "arn:aws:quicksight:ap-southeast-1:453995432289:dataset/qa-inspections-s3-76bde119",
+        "arn:aws:quicksight:ap-southeast-1:453995432289:dataset/excelbridge-workbook-rows"
       ]
     },
     {

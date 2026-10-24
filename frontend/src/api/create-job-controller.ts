@@ -19,6 +19,10 @@ export function createJobController<T>(adapter?: CreateJobAdapter<T>) {
         setState({ phase: "create-error", error: new ApiError("configuration", "Complete the required local configuration before creating a job."), outcomeUnknown: false });
         return false;
       }
+      if (!parsed.data.addColumn && !parsed.data.standardize && !parsed.data.update) {
+        setState({ phase: "create-error", error: new ApiError("configuration", "Select at least one task before creating a job."), outcomeUnknown: false, configuration: parsed.data });
+        return false;
+      }
       if (!adapter) {
         setState({ phase: "create-error", error: new ApiError("configuration", "Job creation is unavailable until the backend publishes OpenAPI and the request/response adapter is connected."), outcomeUnknown: false, configuration: parsed.data });
         return false;

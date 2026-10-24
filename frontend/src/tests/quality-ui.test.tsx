@@ -45,7 +45,7 @@ async function render(snapshot = qualitySnapshot()) {
 
 it("renders safe cell evidence, draft states and requires an explicit submission confirmation", async () => {
   const { submit } = await render(qualitySnapshot({ items: [qualityItem({ cells: [{ coordinate: "A3", before: '<img src=x onerror="alert(1)">', after: '=HYPERLINK("bad")' }] })] }));
-  expect(container.querySelector<HTMLButtonElement>(".review-topbar button[type='button']")?.disabled ?? true).toBe(true);
+  expect([...container.querySelectorAll<HTMLButtonElement>(".review-topbar button")].some(button => button.textContent?.includes("Filters"))).toBe(true);
   // Cell content is rendered as text, never as HTML
   expect(container.textContent).toContain('<img src=x onerror="alert(1)">');
   expect(container.querySelector("img")).toBeNull();
@@ -55,7 +55,7 @@ it("renders safe cell evidence, draft states and requires an explicit submission
   act(() => verdictBtn("Accept").click());
   expect(submit).not.toHaveBeenCalled();
   // Submit requires confirmation checkbox
-  expect(container.querySelector<HTMLButtonElement>('button[aria-busy]')?.disabled).toBe(true);
+  expect([...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.includes("Submit review"))?.disabled).toBe(true);
   act(() => container.querySelector<HTMLInputElement>('.review-topbar-confirm input')!.click());
   await act(async () => { const btn = [...container.querySelectorAll("button")].find(n => n.textContent?.includes("Submit review"))!; (btn as HTMLButtonElement).click(); });
   expect(submit).toHaveBeenCalledTimes(1);
@@ -106,7 +106,7 @@ it("requires a reason for ignore and shows pattern and affected count", async ()
   // Reason is required — confirm without it shows error
   act(() => (container.querySelector(".verdict-form button[type='button']") as HTMLButtonElement | null)?.click() ?? void 0);
   expect(container.querySelector('[role="alert"]')?.textContent).toContain("reason is required");
-  expect(container.querySelector<HTMLButtonElement>('button[aria-busy]')?.disabled).toBe(true);
+  expect([...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.includes("Submit review"))?.disabled).toBe(true);
 });
 
 it("handles 120 items without pagination — sidebar has 120 dots and keyboard navigates", async () => {
@@ -124,12 +124,15 @@ it("handles 120 items without pagination — sidebar has 120 dots and keyboard n
   expect(container.querySelector(".card-nav-count")?.textContent).toContain("3");
 });
 
-it("shows an honest empty report and never enables an empty review submission", async () => {
-  await render(qualitySnapshot({ items: [] }));
+it("allows a human to submit a completed empty report to advance the review gate", async () => {
+  const { submit } = await render(qualitySnapshot({ items: [] }));
   expect(container.textContent).toContain("contains no findings");
   expect(container.querySelector('[aria-busy]')).toBeNull();
   expect(container.querySelector("select")).toBeNull();
-  expect(container.querySelector(`a[href="/jobs/${qualityJobId}"]`)).toBeNull();
+  const submitButton = [...container.querySelectorAll("button")].find(button => button.textContent?.includes("Submit review")) as HTMLButtonElement;
+  expect(submitButton.disabled).toBe(false);
+  await act(async () => submitButton.click());
+  expect(submit).toHaveBeenCalledOnce();
 });
 
 it("shows loading and failure states without displaying raw thrown values", async () => {
@@ -140,7 +143,7 @@ it("shows loading and failure states without displaying raw thrown values", asyn
   await act(async () => reject(new Error("private-workbook-data")));
   expect(container.textContent).toContain("could not be loaded");
   expect(container.textContent).not.toContain("private-workbook-data");
-  expect(container.querySelector<HTMLButtonElement>("button")?.disabled).toBe(false);
+  expect([...container.querySelectorAll("button")].find(button => button.textContent?.includes("Reload review"))?.disabled).toBe(false);
 });
 
 it("shows finished prerequisites and links only to the current review gate", () => {

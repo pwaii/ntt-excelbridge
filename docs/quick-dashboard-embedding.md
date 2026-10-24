@@ -1,17 +1,17 @@
 # QuickSight registered Reader embedding
 
-The current `/analytics/quick` page is an owner-scoped Excel data explorer. It
-reads original workbook rows through the authenticated backend and does not
-embed QuickSight or provision a Reader when a customer opens the page. The
-browser never receives AWS credentials.
+The `/analytics/quick` page includes both the registered-user QuickSight
+dashboard and an owner-scoped Excel data explorer. The embedded dashboard is
+opened on demand, and the page reads original workbook rows through the
+authenticated backend. The browser never receives AWS credentials.
 
-The registered Reader embed endpoint remains available at
-`/v1/analytics/quick/embed-url` for a separately embedded QuickSight dashboard.
-It maps a verified Cognito subject to a deterministic QuickSight IAM-federated
-Reader and reuses that Reader across sign-ins. The current Excel data explorer
-does not call that endpoint. Any Readers provisioned by earlier use remain
-QuickSight users until explicitly removed and may continue to incur account
-charges under the active billing terms.
+The endpoint `/v1/analytics/quick/embed-url` maps a verified Cognito subject to
+a deterministic QuickSight IAM-federated Reader and reuses that Reader across
+sign-ins. The user opens the dashboard explicitly, which fetches a one-time
+embed URL from the backend and loads it with the Amazon QuickSight Embedding
+SDK. Any Readers already provisioned remain QuickSight users until explicitly
+removed and may continue to incur account charges under the active billing
+terms.
 
 ## Billing model
 
@@ -48,17 +48,20 @@ The AWS resources are configured as follows:
    contains grants for the nine distinct app owners currently in the metadata
    table. Use `infra/scripts/publish-quick-owner-grants.ps1` to republish those
    grants without printing app subjects.
-3. Quality dataset `qa-issues-s3-76bde119` and inspection dataset
-   `qa-inspections-s3-76bde119` both use this permissions dataset with
-   `GRANT_ACCESS`, `VERSION_2` user-based RLS. Their old tag-based rules were
-   removed; both retain the `owner_id` column.
-4. All three datasets have full-refresh schedules every hour. New pipeline data
-   should appear within about an hour. QuickSight currently has 156 quality
-   rows, 443 inspection rows, and 9 owner permission rows ingested.
+3. Quality dataset `qa-issues-s3-76bde119`, inspection dataset
+   `qa-inspections-s3-76bde119`, and workbook dataset
+   `excelbridge-workbook-rows` all use this permissions dataset with
+   `GRANT_ACCESS`, `VERSION_2` user-based RLS. Each retains the `owner_id`
+   column. The API verifies RLS on all three dashboard datasets before it
+   issues an embed URL.
+4. All four datasets, including owner permissions, have hourly full-refresh
+   schedules. New pipeline data should appear after the next successful
+   refresh. Current refresh schedules and recent ingestion statuses were
+   checked in QuickSight.
 5. Lambda role `xlsx-workflow-demo-lambda` has registered-Reader permissions
-   scoped to these datasets, the dashboard, and the Reader group. Its trust
-   policy allows Lambda and self-assumption with `web-*` session names. IAM
-   Access Analyzer returned no findings for the applied identity policy.
+   scoped to all three dashboard datasets, the dashboard, and the Reader group.
+   Its trust policy allows Lambda and self-assumption with `web-*` session
+   names.
 6. The S3 manifest uses the bucket's actual `us-east-1` endpoint; the
    QuickSight data source and datasets are in `ap-southeast-1`.
 
@@ -79,6 +82,7 @@ QUICKSIGHT_ACCOUNT_ID=453995432289
 QUICKSIGHT_REGION=ap-southeast-1
 QUICKSIGHT_QUALITY_DATASET_ID=qa-issues-s3-76bde119
 QUICKSIGHT_INSPECTION_DATASET_ID=qa-inspections-s3-76bde119
+QUICKSIGHT_WORKBOOK_ROWS_DATASET_ID=excelbridge-workbook-rows
 QUICKSIGHT_PERMISSIONS_DATASET_ID=excelbridge-owner-permissions
 QUICKSIGHT_RLS_PERMISSIONS_DATASET_ARN=arn:aws:quicksight:ap-southeast-1:453995432289:dataset/excelbridge-owner-permissions
 QUICKSIGHT_READER_GROUP_NAME=website-readers
@@ -106,21 +110,30 @@ requests verify the source belongs to the signed-in owner before returning any
 row values. Rows are paged in batches so large worksheets do not require one
 unbounded response.
 
+The embedded dashboard uses the same Cognito owner and QuickSight user-based
+RLS permissions. It includes quality, inspection, and original workbook row
+datasets. The viewer's first dashboard open provisions that website account's
+QuickSight Reader; later website logins reuse it.
+
 ## Registered Reader smoke test
 
-1. Call `/v1/analytics/quick/embed-url` from an approved application origin.
-   The first call can provision a Reader; later calls reuse that user.
-2. Confirm the signed-in owner's published QuickSight dashboard loads.
-3. Test a second website account and confirm it sees only rows for its own
+1. Sign in on the deployed website and open **Excel analytics**.
+2. Choose **Open dashboard**. The backend validates owner RLS on every
+   dashboard dataset, then provisions or reuses the signed-in account's Reader
+   and returns a short-lived embed URL.
+3. Confirm the published QuickSight dashboard loads inside the page and shows
+   only that website owner's rows.
+4. Test a second website account and confirm it sees only rows for its own
    Cognito subject. This provisions another Reader and may incur another user
    charge.
-4. If a user sees an empty embedded dashboard, inspect the permissions CSV and
+5. If a user sees an empty embedded dashboard, inspect the permissions CSV and
    the permission dataset's latest ingestion status.
 
 The AWS Reader group, datasets, RLS attachments, hourly schedules, and IAM
-permissions are configured. Setup did not provision customer Readers. The
-updated application code and its QuickSight environment parameters are still
-local; the CloudFormation stack must be updated before the hosted site's
-backend can use this setup.
+permissions are configured. Setup did not provision customer Readers. The API
+Lambda and CloudFront frontend must be updated with the application changes
+before the hosted site can use this setup. Deploy only the existing function
+and static frontend assets; do not redeploy the whole SAM stack because the
+QuickSight refresh Lambda is managed separately from that stack.
 
 AWS references: [registered-user embedding](https://docs.aws.amazon.com/quicksight/latest/APIReference/API_GenerateEmbedUrlForRegisteredUser.html), [RegisterUser](https://docs.aws.amazon.com/quicksight/latest/APIReference/API_RegisterUser.html), [user-based RLS](https://docs.aws.amazon.com/quick/latest/userguide/restrict-access-to-a-data-set-using-row-level-security.html), and [SPICE refresh scheduling](https://docs.aws.amazon.com/quick/latest/userguide/refreshing-imported-data.html).

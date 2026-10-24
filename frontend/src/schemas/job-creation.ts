@@ -28,6 +28,9 @@ export const jobCreationSchema = z.object({
   update: z.boolean().optional().default(false),
   mainFile: workbookFileSchema.nullable().optional(),
 }).superRefine((values, context) => {
+  if (values.addColumn && !values.comment_name.trim()) {
+    context.addIssue({ code: "custom", path: ["comment_name"], message: "Describe what the new column should contain." });
+  }
   if ((values.standardize || values.update) && !values.mainFile) {
     context.addIssue({ code: "custom", path: ["mainFile"], message: "Select a main workbook for standardization or updates." });
   }

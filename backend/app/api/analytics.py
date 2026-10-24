@@ -34,6 +34,32 @@ def _user_rls_is_enabled(dataset: dict, permissions_dataset_arn: str) -> bool:
     )
 
 
+def _dashboard_dataset_ids() -> tuple[str, ...]:
+    """Return every data source attached to the published workbook dashboard."""
+    return (
+        settings.quicksight_quality_dataset_id,
+        settings.quicksight_inspection_dataset_id,
+        settings.quicksight_workbook_rows_dataset_id,
+    )
+
+
+def _verify_dashboard_dataset_rls(
+    quicksight, account_id: str, dataset_ids: tuple[str, ...], permissions_dataset_arn: str
+) -> None:
+    """Fail closed unless every dataset used by the dashboard has owner RLS enabled."""
+    for dataset_id in dataset_ids:
+        dataset = quicksight.describe_data_set(
+            AwsAccountId=account_id,
+            DataSetId=dataset_id,
+        ).get("DataSet", {})
+        if not _user_rls_is_enabled(dataset, permissions_dataset_arn):
+            raise HTTPException(
+                503,
+                "Quick dashboard access is paused until user-based owner security is enabled on every dashboard dataset.",
+                headers={"X-Error-Code": "QUICKSIGHT_RLS_NOT_READY"},
+            )
+
+
 def _ensure_reader(quicksight, account_id: str, owner_id: str) -> str:
     """Register the same app customer as one IAM-federated Quick Reader every time."""
     role_arn = settings.quicksight_embedding_role_arn
@@ -97,7 +123,10 @@ def quick_dashboard_embed_url(
     """Provision/reuse the app user's Reader and mint a registered-user URL."""
     account_id = settings.quicksight_account_id
     dashboard_id = settings.quicksight_dashboard_id
-    dataset_ids = (settings.quicksight_quality_dataset_id, settings.quicksight_inspection_dataset_id)
+    # Guard every dataset actually attached to the published dashboard. The
+    # workbook rows dataset contains raw customer spreadsheet values, so it
+    # must be covered by the same owner-based RLS check as the reports.
+    dataset_ids = _dashboard_dataset_ids()
     role_arn = settings.quicksight_embedding_role_arn
     permissions_arn = settings.quicksight_rls_permissions_dataset_arn
     if (
@@ -144,17 +173,7 @@ def quick_dashboard_embed_url(
         )["Credentials"]
         reader_quicksight = get_assumed_reader_quicksight_client(assumed)
 
-        for dataset_id in dataset_ids:
-            dataset = reader_quicksight.describe_data_set(
-                AwsAccountId=account_id,
-                DataSetId=dataset_id,
-            ).get("DataSet", {})
-            if not _user_rls_is_enabled(dataset, permissions_arn):
-                raise HTTPException(
-                    503,
-                    "Quick dashboard access is paused until user-based owner security is enabled on every dashboard dataset.",
-                    headers={"X-Error-Code": "QUICKSIGHT_RLS_NOT_READY"},
-                )
+        _verify_dashboard_dataset_rls(reader_quicksight, account_id, dataset_ids, permissions_arn)
 
         user_arn = _ensure_reader(reader_quicksight, account_id, owner_id)
         _ensure_dashboard_group_membership(reader_quicksight, account_id, owner_id)

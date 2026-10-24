@@ -179,14 +179,23 @@ def test_run_tool4_normalizes_unmapped_canonical_value():
     assert result.payload.mappings[0].canonical_value == ""
 
 
-def test_run_tool4_rejects_hallucinated_canonical():
+def test_run_tool4_demotes_hallucinated_canonical_without_failing_segment():
     resp = (
-        '{"mappings": [{"source_field": "Country", "source_value": "USA", '
+        '{"mappings": ['
+        '{"source_field": "Country", "source_value": "USA", '
         '"canonical_field": "Country", "canonical_value": "Mexico", "reason": "x", '
-        '"confidence": 0.9, "cardinality": "one_to_one", "action": "safe"}]}'
+        '"confidence": 0.9, "cardinality": "one_to_one", "action": "safe"},'
+        '{"source_field": "Country", "source_value": "US", '
+        '"canonical_field": "Country", "canonical_value": "United States", "reason": "exact", '
+        '"confidence": 0.95, "cardinality": "one_to_one", "action": "safe"}]}'
     )
-    with pytest.raises(ValueError, match="not in candidates"):
-        run_tool4(T4_FIXTURE, client=_client(resp))
+    result = run_tool4(T4_FIXTURE, client=_client(resp))
+    invalid, valid = result.payload.mappings
+    assert invalid.canonical_value == ""
+    assert invalid.cardinality == "unmapped"
+    assert invalid.action == "ambiguous"
+    assert valid.canonical_value == "United States"
+    assert valid.action == "safe"
 
 
 def test_run_tool4_one_to_many_demoted_to_ambiguous():

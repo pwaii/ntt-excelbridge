@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, BarChart3, RefreshCw, ShieldCheck } from "lucide-react";
+import { createEmbeddingContext } from "amazon-quicksight-embedding-sdk";
 import type { ExcelDataColumn, ExcelDataSource, ExcelRowsPage } from "@/api/analytics-api";
 import { createAnalyticsApi } from "@/api/analytics-api";
 import { createApiClient } from "@/api/http-client";
@@ -60,6 +61,13 @@ export function QuickDashboardPage() {
   const [error, setError] = useState("");
   const [errorDiagnostics, setErrorDiagnostics] = useState("");
   const [reloadVersion, setReloadVersion] = useState(0);
+  const [quickEmbedUrl, setQuickEmbedUrl] = useState("");
+  const [quickLoading, setQuickLoading] = useState(false);
+  const [quickLoaded, setQuickLoaded] = useState(false);
+  const [quickError, setQuickError] = useState("");
+  const [quickErrorDiagnostics, setQuickErrorDiagnostics] = useState("");
+  const quickContainer = useRef<HTMLDivElement>(null);
+  const quickContext = useRef<Awaited<ReturnType<typeof createEmbeddingContext>> | null>(null);
   const fieldSourceKey = useRef("");
   const redirectLoopbackIpToLocalhost = import.meta.env.DEV && window.location.hostname === "127.0.0.1";
   const ready = auth.state.status === "authenticated"
@@ -91,6 +99,24 @@ export function QuickDashboardPage() {
       if (failure instanceof ApiError) setErrorDiagnostics([failure.status ? `HTTP ${failure.status}` : "", failure.code ? `code ${failure.code}` : "", failure.requestId ? `request ${failure.requestId}` : ""].filter(Boolean).join(" · "));
     } finally {
       if (!signal?.aborted) setSourceLoading(false);
+    }
+  }, [api]);
+
+  const loadQuickDashboard = useCallback(async () => {
+    setQuickLoading(true);
+    setQuickLoaded(false);
+    setQuickError("");
+    setQuickErrorDiagnostics("");
+    setQuickEmbedUrl("");
+    try {
+      const result = await api.getQuickDashboardEmbedUrl();
+      setQuickEmbedUrl(result.embed_url);
+    } catch (failure) {
+      setQuickError("The QuickSight dashboard could not be opened. Retry, or ask an administrator to check the QuickSight connection.");
+      if (failure instanceof ApiError) {
+        setQuickErrorDiagnostics([failure.status ? `HTTP ${failure.status}` : "", failure.code ? `code ${failure.code}` : "", failure.requestId ? `request ${failure.requestId}` : ""].filter(Boolean).join(" · "));
+      }
+      setQuickLoading(false);
     }
   }, [api]);
 
@@ -126,6 +152,51 @@ export function QuickDashboardPage() {
     return () => controller.abort();
   }, [api, ready, sourceId, sheet, offset, reloadVersion]);
 
+  useEffect(() => {
+    if (!quickEmbedUrl || !quickContainer.current) return;
+    let cancelled = false;
+    setQuickLoading(true);
+    const embed = async () => {
+      try {
+        const context = quickContext.current ?? await createEmbeddingContext();
+        if (cancelled || !quickContainer.current) return;
+        quickContext.current = context;
+        await context.embedDashboard({
+          url: quickEmbedUrl,
+          container: quickContainer.current,
+          height: "680px",
+          width: "100%",
+          onChange: (event) => {
+            if (event.eventName === "FRAME_NOT_CREATED" || event.eventName === "INVALID_URL") {
+              setQuickError("QuickSight could not initialize this dashboard. Retry, or ask an administrator to check the embedding configuration.");
+              setQuickLoading(false);
+            }
+          },
+        }, {
+          onMessage: (event) => {
+            if (event.eventName === "CONTENT_LOADED") {
+              setQuickLoaded(true);
+              setQuickLoading(false);
+            } else if (event.eventName === "ERROR_OCCURRED") {
+              setQuickError("QuickSight could not display this dashboard. Retry, or ask an administrator to check dashboard access and dataset security.");
+              setQuickLoading(false);
+            }
+          },
+        });
+      } catch {
+        if (!cancelled) {
+          setQuickError("QuickSight could not initialize this dashboard. Retry, or ask an administrator to check the embedding configuration.");
+          setQuickLoading(false);
+        }
+      }
+    };
+    void embed();
+    return () => {
+      cancelled = true;
+      quickContainer.current?.replaceChildren();
+    };
+  }, [quickEmbedUrl]);
+
   const columns = page?.columns ?? [];
   const rows = page?.rows ?? [];
   const selectedSource = sources.find((source) => source.source_id === sourceId);
@@ -151,6 +222,27 @@ export function QuickDashboardPage() {
       <ShieldCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-primary" />
       <p>Only completed workbooks owned by your signed-in account are available here. Workflow IDs and detected data types are kept out of the chart; your original Excel fields are used instead.</p>
     </div>
+
+    <section aria-labelledby="quicksight-dashboard-heading" className="mb-6 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 id="quicksight-dashboard-heading" className="text-base font-semibold">QuickSight dashboard</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Open your secure, owner-filtered QuickSight dashboard inside this website. The first open provisions a Reader for this website account.</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => void loadQuickDashboard()} disabled={!ready || quickLoading}>
+          <RefreshCw aria-hidden="true" className={quickLoading ? "animate-spin" : ""} />
+          {quickEmbedUrl ? "Reload dashboard" : "Open dashboard"}
+        </Button>
+      </div>
+      {!quickEmbedUrl && !quickError && <p className="mt-4 rounded-lg border border-dashed border-border px-4 py-5 text-center text-sm text-muted-foreground">The QuickSight dashboard loads here when you open it.</p>}
+      {quickError && <div role="alert" className="notice notice-error mt-4 flex items-start gap-3"><AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0" /><div><p>{quickError}</p>{quickErrorDiagnostics && <p className="mt-1 text-xs text-muted-foreground">{quickErrorDiagnostics}</p>}</div></div>}
+      {quickEmbedUrl && <>
+        {quickLoading && <p role="status" className="notice mt-4">Connecting to QuickSight…</p>}
+        {quickError && <Button variant="outline" size="sm" className="mt-3" onClick={() => void loadQuickDashboard()} disabled={quickLoading}>Retry QuickSight</Button>}
+        <div ref={quickContainer} className={`mt-4 min-h-[680px] overflow-hidden rounded-lg border border-border ${quickError ? "hidden" : ""}`} />
+        {quickLoaded && <p className="mt-2 text-xs text-muted-foreground">QuickSight Reader access is tied to your website account.</p>}
+      </>}
+    </section>
 
     {!ready && <p role="note" className="notice mt-4">Sign in with a configured account to explore your Excel data.</p>}
     {sourceLoading && <p role="status" className="notice mt-4">Finding your completed workbooks…</p>}

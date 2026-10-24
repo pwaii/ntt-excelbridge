@@ -5,7 +5,7 @@ import type { CreateJobReceipt } from "@/api/create-job-types";
 
 // Frontend-only state tests with opaque toy receipts; no BE payload or presigned
 // instruction schema is claimed. Real POST /v1/jobs integration tests are blocked.
-const form = () => ({ currentFile: new File(["local"], "current.xlsx"), comment_name: "Profit", outputHeader: "profit", standardize: false, update: false, mainFile: null });
+const form = () => ({ currentFile: new File(["local"], "current.xlsx"), comment_name: "Profit", outputHeader: "profit", addColumn: true, standardize: false, update: false, mainFile: null });
 
 describe("contract-independent create-job state boundary", () => {
   it("blocks invalid local forms before invoking an adapter", async () => {
@@ -13,6 +13,13 @@ describe("contract-independent create-job state boundary", () => {
     const controller = createJobController({ create });
     expect(await controller.create({ ...form(), comment_name: "   " })).toBe(false);
     expect(await controller.create({ ...form(), update: true })).toBe(false);
+    expect(create).not.toHaveBeenCalled();
+  });
+  it("blocks creation when no workflow task is selected", async () => {
+    const create = vi.fn();
+    const controller = createJobController({ create });
+    expect(await controller.create({ ...form(), addColumn: false, standardize: false, update: false })).toBe(false);
+    expect(controller.getSnapshot()).toMatchObject({ phase: "create-error", outcomeUnknown: false, error: { kind: "configuration" } });
     expect(create).not.toHaveBeenCalled();
   });
   it("fails honestly without a published-contract adapter", async () => {

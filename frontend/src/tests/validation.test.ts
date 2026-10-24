@@ -11,7 +11,7 @@ function workbook(name = "current.xlsx", size?: number) {
   return file;
 }
 
-const valid = () => ({ currentFile: workbook(), comment_name: "Profit", outputHeader: "profit", mainFile: null, standardize: false, update: false });
+const valid = () => ({ currentFile: workbook(), comment_name: "Profit", outputHeader: "profit", mainFile: null, addColumn: true, standardize: false, update: false });
 const metadata: WorkbookMetadata = { workbookVersion: "s3-version-1", sheetName: "Actual sheet from backend", dataRowCount: 2_000, detectedHeaderRow: 3 };
 
 describe("job configuration schema", () => {
@@ -24,7 +24,6 @@ describe("job configuration schema", () => {
   it.each([
     ["missing current file", { currentFile: null }, "currentFile"],
     ["empty prompt", { comment_name: "  \t " }, "comment_name"],
-    ["empty header", { outputHeader: "   " }, "outputHeader"],
     ["a filename string instead of a File", { currentFile: "current.xlsx" }, "currentFile"],
     ["a file-shaped object", { currentFile: { name: "current.xlsx", size: 12 } }, "currentFile"],
   ])("rejects %s", (_name, patch, field) => {
@@ -38,6 +37,10 @@ describe("job configuration schema", () => {
     expect(result.comment_name).toBe("=SUM(A1:A2)");
     expect(result.outputHeader).toBe("+Profit");
     expect(result).not.toHaveProperty("prompt");
+  });
+
+  it("allows the output header to be blank so the backend can derive it from the prompt", () => {
+    expect(jobCreationSchema.safeParse({ ...valid(), outputHeader: "   " }).success).toBe(true);
   });
 
   it("defaults omitted optional booleans to false", () => {

@@ -45,7 +45,7 @@ describe("authentication routing and UI", () => {
   it("introduces the product with a standard sign-in action and keeps provider details off the welcome page", async () => {
     await renderAt("/login", adapter());
     expect(container.textContent).toContain("Pilotxl");
-    expect(container.textContent).toContain("check the proposed changes");
+    expect(container.textContent).toContain("review the proposed changes");
     expect(container.textContent).not.toContain("Cognito");
     expect(container.querySelector("aside")).toBeNull();
     expect(container.querySelector("#sign-in")).not.toBeNull();
@@ -54,7 +54,7 @@ describe("authentication routing and UI", () => {
   it.each(["/jobs/new", "/jobs/id", "/jobs/id/quality-review", "/jobs/id/transformation-review", "/jobs/id/result"])("protects %s without calling the backend", async (path) => {
     await renderAt(path, adapter());
     expect(window.location.pathname).toBe("/login");
-    expect(container.querySelector("h1")?.textContent).toBe("Sign in");
+    expect(container.querySelector("h1")?.textContent).toBe("Clear changes.Confident decisions.");
     expect(fetch).not.toHaveBeenCalled();
   });
   it("renders the existing creation page for an authenticated user", async () => {
@@ -101,8 +101,8 @@ describe("authentication routing and UI", () => {
   it("handles the callback without redirect loops", async () => {
     const auth = adapter({ initialize: async () => user, getReturnTo: () => "/jobs/id/result" });
     await renderAt("/auth/callback", auth);
-    expect(window.location.pathname).toBe("/jobs/id/result");
-    expect(container.querySelector("h1")?.textContent).toBe("Result");
+    expect(window.location.pathname).toBe("/jobs/id");
+    expect(container.querySelector("h1")?.textContent).toBe("Job progress");
   });
   it("shows a safe failed-callback recovery action", async () => {
     await renderAt("/auth/callback", adapter());

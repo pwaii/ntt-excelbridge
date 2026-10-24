@@ -46,7 +46,7 @@ function click(element: Element | null) {
 
 describe("application routing", () => {
   it.each([
-    ["/login", "Sign in"],
+    ["/login", "Clear changes.Confident decisions.", "Sign in"],
     ["/jobs/new", "New job"],
     ["/analytics/quick", "Excel data explorer"],
     ["/jobs/job-42", "Job progress"],
@@ -55,19 +55,19 @@ describe("application routing", () => {
     ["/jobs/job-42/result", "Job progress"],                // redirects to /jobs/:id
     ["/jobs/job-42/unknown", "Job progress"],               // wildcard catch-all
     ["/unknown", "Page not found"],
-  ])("renders %s with a matching heading and title", (path, heading) => {
+  ])("renders %s with a matching heading and title", (path, heading, title = heading) => {
     renderAt(path);
     expect(container.querySelectorAll("h1")).toHaveLength(1);
     expect(container.querySelector("h1")?.textContent).toBe(heading);
-    expect(document.title).toBe(`${heading} | Pilotxl`);
+    expect(document.title).toBe(`${title} | Pilotxl`);
     expect(document.activeElement?.id).toBe("main-content");
   });
 
   it("redirects the root to login without calling authentication services", () => {
     renderAt("/");
     expect(window.location.pathname).toBe("/login");
-    expect(container.querySelector("h1")?.textContent).toBe("Sign in");
-    expect(container.textContent).toContain("You're signed in");
+    expect(container.querySelector("h1")?.textContent).toBe("Clear changes.Confident decisions.");
+    expect(container.textContent).toContain("You’re signed in");
     expect(container.querySelector("form")).toBeNull();
   });
 

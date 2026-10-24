@@ -223,7 +223,9 @@ def _save_workbook(workbook: Workbook, path: Path) -> None:
             if filename == "docProps/core.xml":
                 content = re.sub(
                     rb"<dcterms:modified[^>]*>.*?</dcterms:modified>",
-                    b'<dcterms:modified xsi:type="dcterms:W3CDTF">2026-10-23T00:00:00Z</dcterms:modified>',
+                    b'<dcterms:modified xmlns:dcterms="http://purl.org/dc/terms/" '
+                    b'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" '
+                    b'xsi:type="dcterms:W3CDTF">2026-10-23T00:00:00Z</dcterms:modified>',
                     content,
                 )
             member = ZipInfo(filename, date_time=(2026, 10, 23, 0, 0, 0))

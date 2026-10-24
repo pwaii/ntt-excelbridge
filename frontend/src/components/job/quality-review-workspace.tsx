@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Link } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Loader2, RefreshCw, Send, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, RefreshCw, Send, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { WorkflowLoading } from "@/components/ui/workflow-loading";
 import { bulkCandidates, decisionError, reviewGates, submissionBlocker, type QualityReviewFlow } from "@/quality/controller";
@@ -129,6 +129,11 @@ export function QualityReviewWorkspace({ flow, jobId, onSubmitted }: { flow: Qua
           </div>
           <span className="review-topbar-count">{completed} / {required.length} decided</span>
         </div>
+        {state.snapshot && state.phase !== "submitted" && items.length > 0 && (
+          <Button size="sm" variant={filtersOpen ? "default" : "outline"} aria-expanded={filtersOpen} aria-controls="review-filters" onClick={() => setFiltersOpen(open => !open)}>
+            <SlidersHorizontal aria-hidden="true" />Filters
+          </Button>
+        )}
         {!stagePassed && !locked && acceptable.length > 0 && (
           <Button size="sm" variant="outline" onClick={acceptAllEligible}>
             Accept all eligible ({acceptable.length})
@@ -143,7 +148,7 @@ export function QualityReviewWorkspace({ flow, jobId, onSubmitted }: { flow: Qua
         {!stagePassed && (
           <>
             <Link to={`/jobs/${encodeURIComponent(jobId)}`} className="review-topbar-back">← Progress</Link>
-            <Button size="sm" disabled={Boolean(blocker) || (required.length > 0 && !confirm) || locked} aria-busy={state.phase === "submitting"} onClick={() => { void flow.submit(); }}>
+            <Button size="sm" disabled={Boolean(blocker) || (required.length > 0 && !confirm) || locked} aria-busy={state.phase === "submitting" ? true : undefined} onClick={() => { void flow.submit(); }}>
               {state.phase === "submitting" ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Send aria-hidden="true" />}
               {state.phase === "submitting" ? "Submitting…" : "Submit review"}
             </Button>
@@ -223,7 +228,7 @@ export function QualityReviewWorkspace({ flow, jobId, onSubmitted }: { flow: Qua
           {state.snapshot && state.phase !== "submitted" && filtersOpen && (
             <div className="review-queue-footer">
               {(
-                <div className="review-filter-panel" aria-label="Filters">
+                <div id="review-filters" className="review-filter-panel" aria-label="Filters">
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-xs font-semibold uppercase tracking-wide">Filters</span>
                     <Button variant="ghost" size="sm" onClick={() => setFiltersOpen(false)}><X className="size-3.5" /></Button>

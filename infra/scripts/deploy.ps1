@@ -13,6 +13,7 @@ param(
     [string]$QuickSightRegion = $(if ($env:QUICKSIGHT_REGION) { $env:QUICKSIGHT_REGION } else { "ap-southeast-1" }),
     [string]$QuickSightQualityDatasetId = $(if ($env:QUICKSIGHT_QUALITY_DATASET_ID) { $env:QUICKSIGHT_QUALITY_DATASET_ID } else { "qa-issues-s3-76bde119" }),
     [string]$QuickSightInspectionDatasetId = $(if ($env:QUICKSIGHT_INSPECTION_DATASET_ID) { $env:QUICKSIGHT_INSPECTION_DATASET_ID } else { "qa-inspections-s3-76bde119" }),
+    [string]$QuickSightWorkbookRowsDatasetId = $(if ($env:QUICKSIGHT_WORKBOOK_ROWS_DATASET_ID) { $env:QUICKSIGHT_WORKBOOK_ROWS_DATASET_ID } else { "excelbridge-workbook-rows" }),
     [string]$QuickSightPermissionsDatasetId = $(if ($env:QUICKSIGHT_PERMISSIONS_DATASET_ID) { $env:QUICKSIGHT_PERMISSIONS_DATASET_ID } else { "excelbridge-owner-permissions" }),
     [string]$QuickSightRlsPermissionsDatasetArn = $(if ($env:QUICKSIGHT_RLS_PERMISSIONS_DATASET_ARN) { $env:QUICKSIGHT_RLS_PERMISSIONS_DATASET_ARN } else { "arn:aws:quicksight:ap-southeast-1:453995432289:dataset/excelbridge-owner-permissions" }),
     [string]$QuickSightEmbeddingRoleArn = $(if ($env:QUICKSIGHT_EMBEDDING_ROLE_ARN) { $env:QUICKSIGHT_EMBEDDING_ROLE_ARN } else { "" }),
@@ -77,7 +78,7 @@ try {
     Invoke-Sam validate --template-file infra/template.yaml
     Invoke-Sam build --template-file infra/template.yaml --region $Region
     $parameterOverrides = @(
-        "Environment=$Environment", "BedrockModelId=$ModelId", "BedrockHeavyModelId=$HeavyModelId", "FrontendOrigin=$FrontendOrigin", "LambdaExecutionRoleArn=$LambdaExecutionRoleArn", "StateMachineExecutionRoleArn=$StateMachineExecutionRoleArn", "QuickSightAccountId=$QuickSightAccountId", "QuickSightRegion=$QuickSightRegion", "QuickSightQualityDatasetId=$QuickSightQualityDatasetId", "QuickSightInspectionDatasetId=$QuickSightInspectionDatasetId", "QuickSightPermissionsDatasetId=$QuickSightPermissionsDatasetId", "QuickSightRlsPermissionsDatasetArn=$QuickSightRlsPermissionsDatasetArn", "QuickSightReaderGroupName=$QuickSightReaderGroupName", "QuickSightRefreshMode=$QuickSightRefreshMode"
+        "Environment=$Environment", "BedrockModelId=$ModelId", "BedrockHeavyModelId=$HeavyModelId", "FrontendOrigin=$FrontendOrigin", "LambdaExecutionRoleArn=$LambdaExecutionRoleArn", "StateMachineExecutionRoleArn=$StateMachineExecutionRoleArn", "QuickSightAccountId=$QuickSightAccountId", "QuickSightRegion=$QuickSightRegion", "QuickSightQualityDatasetId=$QuickSightQualityDatasetId", "QuickSightInspectionDatasetId=$QuickSightInspectionDatasetId", "QuickSightWorkbookRowsDatasetId=$QuickSightWorkbookRowsDatasetId", "QuickSightPermissionsDatasetId=$QuickSightPermissionsDatasetId", "QuickSightRlsPermissionsDatasetArn=$QuickSightRlsPermissionsDatasetArn", "QuickSightReaderGroupName=$QuickSightReaderGroupName", "QuickSightRefreshMode=$QuickSightRefreshMode"
     )
     if (-not [string]::IsNullOrWhiteSpace($QuickSightEmbeddingRoleArn)) {
         if ($QuickSightEmbeddingRoleArn -notmatch '^arn:[A-Za-z0-9-]+:iam::[0-9]{12}:role/.+$') {
