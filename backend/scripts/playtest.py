@@ -53,6 +53,10 @@ def main() -> int:
     sheet = manifest["sheets"][0] if manifest.get("sheets") else {"headers": [], "columns": []}
     headers = sheet.get("headers", [])
     columns = sheet.get("columns", [])
+    header_row = sheet.get("header_row", 1)  # honor detected header row for Tool #4/#5 (AI-009)
+    main_path = Path(args.main)
+    main_bytes = main_path.read_bytes() if main_path.exists() else None
+    main_header_row = inspect_bytes(main_bytes)["sheets"][0].get("header_row", 1) if main_bytes else 1
     print(f"\n== input ==\n{args.input}")
     print(f"sheet: {sheet.get('name')}  headers: {headers}")
 
@@ -104,36 +108,43 @@ def main() -> int:
     print(f"\n== Tool #1 (semantics) ==\n{t1.payload.model_dump(mode='json')}")
 
     # --- Tool #3: propose a formula for the new column ---
+    # Only for the formula ("neither") policy. With a main workbook the intent is
+    # standardize/update, where the new column comes from Tool #4 mappings, not a formula
+    # (a generic formula produces semantically wrong cells — AI-006).
     formula = None
-    try:
-        t3 = run_tool3({
-            "meaning": args.prompt,
-            "source_headers": headers,
-            "allowed_functions": ALLOWED_FUNCTIONS,
-            "samples": [c.get("samples", []) for c in columns],
-            "expected_type": "text",
-        })
-        print(f"\n== Tool #3 (formula) ==\n{t3.payload.model_dump(mode='json')}")
-        formula = {
-            "formula_template": t3.payload.formula_template,
-            "target_header": args.header,
-            "target_column": len(headers) + 1,  # new column after the last header
-            "start_row": 2,
-            # end_row omitted: apply_workbook_changes defaults it to the sheet's max_row
-        }
-    except Exception as exc:  # reject-whole guardrail or a bad formula is a valid demo outcome
-        print(f"\n== Tool #3 REJECTED by guardrail (expected sometimes) ==\n{type(exc).__name__}: {exc}")
-        print("Proceeding with quality fixes only; no formula column added.")
+    if main_bytes:
+        print("\n== Tool #3 skipped: main workbook present (standardize/update policy) ==")
+    else:
+        try:
+            t3 = run_tool3({
+                "meaning": args.prompt,
+                "source_headers": headers,
+                "allowed_functions": ALLOWED_FUNCTIONS,
+                "samples": [c.get("samples", []) for c in columns],
+                "expected_type": "text",
+            })
+            print(f"\n== Tool #3 (formula) ==\n{t3.payload.model_dump(mode='json')}")
+            formula = {
+                "formula_template": t3.payload.formula_template,
+                "target_header": args.header,
+                "target_column": len(headers) + 1,  # new column after the last header
+                "start_row": 2,
+                # end_row omitted: apply_workbook_changes defaults it to the sheet's max_row
+            }
+        except Exception as exc:  # reject-whole guardrail or a bad formula is a valid demo outcome
+            print(f"\n== Tool #3 REJECTED by guardrail (expected sometimes) ==\n{type(exc).__name__}: {exc}")
+            print("Proceeding with quality fixes only; no formula column added.")
 
     # --- Tool #4: standardize current values against main's canonical values ---
-    main_path = Path(args.main)
-    main_bytes = main_path.read_bytes() if main_path.exists() else None
     std_mappings: list[dict] = []
     std_decisions: dict[str, dict] = {}
     if main_bytes:
-        main_rows = load_canonical_rows(main_bytes)
+        main_rows = load_canonical_rows(main_bytes, header_row=main_header_row)
+        main_fields = {str(f) for r in main_rows for f in r if f != "row_id"}
         canonical = sorted({str(v) for r in main_rows for k, v in r.items() if k != "row_id" and v is not None})
-        source_values = sorted({str(v) for c in columns for v in c.get("samples", []) if v is not None})
+        # Only values from columns shared with main — mirrors _tool_inputs so numeric quantity
+        # columns don't pollute the candidate match and provoke invented abbreviations (AI-008).
+        source_values = sorted({str(v) for c in columns if c.get("name") in main_fields for v in c.get("samples", []) if v is not None})
         try:
             t4 = run_tool4({"source_values": source_values, "canonical_candidates": canonical, "samples": columns})
             print(f"\n== Tool #4 (standardize {len(source_values)} values vs {len(canonical)} canonical) ==")
@@ -170,8 +181,8 @@ def main() -> int:
 
     # --- Tool #5: BE candidate-gen first, then model matches, then update main ---
     if main_bytes:
-        current_rows = load_canonical_rows(source)
-        main_rows_full = load_canonical_rows(main_bytes)
+        current_rows = load_canonical_rows(source, header_row=header_row)
+        main_rows_full = load_canonical_rows(main_bytes, header_row=main_header_row)
         if not current_rows or args.key not in current_rows[0]:
             print(f"\n== Tool #5 skipped: key '{args.key}' not found in current headers ==")
         else:

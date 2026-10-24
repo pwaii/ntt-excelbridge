@@ -2,8 +2,7 @@ import type { BackendJob } from "@/api/jobs-api";
 
 export type StageState = "complete" | "active" | "pending" | "failed" | "skipped";
 const stages = [
-  { id: "setup", label: "Workbook setup", statuses: ["DRAFT", "UPLOADING", "UPLOADED"] },
-  { id: "inspect", label: "Check data", statuses: ["INSPECTING", "DETECTED", "SEMANTIC_REVIEW_PENDING"] },
+  { id: "setup", label: "Setup", statuses: ["DRAFT", "UPLOADING", "UPLOADED", "INSPECTING", "DETECTED", "SEMANTIC_REVIEW_PENDING"] },
   { id: "quality", label: "Quality review", statuses: ["QUALITY_REVIEW_PENDING"] },
   { id: "changes", label: "Review changes", statuses: ["NORMALIZATION_PENDING", "FORMULA_REVIEW_PENDING", "STANDARDIZATION_PENDING", "UPDATE_PENDING", "TRANSFORMATION_REVIEW_PENDING"] },
   { id: "output", label: "Prepare output", statuses: ["APPLYING", "VALIDATING_OUTPUT", "COMPLETED"] },
@@ -18,9 +17,9 @@ export function jobStages(job: BackendJob, observed: readonly string[] = []) {
   let current = stages.findIndex((stage) => stage.statuses.includes(job.status));
   if (failed) {
     const last = [...observed].reverse().find((status) => !stopped.has(status));
-    current = job.workflow_segment === 3 ? 4 : job.workflow_segment === 2 ? 3
+    current = job.workflow_segment === 3 ? 3 : job.workflow_segment === 2 ? 2
       : last ? stages.findIndex((stage) => stage.statuses.includes(last))
-      : job.workflow_segment === 1 ? 1 : -1;
+      : job.workflow_segment === 1 ? 0 : -1;
   }
   return stages.map((stage, index) => {
     let state: StageState = "pending";

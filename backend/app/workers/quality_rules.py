@@ -10,6 +10,11 @@ from openpyxl import load_workbook
 
 from app.workers.inspect_workbook import inspect_bytes, normalize_text
 
+# Types that are interchangeable for structural purposes, so a numeric column holding
+# both whole numbers and decimals (e.g. prices) is not flagged as a mismatch. Any type
+# not listed is its own group. See [[feedback-quality-rules-column-name-heuristic]].
+_TYPE_GROUP = {"int": "number", "decimal": "number", "percentage": "number"}
+
 
 def _issue(issue_id: str, kind: str, message: str, **details: Any) -> dict[str, Any]:
     return {"issue_id": issue_id, "kind": kind, "message": message, "recommended_action": details.pop("recommended_action", "manual_review"), **details}
@@ -35,6 +40,11 @@ def run_quality_rules(source: bytes, manifest: dict[str, Any] | None = None) -> 
                     continue
                 fingerprint = next(item["fingerprint"] for item in sheet["row_fingerprints"] if item["row_number"] == row_number)
                 duplicates[fingerprint].append(row_number)
+                # shortcut: the key column is assumed to be the first column; upgrade to the
+                # configured key_column once the worker receives it. A blank key on an
+                # otherwise-populated row cannot be matched/updated and needs explicit review.
+                if headers and normalize_text(row[0]) == "":
+                    issues.append(_issue(f"BLANK_KEY#{sheet['name']}#{row_number}", "blank_key_field", "key column is blank while other fields are populated", sheet=sheet["name"], column=headers[0], row_numbers=[row_number], recommended_action="manual_review"))
             for fingerprint, row_numbers in duplicates.items():
                 if len(row_numbers) > 1:
                     issues.append(_issue(f"DUPLICATE#{sheet['name']}#{fingerprint[:16]}", "duplicate_rows", "rows have the same normalized values", sheet=sheet["name"], row_numbers=row_numbers, fingerprint=fingerprint, keep_row=row_numbers[0], recommended_action="keep_first_delete_later"))
@@ -43,11 +53,14 @@ def run_quality_rules(source: bytes, manifest: dict[str, Any] | None = None) -> 
                     issues.append(_issue(f"BLANK_COLUMN#{sheet['name']}#{column['index']}", "blank_column", "column is empty for every data row", sheet=sheet["name"], column=column["name"], recommended_action="exclude_from_input"))
                 distribution = column["type_distribution"]
                 total = sum(distribution.values())
-                if total < 2:
+                if total < 2 or len(distribution) < 2:
                     continue
-                dominant_type, dominant_count = max(distribution.items(), key=lambda item: item[1])
-                minority = total - dominant_count
-                if dominant_count / total < 0.8 or minority / total > 0.2:
+                dominant_type, _dominant_count = max(distribution.items(), key=lambda item: item[1])
+                dominant_group = _TYPE_GROUP.get(dominant_type, dominant_type)
+                # Flag any value whose type is incompatible with the dominant one, even a single
+                # poisoned cell in a 600-row column — the old 20%-minority gate suppressed those.
+                incompatible = sum(count for name, count in distribution.items() if _TYPE_GROUP.get(name, name) != dominant_group)
+                if incompatible:
                     target_type = {
                         "int": "integer",
                         "bool": "boolean",

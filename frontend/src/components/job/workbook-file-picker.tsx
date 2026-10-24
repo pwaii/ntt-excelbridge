@@ -82,8 +82,7 @@ export function WorkbookFilePicker({ id, label, file, onChange, validationError,
       />
       <div
         className={cn(
-          "workbook-dropzone flex items-center border motion-reduce:transition-none",
-          !file && "border-dashed",
+          "workbook-dropzone flex items-center motion-reduce:transition-none",
           displayedError && "border-destructive",
         )}
         data-dragging={dragging}
@@ -109,7 +108,7 @@ export function WorkbookFilePicker({ id, label, file, onChange, validationError,
           <div className="flex w-full flex-wrap items-center gap-3 text-left">
             <span className="file-upload-icon flex size-8 shrink-0 items-center justify-center text-muted-foreground"><UploadCloud className="size-5" aria-hidden="true" /></span>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">{dragging ? "Drop to select your workbook" : "Drop your workbook here"}</p>
+              <p className="text-sm font-medium">{dragging ? "Drop your master file here" : "Drop your master file here"}</p>
               <p className="mt-1 text-xs text-muted-foreground">.xlsx · Max 25 MB</p>
               <span className="sr-only">No file selected.</span>
             </div>

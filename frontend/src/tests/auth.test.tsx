@@ -59,7 +59,7 @@ describe("authentication routing and UI", () => {
   });
   it("renders the existing creation page for an authenticated user", async () => {
     await renderAt("/jobs/new", adapter({ initialize: async () => user }));
-    expect(container.querySelector("h1")?.textContent).toBe("Create workflow");
+    expect(container.querySelector("h1")?.textContent).toBe("New job");
     expect(container.querySelector<HTMLInputElement>("#current-file")?.type).toBe("file");
     expect(container.textContent).toContain("Signed in as Test user");
   });

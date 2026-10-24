@@ -2,10 +2,10 @@ import { z } from "zod";
 import type { components } from "@/api/generated/backend";
 
 // Runtime evidence decoder for the published review-report contract.
-export const qualityKinds = ["duplicate-row", "blank-row", "blank-column", "type-mismatch", "semantic", "normalization-rule"] as const;
+export const qualityKinds = ["duplicate-row", "blank-row", "blank-column", "blank-key-field", "type-mismatch", "semantic", "normalization-rule"] as const;
 export const qualityLabels: Record<typeof qualityKinds[number], string> = {
   "duplicate-row": "Duplicate rows", "blank-row": "Blank rows", "blank-column": "Blank columns",
-  "type-mismatch": "Type mismatches", semantic: "Column meaning", "normalization-rule": "Normalization rules",
+  "blank-key-field": "Blank key fields", "type-mismatch": "Type mismatches", semantic: "Column meaning", "normalization-rule": "Normalization rules",
 };
 export type DecisionDraft = components["schemas"]["ReviewItemDecision"];
 export const transformationKinds = ["formula", "standardization", "update-match"] as const;

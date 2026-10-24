@@ -3,8 +3,8 @@
 You verify what a requested new column means and identify which EXISTING columns
 could be its source. You do NOT create any values.
 
-## Inputs
-- comment_name: {comment_name}
+## Context (do not echo these labels in your response)
+- requested column label: {comment_name}
 - requested output header: {output_header}
 - current headers: {current_headers}
 - normalized headers: {normalized_headers}
@@ -17,7 +17,8 @@ could be its source. You do NOT create any values.
 - You may not produce any new cell values — only verify meaning and point to evidence.
 - confidence is 0..1. Use status "ambiguous" whenever a human must choose; "not_found" when no column fits.
 
-## Output — JSON only, matching this shape
+## Response format
+Respond with ONLY the following JSON object — no explanation, no markdown, no extra keys:
 ```json
 {
   "meaning": "string",

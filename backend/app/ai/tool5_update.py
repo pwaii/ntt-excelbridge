@@ -7,7 +7,7 @@ import logging
 
 from app.ai.adapter import render_prompt, sha256_hex
 from app.ai.bedrock_client import BedrockClient
-from app.ai.policy import CONFIDENCE_FLOOR, MAX_OUTPUT_TOKENS, estimate_cost_usd, safe_log
+from app.ai.policy import CONFIDENCE_FLOOR, estimate_cost_usd, safe_log
 from app.domain.enums import MatchType
 from app.domain.schemas import AuditMeta, Tool5Match, Tool5Output, ToolResult
 from app.settings import settings
@@ -68,20 +68,40 @@ def run_tool5(
 ) -> ToolResult[Tool5Output]:
     client = client or BedrockClient()
     model_id = model_id or settings.bedrock_model_id
-    prompt = render_prompt(TOOL, PROMPT_VERSION, _FIELDS, inputs)
-    if inputs.get("current_rows"):
-        data, raw, usage, latency_ms = client.converse_json(
-            model_id, prompt, MAX_OUTPUT_TOKENS, settings.bedrock_temperature
-        )
+    current_rows = inputs.get("current_rows") or []
+    if current_rows:
+        # Page unresolved rows so a large set never truncates the model's JSON array (AI-004).
+        # candidate_rows stay unfiltered per page: the row explosion is in current_rows, and
+        # the candidate set is already bounded by max_candidate_matches during matching.
+        prompts, raws, matches = [], [], []
+        in_tokens = out_tokens = latency_ms = 0
+        step = max(1, int(settings.max_tool5_rows))
+        for start in range(0, len(current_rows), step):
+            page_inputs = {**inputs, "current_rows": current_rows[start:start + step]}
+            prompt = render_prompt(TOOL, PROMPT_VERSION, _FIELDS, page_inputs)
+            data, raw, usage, latency = client.converse_json(
+                model_id, prompt, settings.bedrock_max_tokens_tool5, settings.bedrock_temperature
+            )
+            page = _validate_against_inputs(Tool5Output(**data), page_inputs)
+            matches.extend(page.matches)
+            prompts.append(prompt)
+            raws.append(raw)
+            in_tokens += usage["inputTokens"]
+            out_tokens += usage["outputTokens"]
+            latency_ms += latency
+        prompt = "\n".join(prompts)
+        raw = "\n".join(raws)
+        usage = {"inputTokens": in_tokens, "outputTokens": out_tokens}
+        payload = _apply_guardrails(Tool5Output(matches=matches))
     else:
         # Exact deterministic matching already resolved every row. Avoid an
         # empty Bedrock call while retaining a hashable audit envelope.
         data = {"matches": []}
+        prompt = render_prompt(TOOL, PROMPT_VERSION, _FIELDS, inputs)
         raw = json.dumps(data, sort_keys=True)
         usage = {"inputTokens": 0, "outputTokens": 0}
         latency_ms = 0
-    payload = _validate_against_inputs(Tool5Output(**data), inputs)
-    payload = _apply_guardrails(payload)
+        payload = _apply_guardrails(_validate_against_inputs(Tool5Output(**data), inputs))
 
     deterministic = [
         Tool5Match(

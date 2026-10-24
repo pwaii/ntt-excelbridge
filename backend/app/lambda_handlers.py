@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from hashlib import sha256
 from io import BytesIO
 from typing import Any
@@ -27,6 +28,15 @@ from app.workers.matching import build_tool5_inputs, load_canonical_rows
 from app.workers.quality_rules import run_quality_rules
 from app.workers.validate_output import validate_output
 
+_log = logging.getLogger(__name__)
+
+# tool1 (semantics) and tool3 (formula) only apply to an "add a column" request, expressed by the
+# prompt. tool3/tool4 are enhancement proposals whose guardrail may reject untrusted model output.
+# These live in bedrock_handler so BOTH the in-process orchestrator and the deployed Step Functions
+# path (which hardcodes the tool sequence in statemachine.asl.json) get the same behavior.
+_PROMPT_TOOLS = frozenset({"tool1", "tool3"})
+_OPTIONAL_TOOLS = frozenset({"tool3", "tool4"})
+
 
 def api_handler(event, context):
     from mangum import Mangum
@@ -44,12 +54,46 @@ def _artifact_map_key(base: str, slot: str) -> str:
     return base if slot == "input" else f"{base}_{slot}"
 
 
+def _output_download_filename(artifact_name: str, files: dict[str, Any]) -> str:
+    """Derive a user-facing download filename from the artifact name and source files."""
+    if artifact_name == "output":
+        slot = "main" if "main" in files else "input"
+    elif artifact_name.startswith("output_current"):
+        slot = "input" + artifact_name.removeprefix("output_current")
+    elif artifact_name.startswith("output_"):
+        slot = "input_" + artifact_name.removeprefix("output_")
+    else:
+        return f"{artifact_name}.xlsx"
+    file_info = files.get(slot) or files.get("input", {})
+    stem = str(file_info.get("filename", "output.xlsx")).removesuffix(".xlsx")
+    try:
+        n = 1 if slot in ("input", "main") else int(slot.removeprefix("input_"))
+    except ValueError:
+        n = 1
+    return f"{stem}-output_{n}.xlsx"
+
+
 def _artifact_filename(name: str, slot: str) -> str:
     return name if slot == "input" else f"{slot}-{name}"
 
 
 def _issue_sk(issue_id: str, slot: str) -> str:
     return f"ISSUE#{issue_id}" if slot == "input" else f"ISSUE#{slot}#{issue_id}"
+
+
+def _slot_sheet_config(item: dict[str, Any], slot: str) -> tuple[str | None, int | None]:
+    """Return (sheet_name, header_row) for a given slot.
+
+    Primary 'input' and 'main' are stored in config; extra input slots store
+    their own selection in workbook_selections.
+    """
+    config = item.get("config", {})
+    if slot == "input":
+        return config.get("input_sheet"), config.get("input_header_row")
+    if slot == "main":
+        return config.get("main_sheet"), config.get("main_header_row")
+    sel = item.get("workbook_selections", {}).get(slot, {})
+    return sel.get("sheet_name"), sel.get("header_row")
 
 
 def inspect_handler(event: dict[str, Any], context) -> dict[str, Any]:
@@ -60,7 +104,8 @@ def inspect_handler(event: dict[str, Any], context) -> dict[str, Any]:
     if not item:
         raise ValueError("job not found")
     source = s3.get_bytes(item["files"][slot]["key"])
-    manifest = inspect_bytes(source, sheet_name=item.get("config", {}).get("input_sheet"), header_row=item.get("config", {}).get("input_header_row"))
+    sheet_name, header_row = _slot_sheet_config(item, slot)
+    manifest = inspect_bytes(source, sheet_name=sheet_name, header_row=header_row)
     manifest.update({"job_id": job_id, "input_sha256": sha256(source).hexdigest(), "slot": slot})
     key = s3.artifact_key(job_id, "inspection", _artifact_filename("manifest.json", slot))
     if not s3.object_exists(key):
@@ -79,7 +124,8 @@ def quality_handler(event: dict[str, Any], context) -> dict[str, Any]:
     if not item:
         raise ValueError("job not found")
     source = s3.get_bytes(item["files"][slot]["key"])
-    manifest = inspect_bytes(source, sheet_name=item.get("config", {}).get("input_sheet"), header_row=item.get("config", {}).get("input_header_row"))
+    sheet_name, header_row = _slot_sheet_config(item, slot)
+    manifest = inspect_bytes(source, sheet_name=sheet_name, header_row=header_row)
     report = run_quality_rules(source, manifest)
     key = s3.artifact_key(job_id, "quality", _artifact_filename("quality-report.json", slot))
     if not s3.object_exists(key):
@@ -115,7 +161,12 @@ def bedrock_handler(event: dict[str, Any], context) -> dict[str, Any]:
     initial_revision = int(item["revision"])
     slot = event.get("slot", "input")
     tool = event["tool"]
-    if tool == "tool2" and not event.get("inputs"):
+    prompt_empty = not (item.get("config", {}).get("comment_name") or "").strip()
+    if tool in _PROMPT_TOOLS and prompt_empty:
+        # No column was requested (empty prompt): skip the semantic/formula proposal so a
+        # merge/standardize job gets no stray formula column. Status still advances below.
+        proposal = {"tool": tool, "proposals": [], "status": "skipped"}
+    elif tool == "tool2" and not event.get("inputs"):
         batch = _tool_inputs(item, s3, tool, slot)
         proposals = []
         for mismatch in batch.get("mismatches", []):
@@ -130,7 +181,17 @@ def bedrock_handler(event: dict[str, Any], context) -> dict[str, Any]:
         proposal = {"tool": tool, "proposals": proposals, "status": "proposed"}
     else:
         inputs = event.get("inputs") or _tool_inputs(item, s3, tool, slot)
-        proposal = run_tool_segment(job_id, tool, inputs, dynamo, s3, slot)
+        try:
+            proposal = run_tool_segment(job_id, tool, inputs, dynamo, s3, slot)
+        except ValueError as exc:
+            # A guardrail reject-whole of untrusted model output (forbidden formula, invented
+            # canonical value, malformed shape — pydantic ValidationError subclasses ValueError)
+            # must not fail the job. For optional enhancement tools the proposal is simply not
+            # offered; core-tool failures still propagate (and hit the state machine's Catch).
+            if tool not in _OPTIONAL_TOOLS:
+                raise
+            _log.warning("optional %s proposal rejected for slot %s; continuing without it: %s", tool, slot, exc)
+            proposal = {"tool": tool, "proposals": [], "status": "rejected"}
     status_by_tool = {
         "tool3": "FORMULA_REVIEW_PENDING",
         "tool4": "STANDARDIZATION_PENDING",
@@ -207,7 +268,10 @@ def quality_gate_handler(event: dict[str, Any], context) -> dict[str, Any]:
 
 def _tool_inputs(item: dict[str, Any], s3: S3Store, tool: str, slot: str = "input") -> dict[str, Any]:
     source = s3.get_bytes(item["files"][slot]["key"])
-    manifest = inspect_bytes(source, sheet_name=item.get("config", {}).get("input_sheet"), header_row=item.get("config", {}).get("input_header_row"))
+    # Per-slot sheet/header: a secondary input keeps its own selection, so segment 2 must not
+    # reuse the primary input's sheet name (it may not exist in this slot's workbook).
+    input_sheet, input_header_row = _slot_sheet_config(item, slot)
+    manifest = inspect_bytes(source, sheet_name=input_sheet, header_row=input_header_row)
     first_sheet = manifest["sheets"][0] if manifest["sheets"] else {"headers": [], "columns": []}
     if tool == "tool1":
         return {
@@ -256,29 +320,48 @@ def _tool_inputs(item: dict[str, Any], s3: S3Store, tool: str, slot: str = "inpu
             "constraints": {"allowed_target_types": ["string", "integer", "number", "date", "datetime", "boolean"]},
         }
     if tool == "tool4":
+        config = item.get("config", {})
         main_file = item.get("files", {}).get("main")
-        main_rows = load_canonical_rows(s3.get_bytes(main_file["key"]), item.get("config", {}).get("main_sheet"), item.get("config", {}).get("main_header_row") or 1) if main_file else []
-        current_rows = load_canonical_rows(
-            source,
-            item.get("config", {}).get("input_sheet"),
-            item.get("config", {}).get("input_header_row") or 1,
-        )
-        main_fields = {
+        main_rows = load_canonical_rows(s3.get_bytes(main_file["key"]), config.get("main_sheet"), config.get("main_header_row") or 1) if main_file else []
+        current_rows = load_canonical_rows(source, input_sheet, input_header_row or 1)
+        # Key columns are matched by Tool #5, never standardized. Excluding them stops the model
+        # from "normalizing" ID values (e.g. MRN-00591 -> MRN-00091) and keeps the candidate set
+        # small enough that the response doesn't truncate at the token cap.
+        key_fields = {str(k).casefold() for k in (config.get("key_column"), config.get("main_key_column")) if k}
+        # Only standardize columns present in BOTH workbooks (and non-key); candidates come from
+        # those same columns so values compete against their own vocabulary, not, e.g., dates from
+        # a main-only column.
+        current_field_names = {str(field) for row in current_rows for field in row if field != "row_id"}
+        shared_fields = {
             str(field)
             for row in main_rows
             for field in row
-            if field != "row_id"
+            if field != "row_id" and str(field).casefold() not in key_fields and str(field) in current_field_names
         }
+        # Standardization applies only to CATEGORICAL columns — a small set of values repeated
+        # across many rows (Department, Status) — not identifiers, dates, or unique text (EmpID,
+        # StartDate, Name), which yield identity or invented mappings. Decide from the current
+        # workbook's cardinality: keep a field only if its values repeat (distinct values are at
+        # most half the populated rows), measured over enough rows for the ratio to mean something.
+        def _is_categorical(field: str) -> bool:
+            values = [
+                str(row[field]).strip()
+                for row in current_rows
+                if field in row and row[field] is not None and str(row[field]).strip()
+            ]
+            return len(values) >= 4 and len(set(values)) <= 0.5 * len(values)
+
+        shared_fields = {field for field in shared_fields if _is_categorical(field)}
         shared_columns = [
             column
             for column in first_sheet.get("columns", [])
-            if column.get("name") in main_fields
+            if column.get("name") in shared_fields
         ]
         source_values = sorted(
             {
                 (str(field), str(row[field]))
                 for row in current_rows
-                for field in main_fields
+                for field in shared_fields
                 if field in row and row[field] is not None and str(row[field]).strip()
             }
         )
@@ -286,7 +369,7 @@ def _tool_inputs(item: dict[str, Any], s3: S3Store, tool: str, slot: str = "inpu
             {
                 str(row[field])
                 for row in main_rows
-                for field in main_fields
+                for field in shared_fields
                 if row.get(field) is not None and str(row[field]).strip()
             }
         )
@@ -301,7 +384,7 @@ def _tool_inputs(item: dict[str, Any], s3: S3Store, tool: str, slot: str = "inpu
         main_file = item.get("files", {}).get("main")
         if not main_file:
             raise ValueError("main workbook is required for Tool #5")
-        current_rows = load_canonical_rows(s3.get_bytes(item["files"][slot]["key"]), item.get("config", {}).get("input_sheet"), item.get("config", {}).get("input_header_row") or 1)
+        current_rows = load_canonical_rows(s3.get_bytes(item["files"][slot]["key"]), input_sheet, input_header_row or 1)
         main_rows = load_canonical_rows(s3.get_bytes(main_file["key"]), item.get("config", {}).get("main_sheet"), item.get("config", {}).get("main_header_row") or 1)
         key_column = item.get("config", {}).get("key_column")
         if not key_column:
@@ -354,6 +437,9 @@ def _collect_slot_changes(dynamo: DynamoStore, s3: S3Store, job_id: str, slot: s
     mappings/type_rules/update_matches/formula that ``apply`` consumes."""
     decisions = _slot_decisions(decisions, slot)
     source = s3.get_bytes(item["files"][slot]["key"])
+    # This slot's own sheet/header — never the primary input's (slots can differ).
+    sheet_name, header_row = _slot_sheet_config(item, slot)
+    header_row = header_row or 1
     quality_report: dict[str, Any] = {}
     quality_artifact = item.get("artifacts", {}).get(_artifact_map_key("quality", slot), {})
     if quality_artifact.get("key"):
@@ -386,15 +472,15 @@ def _collect_slot_changes(dynamo: DynamoStore, s3: S3Store, job_id: str, slot: s
         if tool == "tool3" and decision_value in {"accept", "edit"}:
             workbook = load_workbook(BytesIO(source), data_only=False)
             try:
-                worksheet = workbook[config.get("input_sheet")] if config.get("input_sheet") else workbook.worksheets[0]
-                headers = [cell.value for cell in worksheet[config.get("input_header_row") or 1]]
+                worksheet = workbook[sheet_name] if sheet_name else workbook.worksheets[0]
+                headers = [cell.value for cell in worksheet[header_row]]
                 target_header = payload.get("target_header") or config.get("output_header") or config.get("comment_name")
                 target_column = headers.index(target_header) + 1 if target_header in headers else (worksheet.max_column or 0) + 1
                 formula = {
                     "formula_template": edited_value if decision_value == "edit" and edited_value else payload.get("formula_template", ""),
                     "target_header": target_header,
                     "target_column": target_column,
-                    "start_row": (config.get("input_header_row") or 1) + 1,
+                    "start_row": header_row + 1,
                     "end_row": worksheet.max_row or 2,
                 }
             finally:
@@ -449,6 +535,8 @@ def _collect_slot_changes(dynamo: DynamoStore, s3: S3Store, job_id: str, slot: s
     ]
     return {
         "source": source,
+        "sheet_name": sheet_name,  # this slot's own sheet/header, not the primary input's
+        "header_row": header_row,
         "quality_report": quality_report,
         "mappings": mappings,
         "type_rules": type_rules,
@@ -524,8 +612,8 @@ def apply_handler(event: dict[str, Any], context) -> dict[str, Any]:
                 type_rules=change["type_rules"],
                 standardization_mappings=change["mappings"] if standardize else [],
                 formula=change["formula"] if not update else None,
-                sheet_name=config.get("input_sheet"),
-                header_row=config.get("input_header_row") or 1,
+                sheet_name=change["sheet_name"],
+                header_row=change["header_row"],
                 include_quality_deletions=policy != "both",
             )
             current_stages[slot] = stage
@@ -557,10 +645,10 @@ def apply_handler(event: dict[str, Any], context) -> dict[str, Any]:
                 change["decisions"],
                 key_column=config["key_column"],
                 main_key_column=config.get("main_key_column"),
-                current_header_row=config.get("input_header_row") or 1,
+                current_header_row=change["header_row"],
                 main_header_row=config.get("main_header_row") or 1,
                 main_sheet=config.get("main_sheet"),
-                current_sheet=config.get("input_sheet"),
+                current_sheet=change["sheet_name"],
                 conflict_policy=config.get("conflict_policy", "reject_all"),
                 prior_destinations=seen_destinations,
             )
@@ -599,11 +687,10 @@ def apply_handler(event: dict[str, Any], context) -> dict[str, Any]:
         )
     artifacts = dict(item.get("artifacts", {}))
     xlsx_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    output_key = s3.artifact_key(event["job_id"], "output", "final.xlsx")
-    # The primary deliverable keeps final.xlsx / the "output" key; any additional
-    # workbooks (extra inputs, standardized currents under `both`) get their own files.
+    files = item.get("files", {})
+    output_key = s3.artifact_key(event["job_id"], "output", _output_download_filename("output", files))
     for name, body in outputs.items():
-        key = output_key if name == "output" else s3.artifact_key(event["job_id"], "output", f"final-{name}.xlsx")
+        key = s3.artifact_key(event["job_id"], "output", _output_download_filename(name, files))
         if not s3.object_exists(key):
             s3.put_bytes(key, body, xlsx_type)
         artifacts[name] = {"key": key, "content_type": xlsx_type, "size_bytes": len(body), "sha256": sha256(body).hexdigest()}

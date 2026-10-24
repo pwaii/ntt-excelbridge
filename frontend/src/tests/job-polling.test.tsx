@@ -27,10 +27,16 @@ it.each(["COMPLETED", "FAILED", "QUALITY_REVIEW_PENDING", "TRANSFORMATION_REVIEW
     await act(async () => { await vi.advanceTimersByTimeAsync(1); });
     expect(fetcher).toHaveBeenCalledTimes(3);
     if (terminal === "QUALITY_REVIEW_PENDING") {
-      expect(container.querySelector('a[href$="/quality-review"]')?.textContent).toBe("Review data quality");
-      expect(container.querySelector('[aria-current="step"]')?.textContent).toContain("Quality review");
-    } else if (terminal === "TRANSFORMATION_REVIEW_PENDING") expect(container.querySelector('a[href$="/transformation-review"]')?.textContent).toBe("Review transformations");
-    else expect(container.textContent).toContain(terminal);
+      const selectedTab = [...container.querySelectorAll('[role="tab"]')].find(t => t.getAttribute("aria-selected") === "true");
+      expect(selectedTab?.getAttribute("aria-label")).toContain("Quality review");
+      expect(container.querySelector('a[href$="/quality-review"]')).toBeNull();
+    } else if (terminal === "TRANSFORMATION_REVIEW_PENDING") {
+      const selectedTab = [...container.querySelectorAll('[role="tab"]')].find(t => t.getAttribute("aria-selected") === "true");
+      expect(selectedTab?.getAttribute("aria-label")).toContain("Review changes");
+      expect(container.querySelector('a[href$="/transformation-review"]')).toBeNull();
+    } else {
+      expect(container.textContent).toContain(terminal);
+    }
     await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
     expect(fetcher).toHaveBeenCalledTimes(3);
     expect(fetcher.mock.calls.every(([, options]) => options?.method === "GET")).toBe(true);

@@ -1,73 +1,20 @@
-# ntt-excelbridge
+# ntt-excelbridge (Pilotxl / ExcelBridge)
 
-## Backend AWS storage foundation
+A human-gated XLSX workflow for financial teams. Users upload up to 8 input workbooks plus an optional reference workbook, describe a column to add, and step through two AI-assisted review gates (data quality, then transformation) before downloading a new output workbook with a full audit trail. Stack: React/Vite + FastAPI on Lambda, AWS Bedrock (Nova), Step Functions, S3, DynamoDB, Cognito.
 
-The backend now includes reusable AWS adapters in `backend/app/storage/`:
-
-- `S3Store` creates short-lived presigned PUT/GET URLs, verifies objects with
-  `head_object`, and reads/writes private artifacts under
-  `jobs/<job_id>/...`.
-- `DynamoStore` uses the planned single-table shape
-  `PK=JOB#<job_id>`, `SK=META`, supports TTL, and performs conditional
-  revision updates for stale-review protection.
-- `backend/app/settings.py` loads the repository `.env` reliably even when
-  the Makefile starts Uvicorn from `backend/`.
-- Local AWS access uses `AWS_PROFILE`; deployed Lambda uses its IAM role and
-  leaves `AWS_PROFILE` empty.
-
-Copy `.env.example` to `.env` for local development. Never commit `.env`,
-access keys, session tokens, or API keys. The browser receives presigned URLs,
-not AWS credentials.
+## Quick start — backend
 
 ```powershell
-Copy-Item .env.example .env
-\.venv\Scripts\python.exe -m pip install -e "backend[dev]"
-\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --app-dir backend --host 127.0.0.1 --port 8000
+Copy-Item .env.example .env   # fill in AWS_PROFILE, bucket, table names
+.\.venv\Scripts\python.exe -m pip install -e "backend[dev]"
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --app-dir backend --host 127.0.0.1 --port 8000
 ```
 
-Keep the server terminal open. In a second terminal, verify it before calling
-the API:
+Verify: `Invoke-RestMethod http://127.0.0.1:8000/health`
 
-```powershell
-Invoke-RestMethod http://127.0.0.1:8000/health
-```
+Run tests: `cd backend && python -m pytest`
 
-The backend now includes the segmented workflow path. After an input upload is
-confirmed, `POST /v1/jobs/{job_id}/start` starts segment 1, which creates the
-inspection and quality artifacts and invokes Tool #1 plus Tool #2 when type
-mismatches exist. A winning quality review starts segment 2 for formula,
-standardization, and optional Tool #5 matching. A winning transformation review
-starts segment 3, which applies accepted changes to a new output object and
-validates it. The local no-`STATE_MACHINE_ARN` path remains a synchronous
-deterministic fallback.
-
-Artifact downloads use `GET /v1/jobs/{job_id}/artifacts/{artifact_type}` and
-return short-lived URLs after ownership checks. Source workbooks are never
-overwritten. Tool #5 skips unmatched rows in the demo, and OpenPyXL reports
-formula syntax verification rather than calculated results.
-
-For a simple local/frontend upload, send the workbook as multipart form data
-after creating the job:
-
-```powershell
-curl.exe -X POST "http://127.0.0.1:8000/v1/jobs/$jobId/uploads/file/input" `
-  -F "file=@.\finpilot_test_3_rows.xlsx"
-```
-
-The direct route at `/v1/jobs/{job_id}/uploads/file/{slot}` validates the
-`.xlsx` extension, writes the file to S3, and
-marks the DynamoDB job `UPLOADED`. It is intended for local development and a
-small demo. Production clients should use the presigned `PUT` URL returned by
-`POST /v1/jobs`, because the workbook then goes directly from the browser to
-S3 instead of passing through FastAPI/API Gateway.
-
-The frontend implements the presigned S3 flow at `/jobs/new`: it creates the
-job, uploads the selected `.xlsx` to S3, confirms the object, and starts the
-demo pipeline. If the frontend uses a different API address, create
-`frontend/.env.local` with `VITE_API_BASE_URL=http://127.0.0.1:8000`. The
-frontend never receives AWS credentials.
-
-Start the frontend from a second terminal:
+## Quick start — frontend
 
 ```powershell
 cd frontend
@@ -75,22 +22,18 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173/jobs/new`. The S3 bucket must include the CORS
-configuration in `infra/template.yaml` (or an equivalent rule) for the
-frontend origin; otherwise the browser will block the direct `PUT` request.
+Open `http://localhost:5173/jobs/new`. Set `VITE_API_BASE_URL=http://127.0.0.1:8000` in `frontend/.env.local` if the backend is on a different address.
 
-## Backend Days 1–7 progress
+Run tests: `npm test`
 
-The backend includes deterministic workbook inspection and quality reporting,
-server-side upload hashing, formula verification, safe copy-and-apply helpers,
-canonical exact matching, review artifacts, and three short Step Functions
-segments. Human reviews are execution boundaries: segment 1 ends at
-`QUALITY_REVIEW_PENDING`, a winning review starts segment 2, and the
-transformation review starts segment 3. There are no task tokens or paused
-executions.
+## Architecture
 
-Completion decisions are recorded in
-[`docs/decisions/0002-backend-days5-7-completion.md`](docs/decisions/0002-backend-days5-7-completion.md).
+Three cooperating layers in `backend/app/`:
 
-Deployment and verification steps are in
-[`docs/backend-deployment.md`](docs/backend-deployment.md).
+- **API** (`api/`) — FastAPI on Lambda; job CRUD, presigned S3 URLs, review submission, artifact downloads. Never receives workbook bytes directly.
+- **Workers** (`workers/`) — bounded, idempotent Lambdas: `inspect_workbook`, `quality_rules`, `apply_changes`, `validate_output`. OpenPyXL always writes to a new S3 object.
+- **AI** (`ai/`) — Bedrock Converse API, Tools 1–5. All LLM output is validated against Pydantic schemas; the model only selects from candidate IDs supplied in the prompt.
+
+State persists in a single DynamoDB table (`PK=JOB#<id>` / `SK=META|ISSUE#|PROPOSAL#|REVIEW#|EVENT#`) with conditional revision updates. Three short Step Functions segments run between human review gates — no task tokens or paused executions.
+
+Local development uses the no-`STATE_MACHINE_ARN` in-process fallback. See `docs/backend-deployment.md` for AWS deployment and `docs/frontend-demo-runbook.md` for the demo validation checklist.

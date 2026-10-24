@@ -29,8 +29,10 @@ export function getMetadataReadiness(state: MetadataFlowState, configuration: Wo
     const choice = state.choices[role] ?? { sheetName: null, keyColumnId: null, header: null };
     if (role !== "current" && role !== "main") {
       const primary = state.choices.current;
-      if (primary?.sheetName && choice.sheetName && choice.sheetName !== primary.sheetName) blockers.push(`${role}: use the primary current workbook's worksheet; the processing pipeline shares that setting.`);
-      if (primary?.header && choice.header && choice.header.row !== primary.header.row) blockers.push(`${role}: use the primary current workbook's header row; the processing pipeline shares that setting.`);
+      // Each current workbook is a separate file with its own single sheet and header row; the
+      // backend reads each slot's own sheet_name and header_row (see _slot_sheet_config), so these
+      // may differ. The update key must still resolve to the same business column across files, so
+      // the pipeline uses one key: secondaries share the primary's key-column selection.
       if (configuration.update && primary?.keyColumnId && choice.keyColumnId && choice.keyColumnId !== primary.keyColumnId) blockers.push(`${role}: use the primary current workbook's key column; the processing pipeline shares that setting.`);
     }
     const sheets = workbook.sheets.filter((sheet) => sheet.sheetName === choice.sheetName);

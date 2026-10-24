@@ -3,7 +3,7 @@ import { createMetadataFlow } from "@/metadata/controller";
 import { metadataKey } from "@/lib/workflow-readiness";
 import { ApiError } from "@/api/errors";
 import type { MetadataAdapter } from "@/metadata/types";
-import { metadataForm, mockMetadataAdapter, mockSheet, mockSnapshot } from "./metadata-fixtures";
+import { metadataForm, mockAlternateSheet, mockMetadataAdapter, mockSheet, mockSnapshot } from "./metadata-fixtures";
 
 async function ready(adapter = mockMetadataAdapter(), update = false) {
   const flow = createMetadataFlow("mock-job", metadataForm(update), adapter);
@@ -50,13 +50,26 @@ describe("post-upload metadata and start boundary (mock adapters, no API schema)
       expect(flow.setHeader(role, { metadataKey: metadataKey(mockSheet), row: 3 })).toBe(true);
     }
     expect(flow.getReadiness().canStart).toBe(true);
-    flow.selectSheet("current_2", "Mock alternate sheet");
-    flow.setHeader("current_2", { metadataKey: metadataKey({ ...mockSheet, sheetName: "Mock alternate sheet" }), row: 4 });
-    expect(flow.getReadiness().blockers.join(" ")).toContain("processing pipeline shares that setting");
-    flow.selectSheet("current_2", mockSheet.sheetName);
-    flow.setHeader("current_2", { metadataKey: metadataKey(mockSheet), row: 3 });
+    // A secondary current workbook may keep its own sheet AND header row (4 here, not the
+    // primary's 3); the backend reads each slot's own sheet_name/header_row, so this is allowed.
+    flow.selectSheet("current_2", mockAlternateSheet.sheetName);
+    flow.setHeader("current_2", { metadataKey: metadataKey(mockAlternateSheet), row: 4 });
+    expect(flow.getReadiness().blockers.join(" ")).not.toContain("processing pipeline shares that setting");
+    expect(flow.getReadiness().canStart).toBe(true);
     expect(await flow.save()).toBe(true);
     expect(adapter.persistSelections).toHaveBeenCalledWith("mock-job", expect.objectContaining({ choices: expect.objectContaining({ current: expect.anything(), current_2: expect.anything() }) }), expect.any(String), expect.any(String), expect.anything());
+  });
+  it("keeps each current workbook's header independent (no propagation from the primary)", async () => {
+    const base = mockSnapshot();
+    const workbook = { ...base.workbooks.current!, keyRule: "not-applicable" as const };
+    const adapter = mockMetadataAdapter({ ...base, workbooks: { current: workbook, current_2: workbook } });
+    const flow = createMetadataFlow("mock-job", metadataForm(), adapter, ["current", "current_2"]);
+    await flow.load();
+    flow.selectSheet("current", mockSheet.sheetName);
+    flow.selectSheet("current_2", mockSheet.sheetName);
+    flow.setHeader("current", { metadataKey: metadataKey(mockSheet), row: 3 });
+    // Setting the primary's header must NOT auto-fill the secondary; each slot is configured on its own.
+    expect(flow.getSnapshot().choices.current_2?.header ?? null).toBe(null);
   });
   it("reconciles a fresh controller from backend state without replaying Start", async () => {
     const adapter = mockMetadataAdapter({ ...mockSnapshot(), startState: "started", startedJob: { accepted: true, jobId: "mock-job", statusLabel: "Mock running" } });

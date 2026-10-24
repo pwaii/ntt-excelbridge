@@ -508,7 +508,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "duplicate-row" | "blank-row" | "blank-column" | "type-mismatch" | "semantic" | "normalization-rule" | "formula" | "standardization" | "update-match";
+            kind: "duplicate-row" | "blank-row" | "blank-column" | "blank-key-field" | "type-mismatch" | "semantic" | "normalization-rule" | "formula" | "standardization" | "update-match";
             /** Title */
             title: string;
             /**

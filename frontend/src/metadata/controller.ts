@@ -82,7 +82,11 @@ export function createMetadataFlow(jobId: string, input: WorkflowConfiguration, 
       if (!mutable()) return false;
       const sheet = sheetFor(role);
       if (!sheet || !sheet.headerRowBounds || (header && !headerConfirmed(sheet, header))) return false;
-      updateChoice(role, { ...choiceFor(state.choices, role), header, keyColumnId: null }); return true;
+      // Each current workbook keeps its own header row; the backend reads each slot's own
+      // header_row, so there is no propagation from the primary to the secondaries.
+      const choices: WorkbookChoices = { ...state.choices, [role]: { ...choiceFor(state.choices, role), header, keyColumnId: null } };
+      state = { ...state, configurationSaved: false, choices, error: undefined }; emit();
+      return true;
     },
     selectKey(role: WorkbookRole, id: string | null) {
       if (!mutable()) return false;

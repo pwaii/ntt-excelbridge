@@ -38,6 +38,7 @@ class ReportItem(ReportModel):
         "duplicate-row",
         "blank-row",
         "blank-column",
+        "blank-key-field",
         "type-mismatch",
         "semantic",
         "normalization-rule",

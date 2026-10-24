@@ -4,7 +4,7 @@ import type { BackendJob } from "@/api/jobs-api";
 import { Button } from "@/components/ui/button";
 import { jobStages } from "@/lib/job-stages";
 
-const messages: Record<string, [string, string]> = {
+export const messages: Record<string, [string, string]> = {
   DRAFT: ["Add your workbook", "Upload the required files to continue."],
   UPLOADING: ["Uploading workbooks", "Wait for the files to finish uploading."],
   UPLOADED: ["Confirm your worksheets", "Choose the sheets and header rows below before starting."],
@@ -24,6 +24,7 @@ const messages: Record<string, [string, string]> = {
   CANCELLED: ["Workflow cancelled", "Processing has stopped for this job."],
   COST_GUARD_REACHED: ["Processing limit reached", "Review the job details before continuing."],
 };
+
 export function JobTimeline({ job, observed, showSummary = true }: { job: BackendJob; observed: readonly string[]; showSummary?: boolean }) {
   const phases = jobStages(job, observed);
   const failed = ["FAILED", "CANCELLED", "COST_GUARD_REACHED"].includes(job.status);
@@ -34,10 +35,27 @@ export function JobTimeline({ job, observed, showSummary = true }: { job: Backen
     : job.status === "TRANSFORMATION_REVIEW_PENDING" ? { path: "transformation-review", action: "Review transformations" }
     : completed ? { path: "result", action: "View result and downloads" } : undefined;
   return <section aria-labelledby="workflow-timeline" className="workflow-status">
-    {showSummary && <div className="workflow-current"><span className={`workflow-state-icon ${failed ? "text-destructive" : completed ? "text-[var(--success)]" : "text-primary"}`} aria-hidden="true">{failed ? <AlertCircle /> : completed ? <Check /> : review || job.status === "UPLOADED" ? <CircleDot /> : <LoaderCircle className="processing-indicator" />}</span><div className="min-w-0 flex-1"><h2 id="workflow-timeline" className="text-sm font-semibold">{message[0]}</h2><p className="mt-1 text-xs text-muted-foreground">{message[1]}</p></div>{next && <Button asChild size="sm"><Link to={`/jobs/${encodeURIComponent(job.job_id)}/${next.path}`}>{next.action}<ArrowRight aria-hidden="true" /></Link></Button>}</div>}
+    {showSummary && <div className="workflow-current">
+      <span className={`workflow-state-icon ${failed ? "text-destructive" : completed ? "text-[var(--success)]" : "text-primary"}`} aria-hidden="true">
+        {failed ? <AlertCircle /> : completed ? <Check /> : review || job.status === "UPLOADED" ? <CircleDot /> : <LoaderCircle className="processing-indicator" />}
+      </span>
+      <div className="workflow-phase-body">
+        <h2 id="workflow-timeline">{message[0]}</h2>
+        <p>{message[1]}</p>
+      </div>
+      {next && <Button asChild><Link to={`/jobs/${encodeURIComponent(job.job_id)}/${next.path}`}>{next.action}<ArrowRight aria-hidden="true" /></Link></Button>}
+    </div>}
     {!showSummary && <h2 id="workflow-timeline" className="sr-only">Workflow progress</h2>}
-    <ol className="workflow-phases" aria-label="Workflow progress">{phases.map((phase, index) => <li key={phase.id} data-state={phase.state} aria-current={phase.state === "active" || phase.state === "failed" ? "step" : undefined}>
-      <span className="phase-icon" aria-hidden="true">{phase.state === "complete" ? <Check /> : phase.state === "failed" ? <AlertCircle /> : phase.state === "active" ? <CircleDot /> : phase.state === "skipped" ? <Circle /> : index + 1}</span><span className="min-w-0"><span className="block font-medium">{phase.label}</span><span className="phase-state">{phase.state === "complete" ? "Complete" : phase.state === "active" ? review ? "Your review needed" : "In progress" : phase.state === "failed" ? "Stopped" : phase.state === "skipped" ? phase.skipLabel : "Pending"}</span></span>
-    </li>)}</ol>
+    <ol className="workflow-phases" aria-label="Workflow progress">
+      {phases.map((phase, index) => <li key={phase.id} data-state={phase.state} aria-current={phase.state === "active" || phase.state === "failed" ? "step" : undefined}>
+        <span className="phase-icon" aria-hidden="true">
+          {phase.state === "complete" ? <Check /> : phase.state === "failed" ? <AlertCircle /> : phase.state === "active" ? <CircleDot /> : phase.state === "skipped" ? <Circle /> : index + 1}
+        </span>
+        <span>{phase.label}</span>
+        <span className="phase-state">
+          {phase.state === "complete" ? "Complete" : phase.state === "active" ? (review ? "Your review needed" : "In progress") : phase.state === "failed" ? "Stopped" : phase.state === "skipped" ? phase.skipLabel : "Pending"}
+        </span>
+      </li>)}
+    </ol>
   </section>;
 }

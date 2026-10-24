@@ -1,22 +1,29 @@
 import { useEffect, useRef, useState } from "react";
-import { Menu, Plus, ShieldCheck, UserRound, X } from "lucide-react";
+import { Menu, Plus, ShieldCheck, X } from "lucide-react";
 import { Link, NavLink, Outlet, useLocation, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { WorkbookMark } from "@/components/ui/workbook-mark";
 import { cn } from "@/lib/utils";
-import { jobNavigation } from "@/routes/route-config";
 import { SessionActions } from "@/auth/session-actions";
+import { rememberedJobs } from "@/lib/pending-job";
 
 function Branding() {
   return <Link to="/jobs/new" aria-label="Pilotxl home" className="brand-link"><WorkbookMark className="brand-mark" /><strong>Pilotxl</strong></Link>;
 }
-function Navigation({ jobId, onNavigate }: { jobId?: string; onNavigate?: () => void }) {
+function JobNavGroup({ jobId, onNavigate }: { jobId: string; onNavigate?: () => void }) {
+  const linkClass = ({ isActive }: { isActive: boolean }) => cn("nav-link", isActive && "nav-link-active");
+  return <div className="job-navigation">
+    <NavLink to={`/jobs/${encodeURIComponent(jobId)}`} className={linkClass} onClick={onNavigate}>
+      Workflow {jobId.slice(0, 8)}
+    </NavLink>
+  </div>;
+}
+function Navigation({ jobIds, onNavigate }: { jobIds: string[]; onNavigate?: () => void }) {
   const linkClass = ({ isActive }: { isActive: boolean }) => cn("nav-link", isActive && "nav-link-active");
   return <>
     <NavLink to="/jobs/new" end className={linkClass} onClick={onNavigate}><Plus aria-hidden="true" />Create workflow</NavLink>
-    {jobId && <div className="job-navigation"><p className="nav-group-label">Current workflow</p>{jobNavigation.map(({ suffix, label, icon: Icon }) => <NavLink key={suffix} to={`/jobs/${encodeURIComponent(jobId)}${suffix}`} end className={linkClass} onClick={onNavigate}><Icon aria-hidden="true" />{label}</NavLink>)}</div>}
-    <NavLink to="/login" end className={(state) => cn(linkClass(state), "account-link")} onClick={onNavigate}><UserRound aria-hidden="true" />Account</NavLink>
-  </>;
+    {jobIds.map(id => <JobNavGroup key={id} jobId={id} onNavigate={onNavigate} />)}
+</>;
 }
 export function AppLayout() {
   const { pathname } = useLocation();
@@ -24,13 +31,17 @@ export function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
   const { id: jobId } = useParams<"id">();
+  const [storedJobs, setStoredJobs] = useState(rememberedJobs);
   useEffect(() => { setMobileOpen(false); }, [pathname]);
+  useEffect(() => { setStoredJobs(rememberedJobs()); }, [pathname]);
+  const jobIds = jobId
+    ? [jobId, ...storedJobs.filter(id => id !== jobId)].slice(0, 5)
+    : storedJobs;
   return <div className="app-shell" data-public={publicPage}>
     <a href="#main-content" className="skip-link">Skip to content</a>
     {!publicPage && <aside className="app-sidebar">
       <Branding />
-      <nav aria-label="Desktop navigation" className="desktop-navigation"><Navigation jobId={jobId} /></nav>
-      <div className="sidebar-context"><ShieldCheck aria-hidden="true" /><p>Review first.<br /><span>Keep your originals.</span></p></div>
+      <nav aria-label="Desktop navigation" className="desktop-navigation"><Navigation jobIds={jobIds} /></nav>
       <div className="sidebar-session"><SessionActions /></div>
     </aside>}
     <div className="app-body">
@@ -41,7 +52,7 @@ export function AppLayout() {
           {!publicPage && <Button ref={menuButton} variant="ghost" size="icon" className="mobile-menu-button lg:hidden" aria-label={mobileOpen ? "Close navigation" : "Open navigation"} aria-expanded={mobileOpen} aria-controls="mobile-navigation" onClick={() => setMobileOpen((open) => !open)}>{mobileOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}</Button>}
           {publicPage && <span className="public-context">Spreadsheet review workspace</span>}
         </div>
-        {!publicPage && <nav id="mobile-navigation" aria-label="Mobile navigation" hidden={!mobileOpen} className="mobile-navigation"><Navigation jobId={jobId} onNavigate={() => setMobileOpen(false)} /><div className="mobile-session"><SessionActions /></div></nav>}
+        {!publicPage && <nav id="mobile-navigation" aria-label="Mobile navigation" hidden={!mobileOpen} className="mobile-navigation"><Navigation jobIds={jobIds} onNavigate={() => setMobileOpen(false)} /><div className="mobile-session"><SessionActions /></div></nav>}
       </header>
       <div className="app-sheet">
         <main id="main-content" tabIndex={-1} className="app-main"><Outlet /></main>

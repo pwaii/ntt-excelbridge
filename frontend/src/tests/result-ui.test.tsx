@@ -40,7 +40,7 @@ it("lists every published current-workbook output instead of only the primary ar
 });
 it.each(["INSPECTING", "QUALITY_REVIEW_PENDING", "FAILED", "CANCELLED"])("offers progress recovery and no downloads at %s", async (status) => {
   await render(status); expect(container.textContent).toContain("Result is not ready");
-  expect(container.querySelector(`a[href="/jobs/${base.job.job_id}"]`)).not.toBeNull();
+  expect(container.querySelector(`a[href="/jobs/${base.job.job_id}"]`)).toBeNull();
   expect(container.textContent).not.toContain("Prepare download");
 });
 it("removes an expired link and requests a fresh URL", async () => {

@@ -70,7 +70,7 @@ export function CurrentWorkbookPicker({ id, files, onChange, validationError, on
         type="file"
         multiple
         accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        aria-label="Current workbooks"
+        aria-label="Your files"
         aria-required="true"
         aria-invalid={Boolean(displayedError)}
         className="sr-only"
@@ -78,7 +78,9 @@ export function CurrentWorkbookPicker({ id, files, onChange, validationError, on
         onChange={(event) => { selectFiles(event.currentTarget.files); event.currentTarget.value = ""; }}
       />
       <div
-        className={cn("workbook-dropzone rounded-xl border px-3 py-3 transition-colors", dragging ? "border-primary bg-accent" : "border-primary/35 bg-accent/20 hover:border-primary/70", displayedError && "border-destructive")}
+        className={cn("workbook-dropzone", displayedError && "border-destructive")}
+        data-dragging={dragging}
+        data-selected={files.length > 0}
         onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
         onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
         onDragLeave={(event) => { event.preventDefault(); setDragging(false); }}
@@ -86,20 +88,20 @@ export function CurrentWorkbookPicker({ id, files, onChange, validationError, on
       >
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-sm font-medium">{dragging ? "Drop to select current workbooks" : "Select one or more current workbooks"}</p>
+            <p className="text-sm font-medium">{dragging ? "Drop your Excel files here" : "Drop your Excel files here"}</p>
             <p className="mt-1 text-xs text-muted-foreground">.xlsx · Max 25 MB each · Up to {MAX_CURRENT_FILES} files</p>
           </div>
-          <Button ref={browseButton} type="button" variant="outline" size="sm" onClick={() => input.current?.click()} aria-label="Browse current workbooks"><FolderOpen aria-hidden="true" />Browse</Button>
+          <Button ref={browseButton} type="button" variant="outline" size="sm" onClick={() => input.current?.click()} aria-label="Browse files"><FolderOpen aria-hidden="true" />Browse</Button>
         </div>
-        {files.length > 0 && <div className="mt-3 space-y-2" role="list" aria-label="Selected current workbooks">
-          {files.map((file, index) => <div key={`${file.name}-${file.size}-${file.lastModified}`} role="listitem" className="grid min-w-0 grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2 rounded-lg border bg-background/60 px-2 py-2">
-            <span className="flex size-7 items-center justify-center rounded-md bg-accent text-primary"><FileSpreadsheet className="size-4" aria-hidden="true" /></span>
+        {files.length > 0 && <div className="mt-3 space-y-2" role="list" aria-label="Selected files">
+          {files.map((file, index) => <div key={`${file.name}-${file.size}-${file.lastModified}`} role="listitem" className="grid min-w-0 grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2 rounded border bg-card px-2 py-2">
+            <span className="flex size-7 items-center justify-center rounded bg-muted text-[var(--workflow-accent)]"><FileSpreadsheet className="size-4" aria-hidden="true" /></span>
             <span className="min-w-0"><span className="block truncate text-sm font-medium" title={file.name}>{file.name}</span><span className="block text-[11px] text-muted-foreground">{formatFileSize(file.size)} · Current workbook</span></span>
             <Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} aria-label={`Remove ${file.name}`} title="Remove workbook"><X aria-hidden="true" /></Button>
           </div>)}
         </div>}
       </div>
-      <p id={`${id}-hint`} className="mt-2 text-[11px] text-muted-foreground">Select one or more current XLSX workbooks. The first file is the primary workbook used by the workflow; all selected files are uploaded with the job.</p>
+      <p id={`${id}-hint`} className="mt-2 text-[11px] text-muted-foreground">Select one or more XLSX files. The first file is the primary workbook; all selected files are uploaded with the job.</p>
       {displayedError && <p id={`${id}-error`} role="alert" className="mt-2 text-sm text-destructive">{displayedError}</p>}
     </div>
   );

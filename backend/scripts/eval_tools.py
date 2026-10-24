@@ -72,9 +72,9 @@ T4 = {
 # Tool5 covers the plan's case types in one call: clear exact, ambiguous, no-match.
 T5 = {
     "current_rows": [
-        {"current_row_id": "c1", "fields": {"Email": "a@x.com"}},
-        {"current_row_id": "c2", "fields": {"Name": "John Smith"}},
-        {"current_row_id": "c3", "fields": {"Email": "nobody@x.com"}},
+        {"current_row_id": "c1", "candidate_main_row_ids": ["m1"], "fields": {"Email": "a@x.com"}},
+        {"current_row_id": "c2", "candidate_main_row_ids": ["m2", "m3"], "fields": {"Name": "John Smith"}},
+        {"current_row_id": "c3", "candidate_main_row_ids": [], "fields": {"Email": "nobody@x.com"}},
     ],
     "candidate_rows": [
         {"main_row_id": "m1", "fields": {"Email": "a@x.com"}},
