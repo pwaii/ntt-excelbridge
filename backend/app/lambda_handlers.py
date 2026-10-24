@@ -5,8 +5,12 @@ from __future__ import annotations
 import json
 from hashlib import sha256
 from io import BytesIO
+from time import time
+from urllib.parse import unquote_plus
+from uuid import uuid4
 from typing import Any
 
+from botocore.exceptions import ClientError
 from openpyxl import load_workbook
 
 from app.domain.enums import JobStatus
@@ -16,6 +20,20 @@ from app.services.review_report import all_children
 from app.settings import settings
 from app.storage.dynamo_store import DynamoStore, RevisionConflictError
 from app.storage.s3_store import S3Store
+from app.storage.aws_session import get_quicksight_client
+from app.services.quicksight_pipeline import (
+    INSPECTION_FIELDS,
+    PERMISSION_FIELDS,
+    QUALITY_FIELDS,
+    WORKBOOK_ROW_FIELDS,
+    encode_csv,
+    flatten_inspection_manifests,
+    flatten_quality_reports,
+    flatten_workbook_rows,
+    owner_permissions,
+    inspection_artifact_key,
+    quality_artifact_key,
+)
 from app.workers.apply_changes import (
     apply_accepted_changes,
     apply_accepted_updates,
@@ -739,3 +757,126 @@ def failure_handler(event: dict[str, Any], context) -> dict[str, Any]:
         {"status": "FAILED", "error_code": "WORKFLOW_FAILED", "error_detail": "workflow segment failed; retry is available"},
     )
     return {"job_id": event["job_id"], "status": updated["status"]}
+
+
+def quicksight_refresh_handler(event: dict[str, Any], context) -> dict[str, Any]:
+    """Rebuild Quick CSVs and optionally request immediate SPICE ingestion.
+
+    S3 events are at-least-once. The object key is validated and a full scan
+    makes retries idempotent. Scheduled mode leaves ingestion to QuickSight's
+    dataset schedules; API mode calls CreateIngestion and lets SQS retry active
+    SPICE conflicts.
+    """
+    incoming = [event]
+    if isinstance(event.get("Records"), list):
+        incoming = [json.loads(record.get("body", "{}")) for record in event["Records"]]
+    accepted_events = 0
+    for incoming_event in incoming:
+        detail = incoming_event.get("detail", {})
+        bucket = (detail.get("bucket") or {}).get("name")
+        key = unquote_plus(str((detail.get("object") or {}).get("key", "")))
+        if bucket == settings.app_data_bucket and quality_artifact_key(key):
+            accepted_events += 1
+    if not accepted_events:
+        return {"status": "ignored", "event_count": len(incoming)}
+
+    s3 = S3Store()
+    dynamo = DynamoStore()
+    owner_cache: dict[str, str] = {}
+    quality_reports: list[tuple[str, dict[str, Any]]] = []
+    manifests: list[tuple[str, dict[str, Any]]] = []
+
+    def owner_for_key(object_key: str) -> str:
+        parts = object_key.split("/")
+        if len(parts) != 4:
+            return ""
+        job_id = parts[1]
+        if job_id not in owner_cache:
+            job = dynamo.get_job(job_id)
+            owner_cache[job_id] = str(job.get("owner_id", "")) if job else ""
+        return owner_cache[job_id]
+
+    paginator = s3.client.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=s3.bucket, Prefix=f"{settings.s3_prefix}/"):
+        for item in page.get("Contents", []):
+            object_key = item["Key"]
+            if quality_artifact_key(object_key):
+                quality_reports.append((object_key, owner_for_key(object_key), json.loads(s3.get_bytes(object_key))))
+            elif inspection_artifact_key(object_key):
+                manifests.append((object_key, owner_for_key(object_key), json.loads(s3.get_bytes(object_key))))
+
+    quality_rows = flatten_quality_reports(quality_reports)
+    inspection_rows = flatten_inspection_manifests(manifests)
+    inspection_by_input: dict[tuple[str, str], dict[str, Any]] = {}
+    for key, _, manifest in manifests:
+        parts = key.split("/")
+        filename = parts[-1]
+        slot = filename.removesuffix("-manifest.json") if filename != "manifest.json" else "input"
+        inspection_by_input[(parts[1], slot)] = manifest
+
+    # Only publish workbooks that belong to jobs with completed quality reports.
+    # The original XLSX cell values are the dashboard data; IDs remain private
+    # linkage columns used by the pipeline and are omitted from dashboard visuals.
+    completed_job_ids = {key.split("/")[1] for key, *_ in quality_reports}
+    workbook_sources: list[tuple[str, str, bytes]] = []
+    for job_id in completed_job_ids:
+        job = dynamo.get_job(job_id)
+        if not job:
+            continue
+        owner_id = str(job.get("owner_id", ""))
+        for slot, file_info in (job.get("files") or {}).items():
+            object_key = str(file_info.get("key", ""))
+            if not file_info.get("uploaded") or not object_key:
+                continue
+            workbook_sources.append((object_key, owner_id, s3.get_bytes(object_key)))
+    workbook_rows = flatten_workbook_rows(workbook_sources, inspection_by_input)
+    permission_rows = owner_permissions(owner_cache.values())
+    s3.put_bytes("quicksight/quality-issues.csv", encode_csv(quality_rows, QUALITY_FIELDS), "text/csv; charset=utf-8")
+    s3.put_bytes("quicksight/inspections.csv", encode_csv(inspection_rows, INSPECTION_FIELDS), "text/csv; charset=utf-8")
+    s3.put_bytes("quicksight/workbook-rows.csv", encode_csv(workbook_rows, WORKBOOK_ROW_FIELDS), "text/csv; charset=utf-8")
+    if settings.quicksight_permissions_dataset_id:
+        if not settings.quicksight_embedding_role_arn:
+            raise ValueError("QUICKSIGHT_EMBEDDING_ROLE_ARN is required when the permissions dataset is configured")
+        s3.put_bytes("quicksight/owner-permissions.csv", encode_csv(permission_rows, PERMISSION_FIELDS), "text/csv; charset=utf-8")
+
+    refreshes: dict[str, str] = {}
+    account_id = settings.quicksight_account_id
+    datasets = (
+        ("quality", settings.quicksight_quality_dataset_id),
+        ("inspection", settings.quicksight_inspection_dataset_id),
+        ("workbook_rows", settings.quicksight_workbook_rows_dataset_id),
+        ("permissions", settings.quicksight_permissions_dataset_id),
+    )
+    configured = [(label, dataset_id) for label, dataset_id in datasets if dataset_id]
+    if configured and not account_id:
+        raise ValueError("QUICKSIGHT_ACCOUNT_ID must be configured when a dataset is enabled")
+    if settings.quicksight_refresh_mode == "scheduled":
+        for label, dataset_id in datasets:
+            refreshes[label] = "waiting_on_quicksight_schedule" if dataset_id else "not_configured"
+    else:
+        quicksight = get_quicksight_client()
+        for label, dataset_id in datasets:
+            if not dataset_id:
+                refreshes[label] = "not_configured"
+                continue
+            ingestion_id = f"refresh-{label}-{int(time())}-{uuid4().hex[:10]}"
+            try:
+                quicksight.create_ingestion(DataSetId=dataset_id, IngestionId=ingestion_id, AwsAccountId=account_id)
+            except ClientError as error:
+                code = error.response.get("Error", {}).get("Code")
+                if code in {"ConflictException", "ResourceInUseException"}:
+                    # SQS retries this event after the current SPICE ingestion ends.
+                    raise RuntimeError(f"Quick SPICE ingestion is already running: {label}") from error
+                raise
+            refreshes[label] = ingestion_id
+    return {
+        "status": "updated",
+        "quality_reports": len(quality_reports),
+        "quality_rows": len(quality_rows),
+        "inspection_manifests": len(manifests),
+        "inspection_rows": len(inspection_rows),
+        "workbook_rows": len(workbook_rows),
+        "permission_rows": len(permission_rows),
+        "event_count": accepted_events,
+        "refreshes": refreshes,
+    }

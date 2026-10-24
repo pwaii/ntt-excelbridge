@@ -30,7 +30,8 @@ function record(value: unknown): Record<string, unknown> | undefined {
 function diagnostic(value: unknown) {
   // Identifiers only; never display arbitrary server prose, HTML, token-like JWTs,
   // request payloads or presigned URLs. This is best-effort, not a server schema.
-  return typeof value === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(value) ? value : undefined;
+  // API Gateway request IDs can be base64-like values with trailing padding.
+  return typeof value === "string" && /^[A-Za-z0-9_-]{1,126}={0,2}$/.test(value) ? value : undefined;
 }
 export function responseDiagnostics(headers: Headers, payload: unknown) {
   const body = record(payload);
@@ -39,7 +40,7 @@ export function responseDiagnostics(headers: Headers, payload: unknown) {
   return {
     requestId: diagnostic(headers.get("x-request-id")) ?? diagnostic(headers.get("x-amzn-requestid"))
       ?? diagnostic(body?.request_id) ?? diagnostic(error?.request_id) ?? diagnostic(detail?.request_id),
-    code: diagnostic(error?.code) ?? diagnostic(detail?.code) ?? diagnostic(body?.code)
+    code: diagnostic(headers.get("x-error-code")) ?? diagnostic(error?.code) ?? diagnostic(detail?.code) ?? diagnostic(body?.code)
       ?? diagnostic(body?.error_code) ?? diagnostic(error?.error_code) ?? diagnostic(detail?.error_code),
   };
 }

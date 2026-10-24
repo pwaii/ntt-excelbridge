@@ -26,6 +26,48 @@ Parameters:
   FrontendOrigin:
     Type: String
     Default: http://localhost:5173
+  QuickSightAccountId:
+    Type: String
+    Default: "453995432289"
+    AllowedPattern: "^[0-9]{12}$"
+  QuickSightRegion:
+    Type: String
+    Default: ap-southeast-1
+  QuickSightQualityDatasetId:
+    Type: String
+    Default: qa-issues-s3-76bde119
+  QuickSightInspectionDatasetId:
+    Type: String
+    Default: qa-inspections-s3-76bde119
+  QuickSightWorkbookRowsDatasetId:
+    Type: String
+    Default: excelbridge-workbook-rows
+  QuickSightPermissionsDatasetId:
+    Type: String
+    Default: excelbridge-owner-permissions
+    Description: Dataset ID containing UserARN to owner_id RLS grants; configure it as RLS_RULES in QuickSight.
+  QuickSightRlsPermissionsDatasetArn:
+    Type: String
+    Default: arn:aws:quicksight:ap-southeast-1:453995432289:dataset/excelbridge-owner-permissions
+    Description: ARN of the permissions dataset attached to the quality and inspection datasets.
+  QuickSightEmbeddingRoleArn:
+    Type: String
+    Default: arn:aws:iam::453995432289:role/xlsx-workflow-demo-lambda
+    Description: IAM role assumed by the API Lambda and registered as each web customer's QuickSight Reader.
+    MinLength: 20
+  QuickSightReaderGroupName:
+    Type: String
+    Default: website-readers
+    Description: Existing QuickSight group shared with the published dashboard.
+  QuickSightRefreshMode:
+    Type: String
+    Default: scheduled
+    AllowedValues: [scheduled, api]
+    Description: Use scheduled dataset refresh to avoid Capacity pricing; api requires Capacity pricing for near-real-time refresh.
+  QuickSightDashboardId:
+    Type: String
+    Default: excelbridge-quality-dashboard
+    Description: Published owner-RLS dashboard ID in QuickSight.
   LambdaExecutionRoleArn:
     Type: String
     Description: Existing Lambda execution role ARN with the union of permissions required by the API and worker functions.
@@ -48,6 +90,17 @@ Globals:
         APP_DATA_BUCKET: !Ref DataBucket
         BEDROCK_MODEL_ID: !Ref BedrockModelId
         BEDROCK_MODEL_ID_HEAVY: !Ref BedrockHeavyModelId
+        QUICKSIGHT_ACCOUNT_ID: !Ref QuickSightAccountId
+        QUICKSIGHT_REGION: !Ref QuickSightRegion
+        QUICKSIGHT_QUALITY_DATASET_ID: !Ref QuickSightQualityDatasetId
+        QUICKSIGHT_INSPECTION_DATASET_ID: !Ref QuickSightInspectionDatasetId
+        QUICKSIGHT_WORKBOOK_ROWS_DATASET_ID: !Ref QuickSightWorkbookRowsDatasetId
+        QUICKSIGHT_PERMISSIONS_DATASET_ID: !Ref QuickSightPermissionsDatasetId
+        QUICKSIGHT_RLS_PERMISSIONS_DATASET_ARN: !Ref QuickSightRlsPermissionsDatasetArn
+        QUICKSIGHT_EMBEDDING_ROLE_ARN: !Ref QuickSightEmbeddingRoleArn
+        QUICKSIGHT_READER_GROUP_NAME: !Ref QuickSightReaderGroupName
+        QUICKSIGHT_REFRESH_MODE: !Ref QuickSightRefreshMode
+        QUICKSIGHT_DASHBOARD_ID: !Ref QuickSightDashboardId
 
 Resources:
   DataBucket:
@@ -75,6 +128,9 @@ Resources:
             Status: Enabled
             Prefix: jobs/
             ExpirationInDays: 14
+      NotificationConfiguration:
+        EventBridgeConfiguration:
+          EventBridgeEnabled: true
 
   MetadataTable:
     Type: AWS::DynamoDB::Table
@@ -130,8 +186,16 @@ Resources:
       AllowedOAuthFlows: [code]
       AllowedOAuthScopes: [openid, email, profile]
       SupportedIdentityProviders: [COGNITO]
-      CallbackURLs: [!Sub '${FrontendOrigin}/auth/callback']
-      LogoutURLs: [!Sub '${FrontendOrigin}/login']
+      CallbackURLs:
+        - !Sub '${FrontendOrigin}/auth/callback'
+        - http://localhost:5173/auth/callback
+        - http://127.0.0.1:5173/auth/callback
+        - https://dg3jy0fov0uhl.cloudfront.net/auth/callback
+      LogoutURLs:
+        - !Sub '${FrontendOrigin}/login'
+        - http://localhost:5173/login
+        - http://127.0.0.1:5173/login
+        - https://dg3jy0fov0uhl.cloudfront.net/login
 
   UserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain
@@ -144,9 +208,10 @@ Resources:
     Properties:
       StageName: !Ref Environment
       CorsConfiguration:
-        AllowOrigins: [!Ref FrontendOrigin, http://127.0.0.1:5173]
+        AllowOrigins: [!Ref FrontendOrigin, http://localhost:5173, http://127.0.0.1:5173]
         AllowHeaders: [Authorization, Content-Type, X-Request-Id]
         AllowMethods: [GET, POST, PUT, OPTIONS]
+        ExposeHeaders: [X-Error-Code, X-Request-Id, X-Amzn-RequestId]
       Auth:
         DefaultAuthorizer: CognitoAuthorizer
         Authorizers:
@@ -167,7 +232,7 @@ Resources:
           COGNITO_USER_POOL_ID: !Ref UserPool
           COGNITO_APP_CLIENT_ID: !Ref UserPoolClient
           COGNITO_API_TOKEN_TYPE: access
-          CORS_ORIGINS: !Sub '${FrontendOrigin},http://127.0.0.1:5173'
+          CORS_ORIGINS: !Sub '${FrontendOrigin},http://localhost:5173,http://127.0.0.1:5173'
       Events:
         Api:
           Type: HttpApi
@@ -232,6 +297,71 @@ Resources:
       Handler: app.lambda_handlers.failure_handler
       Role: !Ref LambdaExecutionRoleArn
 
+  QuickSightRefreshFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handlers.quicksight_refresh_handler
+      Role: !Ref LambdaExecutionRoleArn
+      Timeout: 300
+      Events:
+        QualityReportQueue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt QuickSightRefreshQueue.Arn
+            BatchSize: 10
+            MaximumBatchingWindowInSeconds: 60
+            ScalingConfig:
+              MaximumConcurrency: 2
+
+  QuickSightRefreshDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+
+  QuickSightRefreshQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 1800
+      MessageRetentionPeriod: 345600
+      SqsManagedSseEnabled: true
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt QuickSightRefreshDeadLetterQueue.Arn
+        maxReceiveCount: 10
+
+  QuickSightRefreshQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues: [!Ref QuickSightRefreshQueue]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt QuickSightRefreshQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !GetAtt QuickSightRefreshRule.Arn
+
+  QuickSightRefreshRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Batch quality report updates before refreshing Quick SPICE datasets.
+      EventPattern:
+        source: [aws.s3]
+        detail-type: [Object Created]
+        detail:
+          bucket:
+            name: [!Ref DataBucket]
+          object:
+            key:
+              - wildcard: "jobs/*/quality/*quality-report.json"
+      Targets:
+        - Id: QuickSightRefreshQueueTarget
+          Arn: !GetAtt QuickSightRefreshQueue.Arn
+
   ApiLogGroup:
     Type: AWS::Logs::LogGroup
     DeletionPolicy: Delete
@@ -294,6 +424,14 @@ Resources:
     UpdateReplacePolicy: Delete
     Properties:
       LogGroupName: !Sub /aws/lambda/${FailureFunction}
+      RetentionInDays: 14
+
+  QuickSightRefreshLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${QuickSightRefreshFunction}
       RetentionInDays: 14
 
   WorkflowStateMachine:

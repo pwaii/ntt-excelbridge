@@ -142,6 +142,32 @@ Spec: `docs/superpowers/specs/2026-10-16-ai-day7-design.md` · Plan: `docs/super
 - By action: keep_first_delete_later 42, manual_review 24, exclude_from_input 24, delete 18
 
 ### Next steps
-1. **Automation pipeline**  EventBridge S3 t—rigger on `jobs/*/quality/quality-report.json` → Lambda runs flatten → `create-ingestion` on `qa-issues-s3-76bde119`. Concurrency guard: skip if ingestion already RUNNING. Not yet built.
-2. **`flatten_inspections.py`** — run to add workbook-metadata dataset (columns, types, blank rates per job).
-3. **QuickSight embedding** — Enterprise supports anonymous embedding (`generate-embed-url-for-anonymous-user`). FastAPI generates signed URL; React renders in `<iframe>`. Requires: publish dashboard, create namespace for anonymous access. Not started.
+1. **QuickSight embedding** — publish dashboards and add authenticated dashboard embedding after row-level security maps dashboard rows to the app user. Anonymous embedding is unsafe because the flattened datasets aggregate all jobs in the bucket.
+
+### Quick integration follow-through — 2026-10-23
+- Added `backend/app/services/quicksight_pipeline.py` to flatten primary and `input_2`–`input_8` quality/inspection artifacts. Both CSVs always write headers, including when there are no rows.
+- Added a buffered S3 EventBridge → SQS → Lambda refresh path in `infra/template.yaml`. Events batch for up to 60 seconds; a Quick ingestion conflict leaves the SQS event for retry.
+- Added `scripts/qs-inspections-manifest.json` and refreshed the manual demo pipeline to use the same multi-slot flattening logic.
+- Deployed to `xlsx-workflow-demo` in us-east-1 using the `finpilot` SSO profile; Quick resources remain in ap-southeast-1. The stack now has the EventBridge rule, SQS queue/DLQ, and refresh Lambda.
+- Extended quality dataset `qa-issues-s3-76bde119` with `input_slot`; created S3 source `qa-inspections-source-76bde119` and dataset `qa-inspections-s3-76bde119`.
+- A live invocation with a real four-input job exposed that Quick `ListIngestions` has no resource-level IAM scope. The Lambda now relies on Quick's dataset-scoped `CreateIngestion` response and SQS retry instead of account-wide listing permission; the external Lambda role grant is scoped to the two dataset ingestion ARN patterns.
+- The first inspection dataset ingestion failed because the CSV did not exist yet. The deployed worker then published both CSVs and both new SPICE ingestions completed successfully.
+- Live refresh result: 56 quality reports → 154 rows and 56 inspection manifests → 424 rows. For four-input job `ffe13591-8570-4ab9-9117-edf19b075865`, the quality CSV has rows in `input`/`input_2`/`input_3`/`input_4`; inspection has 8 rows per slot. Both datasets refreshed with `COMPLETED` status.
+- Authenticated dashboard embedding remains pending row-level security; flattened reports aggregate all jobs in the bucket, so anonymous embedding is unsafe.
+
+### Quick dashboard web embed follow-up — 2026-10-23
+- Verified the live Quick resources before setup: neither current S3 dataset had tag-based RLS, and no dashboard was published. Existing analyses referenced stale file-upload data.
+- Added an authenticated backend URL-minting route. It derives the owner tag from the verified Cognito subject, checks both datasets contain `owner_id` and the expected enabled tag rule, restricts the Quick embed to the exact request origin, and returns no-cache short-lived embed URLs. Missing dataset security or capacity pricing fails closed.
+- Added `owner_id` to the Quick CSV pipeline, sourced from DynamoDB job metadata; missing job metadata gives a blank owner. The deployed refresh rebuilt 154 quality rows and 427 inspection rows; both SPICE ingestions completed.
+- Updated both live dataset schemas with `owner_id` and enabled tag-based RLS (`app_user_id` → `owner_id`, no match-all). Published dashboard `excelbridge-quality-dashboard`, reusing the two visuals from an existing analysis and remapping its dataset to the S3-backed quality dataset. Inspection data is secured and refreshed, but is not yet shown in a dashboard visual.
+- Added a least-privilege inline policy to `xlsx-workflow-demo-lambda` for `DescribeDataSet` on both datasets and `GenerateEmbedUrlForAnonymousUser` on this dashboard. Configured the dashboard ID in the backend stack and deployed the `/analytics/quick` frontend to CloudFront (`d35kjusenp6a9t.cloudfront.net`). Site returns HTTP 200; the embed API returns 401 without Cognito auth as expected.
+- The remaining blocker is account pricing: a live embed API call returns `UnsupportedPricingPlanException` because the QuickSight account has no active Capacity Pricing plan. Backend and UI now return a clear `QUICKSIGHT_CAPACITY_REQUIRED` message. No capacity plan has been activated; enable one before the authenticated dashboard smoke test.
+
+### Registered QuickSight Reader pricing integration — 2026-10-23
+- Replaced the website analytics embed endpoint's anonymous tag-based call with registered-reader embedding. A verified Cognito subject maps to a stable opaque session name; repeat visits reuse that same IAM-backed Quick user.
+- Added idempotent Quick user registration, dashboard reader-group membership, and a per-customer STS role session before minting the registered-user embed URL.
+- Added a `UserARN,owner_id` RLS permissions CSV to the Quick refresh pipeline and a manifest for the S3-backed permissions dataset. Scheduled mode writes updated CSVs without invoking Quick's Capacity-priced ingestion API; API mode remains an opt-in for accounts with Capacity pricing.
+- Added fail-closed checks requiring both report datasets to use the configured user-based `VERSION_2` RLS dataset and retain their text `owner_id` column.
+- Updated SAM parameters, deployment script, frontend messages, IAM policy example, and `docs/quick-dashboard-embedding.md` for Reader per-user setup.
+- No live QuickSight resources, account identity settings, paid subscription, or IAM roles were changed. The AWS-side reader group, dataset RLS attachments, trust/policy updates, and per-user pricing activation remain one-time setup prerequisites.
+- No tests were run in this change.

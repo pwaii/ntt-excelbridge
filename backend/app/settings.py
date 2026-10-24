@@ -29,6 +29,17 @@ class Settings(BaseSettings):
     bedrock_temperature: float = 0.0
 
     app_data_bucket: str = ""
+    quicksight_account_id: str = ""
+    quicksight_region: str = "ap-southeast-1"
+    quicksight_quality_dataset_id: str = ""
+    quicksight_inspection_dataset_id: str = ""
+    quicksight_workbook_rows_dataset_id: str = ""
+    quicksight_permissions_dataset_id: str = ""
+    quicksight_dashboard_id: str = ""
+    quicksight_embedding_role_arn: str = ""
+    quicksight_reader_group_name: str = "website-readers"
+    quicksight_rls_permissions_dataset_arn: str = ""
+    quicksight_refresh_mode: Literal["scheduled", "api"] = "scheduled"
     s3_prefix: str = "jobs"
     dynamo_table: str = "xlsx-workflow"
     state_machine_arn: str = ""

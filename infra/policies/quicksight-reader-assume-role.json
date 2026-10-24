@@ -1,0 +1,16 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AssumeQuickSightReaderIntegrationRole",
+      "Effect": "Allow",
+      "Action": "sts:AssumeRole",
+      "Resource": "arn:aws:iam::453995432289:role/xlsx-workflow-demo-lambda",
+      "Condition": {
+        "StringLike": {
+          "sts:RoleSessionName": "web-*"
+        }
+      }
+    }
+  ]
+}

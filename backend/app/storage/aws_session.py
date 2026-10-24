@@ -46,3 +46,27 @@ def get_dynamodb_resource():
 @lru_cache(maxsize=1)
 def get_stepfunctions_client():
     return get_session().client("stepfunctions", config=get_client_config())
+
+
+@lru_cache(maxsize=1)
+def get_quicksight_client():
+    return get_session().client(
+        "quicksight",
+        region_name=settings.quicksight_region,
+        config=get_client_config(),
+    )
+
+
+def get_assumed_reader_quicksight_client(credentials: dict[str, str]):
+    """Create a QuickSight client using the website customer's assumed role session."""
+    session = boto3.Session(
+        aws_access_key_id=credentials["AccessKeyId"],
+        aws_secret_access_key=credentials["SecretAccessKey"],
+        aws_session_token=credentials["SessionToken"],
+        region_name=settings.aws_region,
+    )
+    return session.client(
+        "quicksight",
+        region_name=settings.quicksight_region,
+        config=get_client_config(),
+    )

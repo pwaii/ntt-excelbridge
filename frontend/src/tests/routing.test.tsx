@@ -48,6 +48,7 @@ describe("application routing", () => {
   it.each([
     ["/login", "Sign in"],
     ["/jobs/new", "New job"],
+    ["/analytics/quick", "Excel data explorer"],
     ["/jobs/job-42", "Job progress"],
     ["/jobs/job-42/quality-review", "Job progress"],        // redirects to /jobs/:id
     ["/jobs/job-42/transformation-review", "Job progress"], // redirects to /jobs/:id
@@ -84,7 +85,7 @@ describe("application routing", () => {
   it("does not invent a current job on workspace pages", () => {
     renderAt("/jobs/new");
     const links = container.querySelectorAll('[aria-label="Desktop navigation"] a');
-    expect([...links].map((link) => link.getAttribute("href"))).toEqual(["/jobs/new"]);
+    expect([...links].map((link) => link.getAttribute("href"))).toEqual(["/jobs/new", "/analytics/quick"]);
   });
 
   it("opens mobile navigation and closes it after a client-side route change", () => {

@@ -1,0 +1,57 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DescribeAppReaderIdentities",
+      "Effect": "Allow",
+      "Action": "quicksight:DescribeUser",
+      "Resource": "arn:aws:quicksight:ap-southeast-1:453995432289:user/default/xlsx-workflow-demo-lambda/web-*"
+    },
+    {
+      "Sid": "RegisterAppReaderIdentities",
+      "Effect": "Allow",
+      "Action": "quicksight:RegisterUser",
+      "Resource": "arn:aws:quicksight:ap-southeast-1:453995432289:user/default/xlsx-workflow-demo-lambda/web-*",
+      "Condition": {
+        "StringEquals": {
+          "quicksight:IamArn": "arn:aws:iam::453995432289:role/xlsx-workflow-demo-lambda"
+        },
+        "StringLike": {
+          "quicksight:SessionName": "web-*"
+        }
+      }
+    },
+    {
+      "Sid": "AssumeRegisteredReaderSessionRole",
+      "Effect": "Allow",
+      "Action": "sts:AssumeRole",
+      "Resource": "arn:aws:iam::453995432289:role/xlsx-workflow-demo-lambda",
+      "Condition": {
+        "StringLike": {
+          "sts:RoleSessionName": "web-*"
+        }
+      }
+    },
+    {
+      "Sid": "ReadDashboardDatasetSecurity",
+      "Effect": "Allow",
+      "Action": "quicksight:DescribeDataSet",
+      "Resource": [
+        "arn:aws:quicksight:ap-southeast-1:453995432289:dataset/qa-issues-s3-76bde119",
+        "arn:aws:quicksight:ap-southeast-1:453995432289:dataset/qa-inspections-s3-76bde119"
+      ]
+    },
+    {
+      "Sid": "AddReadersToDashboardGroup",
+      "Effect": "Allow",
+      "Action": "quicksight:CreateGroupMembership",
+      "Resource": "arn:aws:quicksight:ap-southeast-1:453995432289:group/default/website-readers"
+    },
+    {
+      "Sid": "EmbedPublishedDashboardForRegisteredReaders",
+      "Effect": "Allow",
+      "Action": "quicksight:GenerateEmbedUrlForRegisteredUser",
+      "Resource": "arn:aws:quicksight:ap-southeast-1:453995432289:user/default/xlsx-workflow-demo-lambda/web-*"
+    }
+  ]
+}

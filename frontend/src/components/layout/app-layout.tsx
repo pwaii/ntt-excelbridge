@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Menu, Plus, ShieldCheck, X } from "lucide-react";
+import { BarChart3, Menu, Plus, ShieldCheck, X } from "lucide-react";
 import { Link, NavLink, Outlet, useLocation, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { WorkbookMark } from "@/components/ui/workbook-mark";
@@ -22,6 +22,7 @@ function Navigation({ jobIds, onNavigate }: { jobIds: string[]; onNavigate?: () 
   const linkClass = ({ isActive }: { isActive: boolean }) => cn("nav-link", isActive && "nav-link-active");
   return <>
     <NavLink to="/jobs/new" end className={linkClass} onClick={onNavigate}><Plus aria-hidden="true" />Create workflow</NavLink>
+    <NavLink to="/analytics/quick" end className={linkClass} onClick={onNavigate}><BarChart3 aria-hidden="true" />Excel analytics</NavLink>
     {jobIds.map(id => <JobNavGroup key={id} jobId={id} onNavigate={onNavigate} />)}
 </>;
 }

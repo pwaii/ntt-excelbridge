@@ -8,13 +8,34 @@ export interface CognitoConfig {
   apiTokenType: "access" | "id" | null;
 }
 
+function normalizeDevelopmentCallback(value: string, path: "/auth/callback" | "/login", origin: string, development: boolean) {
+  if (!development) return value;
+  try {
+    const configured = new URL(value);
+    const current = new URL(origin);
+    const loopbackHosts = new Set(["localhost", "127.0.0.1", "[::1]"]);
+    if (
+      configured.protocol === "http:"
+      && current.protocol === "http:"
+      && loopbackHosts.has(configured.hostname)
+      && loopbackHosts.has(current.hostname)
+      && configured.pathname === path
+      && !configured.username
+      && !configured.password
+      && !configured.search
+      && !configured.hash
+    ) return `${current.origin}${path}`;
+  } catch { /* Validation below reports invalid callback URLs. */ }
+  return value;
+}
+
 export function readAuthConfig(env: Record<string, string | undefined>, origin: string, development: boolean) {
   const values = {
     authority: env.VITE_COGNITO_AUTHORITY?.trim() ?? "",
     domain: env.VITE_COGNITO_DOMAIN?.trim() ?? "",
     clientId: (env.VITE_COGNITO_CLIENT_ID || env.VITE_COGNITO_APP_CLIENT_ID)?.trim() ?? "",
-    redirectUri: env.VITE_COGNITO_REDIRECT_URI?.trim() ?? "",
-    logoutUri: env.VITE_COGNITO_LOGOUT_URI?.trim() ?? "",
+    redirectUri: normalizeDevelopmentCallback(env.VITE_COGNITO_REDIRECT_URI?.trim() ?? "", "/auth/callback", origin, development),
+    logoutUri: normalizeDevelopmentCallback(env.VITE_COGNITO_LOGOUT_URI?.trim() ?? "", "/login", origin, development),
   };
   const names = { authority: "VITE_COGNITO_AUTHORITY", domain: "VITE_COGNITO_DOMAIN", clientId: "VITE_COGNITO_CLIENT_ID (or VITE_COGNITO_APP_CLIENT_ID)", redirectUri: "VITE_COGNITO_REDIRECT_URI", logoutUri: "VITE_COGNITO_LOGOUT_URI" };
   const issues: string[] = [];
