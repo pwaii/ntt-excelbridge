@@ -71,7 +71,12 @@ export function ConnectedJobStatus({ jobId }: { jobId: string }) {
     const first = idx >= 0 ? idx : stgs.reduce((best, s, i) => s.state === "complete" ? i : best, -1);
     if (first >= 0) {
       setSelected(first);
-      if (first >= 1) setSeen(prev => { const next = new Set(prev); next.add(first); return next; });
+      // Only mount review panels when the backend is actually waiting for that review,
+      // so the review flow doesn't try to load a report that doesn't exist yet.
+      const panelReady = first === 1 ? job.status === "QUALITY_REVIEW_PENDING"
+        : first === 2 ? job.status === "TRANSFORMATION_REVIEW_PENDING"
+        : first >= 3;
+      if (panelReady) setSeen(prev => { const next = new Set(prev); next.add(first); return next; });
     }
   }, [job, observed]); // eslint-disable-line react-hooks/exhaustive-deps
   const resumeFlow = useMemo(() => {
@@ -97,7 +102,10 @@ export function ConnectedJobStatus({ jobId }: { jobId: string }) {
   function handleSelect(i: number) {
     userSelected.current = true;
     setSelected(i);
-    if (i >= 1) setSeen(prev => { const next = new Set(prev); next.add(i); return next; });
+    const panelReady = i === 1 ? job?.status === "QUALITY_REVIEW_PENDING"
+      : i === 2 ? job?.status === "TRANSFORMATION_REVIEW_PENDING"
+      : i >= 3;
+    if (panelReady) setSeen(prev => { const next = new Set(prev); next.add(i); return next; });
   }
   const stages = job ? jobStages(job, observed) : [];
   const msg = job ? (messages[job.status] ?? ["Checking workflow status", "Refresh this page to check for updates."]) : null;
@@ -120,6 +128,7 @@ export function ConnectedJobStatus({ jobId }: { jobId: string }) {
         {seen.has(1) && <div hidden={selected !== 1}><QualityReviewPage onSubmitted={() => { void load(); }} /></div>}
         {seen.has(2) && <div hidden={selected !== 2}><TransformationReviewPage onSubmitted={() => { void load(); }} /></div>}
         {seen.has(3) && <div hidden={selected !== 3}><ResultPage /></div>}
+        {selected > 0 && !seen.has(selected) && <div className="stage-detail"><h3>{msg?.[0]}</h3><p>{msg?.[1]}</p></div>}
       </div>
     </>}
     {job?.error_code && <div role="alert" className="notice notice-error"><p className="font-medium">Processing needs attention</p>{job.error_detail && <p className="mt-1 break-words">{job.error_detail}</p>}<details className="mt-2 text-xs"><summary className="cursor-pointer">Error details</summary><p className="mt-2 break-all">{job.error_code}</p></details></div>}
