@@ -83,6 +83,7 @@ QUICKSIGHT_REGION=ap-southeast-1
 QUICKSIGHT_QUALITY_DATASET_ID=qa-issues-s3-76bde119
 QUICKSIGHT_INSPECTION_DATASET_ID=qa-inspections-s3-76bde119
 QUICKSIGHT_WORKBOOK_ROWS_DATASET_ID=excelbridge-workbook-rows
+QUICKSIGHT_WORKBOOK_FIELD_PAIRS_DATASET_ID=excelbridge-workbook-field-pairs
 QUICKSIGHT_PERMISSIONS_DATASET_ID=excelbridge-owner-permissions
 QUICKSIGHT_RLS_PERMISSIONS_DATASET_ARN=arn:aws:quicksight:ap-southeast-1:453995432289:dataset/excelbridge-owner-permissions
 QUICKSIGHT_READER_GROUP_NAME=website-readers
@@ -114,6 +115,47 @@ The embedded dashboard uses the same Cognito owner and QuickSight user-based
 RLS permissions. It includes quality, inspection, and original workbook row
 datasets. The viewer's first dashboard open provisions that website account's
 QuickSight Reader; later website logins reuse it.
+
+## Selectable QuickSight workbook fields
+
+The pipeline now also writes `quicksight/workbook-field-pairs.csv`. Its fixed
+schema has one `single` record per populated field and ordered `pair` records
+for populated field combinations from the same original Excel row. Single-field
+records use `__none__` as `y_field`. `x_field`,
+`y_field`, their detected kinds, and separate text/number values let QuickSight
+use arbitrary workbook headers without adding a dataset column for every
+header. The original `workbook-rows.csv` remains available for existing
+visuals. Pair generation is bounded at 2,000,000 output records per refresh so
+wide/high-row-count inputs fail visibly instead of expanding without limit.
+
+The website exposes selectors for workbook, worksheet, one-field or two-field
+mode, and the selected axis fields. It passes these as QuickSight parameters
+named `WorkbookSourceId`, `WorksheetName`, `ViewMode`, `XField`, and `YField`.
+The published analysis must define parameters with these exact names and use
+them to filter the field-pair dataset. Configure the dashboard visuals for:
+
+- One-field numeric distributions: `row_mode=single`, `x_kind=number`, with
+  `x_number` as the histogram value.
+- One-field category counts: `row_mode=single`, with `x_category` as the
+  category and a count of `row_number` as the measure.
+- Numeric comparisons: `row_mode=pair`, both kinds `number`, `x_number` and
+  `y_number` as scatter axes.
+- Category/numeric comparisons: `row_mode=pair`, the selected category field
+  on `x_category` and numeric field on `y_number` (with the axes reversed for
+  numeric/category choices).
+- Category/category comparisons: `row_mode=pair`, `x_category` and
+  `y_category` as heatmap dimensions, with a count of `row_number` as the
+  measure.
+
+Before embedding these controls, create the `excelbridge-workbook-field-pairs`
+QuickSight S3 dataset from `scripts/qs-workbook-field-pairs-manifest.json`,
+set its `owner_id` row-level permissions to the existing
+`excelbridge-owner-permissions` rules dataset (`GRANT_ACCESS`, `VERSION_2`),
+create a refresh schedule, and attach it to the published analysis/dashboard.
+Keep `owner_id` in the dataset for RLS, but hide technical identity fields from
+visual field wells. The API refuses to mint an embed URL unless this dataset
+also has the expected owner RLS configuration. The app code and S3 CSV alone
+do not update a published QuickSight analysis or dashboard definition.
 
 ## Registered Reader smoke test
 

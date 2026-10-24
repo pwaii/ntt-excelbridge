@@ -24,6 +24,7 @@ frontend/dist/
 # AWS SAM
 .aws-sam/
 samconfig.toml
+.lambda-package-tmp/
 
 # OS / editor
 .DS_Store

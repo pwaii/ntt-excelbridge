@@ -40,6 +40,7 @@ def _dashboard_dataset_ids() -> tuple[str, ...]:
         settings.quicksight_quality_dataset_id,
         settings.quicksight_inspection_dataset_id,
         settings.quicksight_workbook_rows_dataset_id,
+        settings.quicksight_workbook_field_pairs_dataset_id,
     )
 
 

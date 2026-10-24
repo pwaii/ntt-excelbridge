@@ -32,6 +32,7 @@ def test_embed_rls_guard_includes_workbook_rows_dataset(monkeypatch: pytest.Monk
     monkeypatch.setattr(analytics.settings, "quicksight_quality_dataset_id", "quality")
     monkeypatch.setattr(analytics.settings, "quicksight_inspection_dataset_id", "inspection")
     monkeypatch.setattr(analytics.settings, "quicksight_workbook_rows_dataset_id", "workbook-rows")
+    monkeypatch.setattr(analytics.settings, "quicksight_workbook_field_pairs_dataset_id", "workbook-field-pairs")
     dataset_ids = analytics._dashboard_dataset_ids()
     quicksight = FakeQuickSight()
 
@@ -42,7 +43,7 @@ def test_embed_rls_guard_includes_workbook_rows_dataset(monkeypatch: pytest.Monk
         "arn:aws:quicksight:ap-southeast-1:453995432289:dataset/owner-rules",
     )
 
-    assert quicksight.described == ["quality", "inspection", "workbook-rows"]
+    assert quicksight.described == ["quality", "inspection", "workbook-rows", "workbook-field-pairs"]
 
 
 def test_embed_rls_guard_blocks_unprotected_workbook_rows() -> None:
@@ -52,10 +53,10 @@ def test_embed_rls_guard_blocks_unprotected_workbook_rows() -> None:
         analytics._verify_dashboard_dataset_rls(
             quicksight,
             "453995432289",
-            ("quality", "inspection", "workbook-rows"),
+            ("quality", "inspection", "workbook-rows", "workbook-field-pairs"),
             "arn:aws:quicksight:ap-southeast-1:453995432289:dataset/owner-rules",
         )
 
     assert error.value.status_code == 503
     assert error.value.headers["X-Error-Code"] == "QUICKSIGHT_RLS_NOT_READY"
-    assert quicksight.described == ["quality", "inspection", "workbook-rows"]
+    assert quicksight.described == ["quality", "inspection", "workbook-rows", "workbook-field-pairs"]
