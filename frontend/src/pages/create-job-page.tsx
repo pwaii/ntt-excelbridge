@@ -39,6 +39,7 @@ export function CreateJobPage() {
   const missing: string[] = [];
   if (noTaskSelected) missing.push("a task above");
   if (!currentFile) missing.push("your file");
+  if (addColumn && !values.comment_name?.trim()) missing.push("a description of the new column");
   if (requiresMain && !mainFile) missing.push("a master file");
   const missingRequirements = missing.length
     ? `Add ${missing.join(" and ")} to continue.`
@@ -156,7 +157,7 @@ export function CreateJobPage() {
                 {addColumn && (
                   <div className="ledger-body">
                     <label htmlFor="prompt" className="field-label">What should the new column contain?</label>
-                    <textarea id="prompt" {...register("comment_name")} aria-invalid={Boolean(errors.comment_name)} aria-describedby={errors.comment_name ? "prompt-error" : "prompt-hint"} rows={3} className="field-control instruction-field" placeholder="For example, calculate Profit as Revenue minus Cost." />
+                    <textarea id="prompt" {...register("comment_name")} aria-required="true" aria-invalid={Boolean(errors.comment_name)} aria-describedby={errors.comment_name ? "prompt-error" : "prompt-hint"} rows={3} className="field-control instruction-field" placeholder="For example, calculate Profit as Revenue minus Cost." />
                     {errors.comment_name ? <p id="prompt-error" role="alert" className="field-error">{errors.comment_name.message}</p> : <p id="prompt-hint" className="field-hint">Use your actual column names. Up to 200 characters.</p>}
                     <div className="output-header-field">
                       <label htmlFor="output-header" className="field-label">Column name <span className="field-label-optional">(optional)</span></label>

@@ -27,6 +27,6 @@ export class AuthError extends Error {}
 
 export function safeReturnTo(value: unknown): string {
   // Only job routes; no external redirects, callback loops, query data or fragments.
-  return typeof value === "string" && /^\/jobs\/(?:new|[^/]+)(?:\/(?:quality-review|transformation-review|result))?$/.test(value)
+  return typeof value === "string" && (/^\/jobs\/(?:new|[^/]+)(?:\/(?:quality-review|transformation-review|result))?$/.test(value) || value === "/analytics/quick")
     && !/[\\?#\r\n]/.test(value) ? value : "/jobs/new";
 }

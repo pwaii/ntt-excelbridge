@@ -8,6 +8,7 @@ import { SignInPage } from "@/pages/sign-in-page";
 import { getPageTitle } from "@/routes/route-config";
 import { ProtectedRoute } from "@/auth/protected-route";
 import { AuthCallbackPage } from "@/pages/auth-callback-page";
+import { QuickDashboardPage } from "@/pages/quick-dashboard-page";
 
 function RedirectToJob() {
   const { id } = useParams<"id">();
@@ -34,6 +35,7 @@ export function AppRoutes() {
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
         <Route element={<ProtectedRoute />}>
           <Route path="/jobs/new" element={<FreshCreateJobPage />} />
+          <Route path="/analytics/quick" element={<QuickDashboardPage />} />
           <Route path="/jobs/:id/quality-review" element={<RedirectToJob />} />
           <Route path="/jobs/:id/transformation-review" element={<RedirectToJob />} />
           <Route path="/jobs/:id/result" element={<RedirectToJob />} />

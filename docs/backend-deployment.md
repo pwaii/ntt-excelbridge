@@ -34,6 +34,24 @@ application; the Step Functions role must be allowed to invoke every worker
 Lambda. The deploying caller needs `iam:PassRole` for the two execution roles
 and, when a CloudFormation service role is supplied, for that service role too.
 
+For the Quick dashboard, use the registered Reader integration documented in
+[`quick-dashboard-embedding.md`](quick-dashboard-embedding.md). The backend
+role needs QuickSight `RegisterUser`, `DescribeUser`, `CreateGroupMembership`,
+`DescribeDataSet`, and `GenerateEmbedUrlForRegisteredUser`, plus `sts:AssumeRole`
+on the embedding role. The role must trust the backend principal for that
+assumption. The refresh Lambda needs DynamoDB `GetItem` on the metadata table.
+With the default scheduled refresh mode it does not call QuickSight ingestion
+APIs; add `CreateIngestion` on all three dataset ARNs only when enabling API
+refresh mode with Capacity pricing. Configure a shared
+Reader group, an RLS rules dataset, and user-based RLS on both report datasets.
+The app creates/reuses one IAM-federated Reader per Cognito subject; it does not
+use anonymous session tags or require Capacity pricing for that registered-user
+route. For account `453995432289`, the Reader group, permissions dataset,
+user-based RLS attachments, hourly refresh schedules, and role permissions are
+already configured. No customer Reader was created during setup. The current
+CloudFormation stack still runs the previously deployed application code, so
+deploy the updated SAM template and frontend before testing the hosted site.
+
 The local API uses the `local-user` fallback only when Cognito is not
 configured. That fallback must not be used as a production authentication
 boundary.

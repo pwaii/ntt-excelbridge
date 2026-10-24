@@ -51,6 +51,18 @@ describe("jobs API using FastAPI-exported synthetic contract fixtures", () => {
     expect(JSON.parse(fetcher.mock.calls[0][1]!.body as string).input_filenames).toEqual(["current.xlsx", "current-2.xlsx"]);
     expect(receipt.uploadInstructions.current_2).toMatchObject({ method: "PUT", url: `${origin}/job-1/input_2` });
   });
+  it("accepts a global S3 URL alias for a multi-workbook response from the configured bucket", async () => {
+    const second = { filename: "current-2.xlsx", key: "jobs/job-1/input/input_2/current-2.xlsx", uploaded: false };
+    const payload = {
+      ...current,
+      job: { ...current.job, files: { ...current.job.files, input_2: second } },
+      uploads: [...current.uploads, { slot: "input_2", filename: "current-2.xlsx", key: second.key, url: "https://contract-fixture.s3.amazonaws.com/job-1/input_2", expires_in: 300 }],
+    };
+    const { api } = setup(payload);
+    const configuration = { ...metadataForm(), currentFile: new File(["current"], "current.xlsx"), currentFiles: [new File(["current"], "current.xlsx"), new File(["current-2"], "current-2.xlsx")] };
+    const receipt = await api.createAdapter.create(configuration, signal());
+    expect(receipt.uploadInstructions.current_2?.url).toBe("https://contract-fixture.s3.amazonaws.com/job-1/input_2");
+  });
   it.each(["slot", "origin", "identity", "config"])("rejects invalid %s without trusting upload instructions", async (kind) => {
     const payload = structuredClone(current);
     if (kind === "slot") payload.uploads.push(payload.uploads[0]);

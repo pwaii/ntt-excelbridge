@@ -65,11 +65,11 @@ describe("explicit local backend fallback", () => {
       expect(container.textContent).toContain("development access, not a production sign-in");
       const find = (label: string) => [...container.querySelectorAll("button")].find((button) => button.textContent === label)!;
       await act(async () => { find("Continue in local development").click(); });
-      expect(container.querySelector("h1")!.textContent).toBe("Create workflow");
+      expect(container.querySelector("h1")!.textContent).toBe("New job");
       expect(container.textContent).toContain("Local development · local-user");
       expect(container.textContent).not.toContain("Signed in as");
       await act(async () => { find("Exit local workspace").click(); });
-      expect(container.querySelector("h1")!.textContent).toBe("Sign in");
+      expect(container.querySelector("h1")!.textContent).toBe("Clear changes.Confident decisions.");
       expect(await adapter.initialize()).toBeNull();
       expect(fetcher).not.toHaveBeenCalled();
     } finally { act(() => root.unmount()); container.remove(); }

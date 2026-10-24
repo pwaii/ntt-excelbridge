@@ -9,6 +9,7 @@ param(
     [string]$FrontendOrigin = $(if ($env:FRONTEND_ORIGIN) { $env:FRONTEND_ORIGIN } else { "http://localhost:5173" }),
     [string]$LambdaExecutionRoleArn = $(if ($env:LAMBDA_EXECUTION_ROLE_ARN) { $env:LAMBDA_EXECUTION_ROLE_ARN } else { "" }),
     [string]$StateMachineExecutionRoleArn = $(if ($env:STATE_MACHINE_EXECUTION_ROLE_ARN) { $env:STATE_MACHINE_EXECUTION_ROLE_ARN } else { "" }),
+    [string]$QuickSightDashboardId = $(if ($env:QUICKSIGHT_DASHBOARD_ID) { $env:QUICKSIGHT_DASHBOARD_ID } else { "" }),
     [string]$CloudFormationServiceRoleArn = $(if ($env:CLOUDFORMATION_SERVICE_ROLE_ARN) { $env:CLOUDFORMATION_SERVICE_ROLE_ARN } else { "" })
 )
 
@@ -51,18 +52,24 @@ if ([string]::IsNullOrWhiteSpace($LambdaExecutionRoleArn) -or [string]::IsNullOr
 
 Push-Location $repoRoot
 try {
-    $frontendArgs = @(
-        "cloudformation", "deploy",
-        "--template-file", "infra/frontend-template.yaml",
-        "--stack-name", $FrontendStackName,
-        "--region", $Region,
-        "--parameter-overrides", "Environment=$Environment",
-        "--no-fail-on-empty-changeset"
-    )
-    if (-not [string]::IsNullOrWhiteSpace($CloudFormationServiceRoleArn)) {
-        $frontendArgs += @("--role-arn", $CloudFormationServiceRoleArn)
+    $existingFrontendStack = aws cloudformation describe-stacks --stack-name $FrontendStackName --region $Region 2>$null | ConvertFrom-Json
+    $stackLookupExitCode = $LASTEXITCODE
+    if ($stackLookupExitCode -ne 0 -or -not $existingFrontendStack.Stacks) {
+        $frontendArgs = @(
+            "cloudformation", "deploy",
+            "--template-file", "infra/frontend-template.yaml",
+            "--stack-name", $FrontendStackName,
+            "--region", $Region,
+            "--parameter-overrides", "Environment=$Environment",
+            "--no-fail-on-empty-changeset"
+        )
+        if (-not [string]::IsNullOrWhiteSpace($CloudFormationServiceRoleArn)) {
+            $frontendArgs += @("--role-arn", $CloudFormationServiceRoleArn)
+        }
+        Invoke-Aws @frontendArgs
+    } else {
+        Write-Host "Reusing existing frontend hosting stack $FrontendStackName; no CloudFront infrastructure update is needed."
     }
-    Invoke-Aws @frontendArgs
 
     $frontendBucket = Get-StackOutput $FrontendStackName "FrontendBucketName"
     $distributionId = Get-StackOutput $FrontendStackName "FrontendDistributionId"
@@ -79,6 +86,7 @@ try {
         -FrontendOrigin $frontendOrigin `
         -LambdaExecutionRoleArn $LambdaExecutionRoleArn `
         -StateMachineExecutionRoleArn $StateMachineExecutionRoleArn `
+        -QuickSightDashboardId $QuickSightDashboardId `
         -CloudFormationServiceRoleArn $CloudFormationServiceRoleArn
 
     $apiBaseUrl = Get-StackOutput $BackendStackName "ApiUrl"

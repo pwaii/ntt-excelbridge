@@ -1,6 +1,7 @@
 """Tool #4 adapter (§10.5): render the standardization prompt, call Bedrock, validate into
-Tool4Output, reject-whole on a canonical value the prompt never offered, then demote one-to-many
-and over-confident 'safe' mappings to 'ambiguous'. The model may only map to supplied candidates."""
+Tool4Output, demote mappings that name a canonical value the prompt never offered, then demote
+one-to-many and over-confident 'safe' mappings to 'ambiguous'. The model may only map to supplied
+candidates; an invalid mapping must not fail the whole workflow segment."""
 import json
 import logging
 
@@ -24,9 +25,11 @@ _log = logging.getLogger(__name__)
 
 
 def _validate_against_inputs(payload: Tool4Output, inputs: dict) -> None:
-    """Reject the whole response (invariant #1) if the model invented a canonical value. An
-    unmapped mapping must carry an empty canonical_value; anything else must be a supplied
-    candidate."""
+    """Fail closed per mapping when the model invents a canonical value.
+
+    A bad mapping is converted to an unresolved mapping, so valid mappings in the same response
+    can still be reviewed and the workflow can complete. No invented value reaches apply.
+    """
     allowed = set(inputs.get("canonical_candidates", []))
     for m in payload.mappings:
         if m.cardinality == "unmapped" and m.canonical_value.strip().casefold() == "unmapped":
@@ -34,7 +37,14 @@ def _validate_against_inputs(payload: Tool4Output, inputs: dict) -> None:
         if m.cardinality == "unmapped" and m.canonical_value == "":
             continue
         if m.canonical_value not in allowed:
-            raise ValueError(f"canonical_value {m.canonical_value!r} not in candidates")
+            _log.warning(
+                "Tool #4 returned a canonical value outside the supplied candidate set; mapping demoted"
+            )
+            m.canonical_value = ""
+            m.cardinality = "unmapped"
+            m.action = "ambiguous"
+            m.confidence = 0.0
+            m.reason = "The suggested value was not in the allowed canonical candidates."
 
 
 def _apply_guardrails(payload: Tool4Output) -> None:

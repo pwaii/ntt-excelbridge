@@ -61,7 +61,7 @@ describe("production page wiring with FastAPI contract fixtures and mocked auth/
     await act(async () => { root.render(<MemoryRouter><AuthContext.Provider value={auth}><CreateJobPage /></AuthContext.Provider></MemoryRouter>); });
     const files: File[] = [];
     await act(async () => {
-      for (const name of ["standardize", "update"]) container.querySelector<HTMLInputElement>(`input[name=${name}]`)!.click();
+      for (const name of ["addColumn", "standardize", "update"]) container.querySelector<HTMLInputElement>(`input[name=${name}]`)!.click();
     });
     await act(async () => {
       for (const [id, name] of [["current-file", "current.xlsx"], ["main-file", "main.xlsx"]]) {
@@ -78,8 +78,8 @@ describe("production page wiring with FastAPI contract fixtures and mocked auth/
       header.dispatchEvent(new Event("input", { bubbles: true }));
     });
     expect(container.querySelector("#prompt")!.getAttribute("name")).toBe("comment_name");
-    expect(button("Upload workbooks").disabled).toBe(false);
-    await act(async () => { button("Upload workbooks").click(); button("Upload workbooks").click(); });
+    expect(button("Upload files").disabled).toBe(false);
+    await act(async () => { button("Upload files").click(); button("Upload files").click(); });
     await vi.waitFor(() => expect(container.textContent).toContain("All workbooks uploaded"));
     expect(requests.map((xhr) => xhr.body)).toEqual(files);
     expect(requests.every((xhr) => xhr.method === "PUT" && !xhr.withCredentials && !xhr.headers.Authorization)).toBe(true);
@@ -132,7 +132,7 @@ describe("production page wiring with FastAPI contract fixtures and mocked auth/
   it("blocks real creation when authentication configuration is incomplete", async () => {
     const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
     await act(async () => { root.render(<MemoryRouter><AuthContext.Provider value={{ ...auth, configurationIssues: ["Missing VITE_COGNITO_DOMAIN."] }}><CreateJobPage /></AuthContext.Provider></MemoryRouter>); });
-    expect(button("Upload workbooks").disabled).toBe(true);
+    expect(button("Upload files").disabled).toBe(true);
     expect(container.textContent).toContain("Missing VITE_COGNITO_DOMAIN");
     expect(fetcher).not.toHaveBeenCalled();
   });

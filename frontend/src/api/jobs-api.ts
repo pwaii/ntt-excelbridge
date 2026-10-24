@@ -5,6 +5,7 @@ import { ApiError } from "./errors";
 import type { CreateJobAdapter } from "./create-job-types";
 import type { PresignedPutInstruction, UploadConfirmationAdapter, WorkbookRole } from "@/uploads/types";
 import { qualitySnapshotSchema } from "@/quality/types";
+import { isApprovedS3Origin } from "@/uploads/approved-origin";
 
 export type BackendJob = components["schemas"]["JobRecord"];
 export type WorkbookMetadataResponse = Omit<components["schemas"]["WorkbookMetadataResponse"], "slot"> & { slot: WorkbookSlot };
@@ -88,7 +89,7 @@ export function createJobsApi(client: ReturnType<typeof createApiClient>, allowe
         const upload = entries[0];
         if (entries.length !== 1 || !stored || upload.filename !== files[role]!.name || stored.filename !== upload.filename || stored.key !== upload.key) throw new ApiError("protocol", "Backend upload identity could not be verified.");
         const url = new URL(upload.url);
-        if (url.protocol !== "https:" || url.username || url.password || url.hash || !allowedOrigins.includes(url.origin)) throw new ApiError("protocol", "Backend upload URL is outside the configured S3 origins.");
+        if (url.protocol !== "https:" || url.username || url.password || url.hash || !isApprovedS3Origin(url, allowedOrigins)) throw new ApiError("protocol", `Backend upload URL host ${url.host} is outside the configured S3 origins.`);
         // The checked-in S3Store signs put_object with this exact ContentType.
         // expires_in starts before the response arrives, so use request start.
         instructions[role] = { method: "PUT", url: upload.url, headers: { "Content-Type": xlsxContentType }, expiresAt: requestedAt + upload.expires_in * 1000 };
@@ -145,7 +146,7 @@ export function createJobsApi(client: ReturnType<typeof createApiClient>, allowe
       decode: (value): components["schemas"]["PresignedDownload"] => z.object({ artifact_type: text, key: text, url: z.url(), expires_in: z.number().int().positive(), request_id: text }).parse(value) });
     const signed = result.data;
     const url = new URL(signed.url);
-    if (signed.artifact_type !== type || url.protocol !== "https:" || url.username || url.password || url.hash || !downloadOrigins.includes(url.origin)) throw new ApiError("protocol", "The artifact download URL or identity could not be verified.");
+    if (signed.artifact_type !== type || url.protocol !== "https:" || url.username || url.password || url.hash || !isApprovedS3Origin(url, downloadOrigins)) throw new ApiError("protocol", `Artifact download host ${url.host} or identity could not be verified.`);
     return { ...signed, expiresAt: requestedAt + signed.expires_in * 1000 };
   }
   async function getReviewReport(id: string, stage: "quality" | "transformation", revision: number, cursor: number, signal?: AbortSignal) {

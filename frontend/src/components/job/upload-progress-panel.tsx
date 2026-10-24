@@ -22,7 +22,7 @@ export function UploadProgressPanel<T>({ state, onCancel, onRetry, canRetry }: {
       const active = uploading || verifying;
       const phaseLabel =
         done ? "Uploaded and verified" :
-        verifying ? "Verifying upload…" :
+        verifying ? "Transfer complete. Verifying upload." :
         uploading ? "Uploading…" :
         failed ? (file.phase === "cancelled" ? "Cancelled" : "Upload failed") :
         "Waiting to upload";

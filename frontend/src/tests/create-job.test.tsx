@@ -191,7 +191,7 @@ describe("job creation UI", () => {
   });
 
   it("shows the current setup step", async () => {
-    expect(container.querySelector('[aria-label="Job setup steps"] [aria-current="step"]')?.textContent).toContain("Set up");
+    expect(container.querySelector('[role="tablist"][aria-label="Workflow stages"] [aria-selected="true"]')?.getAttribute("aria-label")).toBe("Set up: active");
     expect(fetch).not.toHaveBeenCalled();
   });
 

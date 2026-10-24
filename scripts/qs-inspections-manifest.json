@@ -1,0 +1,14 @@
+{
+  "fileLocations": [
+    {
+      "URIs": [
+        "https://xlsx-workflow-demo-453995432289.s3.ap-southeast-1.amazonaws.com/quicksight/inspections.csv"
+      ]
+    }
+  ],
+  "globalUploadSettings": {
+    "format": "CSV",
+    "delimiter": ",",
+    "containsHeader": "true"
+  }
+}
