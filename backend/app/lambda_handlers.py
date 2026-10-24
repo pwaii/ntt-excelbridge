@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from hashlib import sha256
 from io import BytesIO
 from typing import Any
@@ -26,6 +27,15 @@ from app.workers.inspect_workbook import inspect_bytes, manifest_json
 from app.workers.matching import build_tool5_inputs, load_canonical_rows
 from app.workers.quality_rules import run_quality_rules
 from app.workers.validate_output import validate_output
+
+_log = logging.getLogger(__name__)
+
+# tool1 (semantics) and tool3 (formula) only apply to an "add a column" request, expressed by the
+# prompt. tool3/tool4 are enhancement proposals whose guardrail may reject untrusted model output.
+# These live in bedrock_handler so BOTH the in-process orchestrator and the deployed Step Functions
+# path (which hardcodes the tool sequence in statemachine.asl.json) get the same behavior.
+_PROMPT_TOOLS = frozenset({"tool1", "tool3"})
+_OPTIONAL_TOOLS = frozenset({"tool3", "tool4"})
 
 
 def api_handler(event, context):
@@ -151,7 +161,12 @@ def bedrock_handler(event: dict[str, Any], context) -> dict[str, Any]:
     initial_revision = int(item["revision"])
     slot = event.get("slot", "input")
     tool = event["tool"]
-    if tool == "tool2" and not event.get("inputs"):
+    prompt_empty = not (item.get("config", {}).get("comment_name") or "").strip()
+    if tool in _PROMPT_TOOLS and prompt_empty:
+        # No column was requested (empty prompt): skip the semantic/formula proposal so a
+        # merge/standardize job gets no stray formula column. Status still advances below.
+        proposal = {"tool": tool, "proposals": [], "status": "skipped"}
+    elif tool == "tool2" and not event.get("inputs"):
         batch = _tool_inputs(item, s3, tool, slot)
         proposals = []
         for mismatch in batch.get("mismatches", []):
@@ -166,7 +181,17 @@ def bedrock_handler(event: dict[str, Any], context) -> dict[str, Any]:
         proposal = {"tool": tool, "proposals": proposals, "status": "proposed"}
     else:
         inputs = event.get("inputs") or _tool_inputs(item, s3, tool, slot)
-        proposal = run_tool_segment(job_id, tool, inputs, dynamo, s3, slot)
+        try:
+            proposal = run_tool_segment(job_id, tool, inputs, dynamo, s3, slot)
+        except ValueError as exc:
+            # A guardrail reject-whole of untrusted model output (forbidden formula, invented
+            # canonical value, malformed shape — pydantic ValidationError subclasses ValueError)
+            # must not fail the job. For optional enhancement tools the proposal is simply not
+            # offered; core-tool failures still propagate (and hit the state machine's Catch).
+            if tool not in _OPTIONAL_TOOLS:
+                raise
+            _log.warning("optional %s proposal rejected for slot %s; continuing without it: %s", tool, slot, exc)
+            proposal = {"tool": tool, "proposals": [], "status": "rejected"}
     status_by_tool = {
         "tool3": "FORMULA_REVIEW_PENDING",
         "tool4": "STANDARDIZATION_PENDING",

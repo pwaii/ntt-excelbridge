@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Status
 
-Pre-scaffold. The repo currently contains only this file, `README.md`, and the full implementation brief in **`design.md`** — that plan is the source of truth for everything below. No `backend/`, `frontend/`, or `infra/` exists yet; build/lint/test commands will come from `backend/pyproject.toml` and `frontend/package.json` once those are created per §8 of the plan. Until then, read the plan before implementing a slice.
+**Implementation complete.** `backend/`, `frontend/`, and `infra/` all exist. AI Tools 1–5, three Step Functions segments, Cognito auth, multi-input workbook support (up to 8 slots), and all human review gates are implemented and tested. The active branch is `frontend`. Backend: `cd backend && python -m pytest`; Frontend: `cd frontend && npm test`. See `README.md` for quick-start.
 
 ## What this is
 
