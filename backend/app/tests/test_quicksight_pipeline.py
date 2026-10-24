@@ -1,9 +1,14 @@
+import io
+
+from openpyxl import Workbook
+
 from app.services.quicksight_pipeline import (
     INSPECTION_FIELDS,
     QUALITY_FIELDS,
     encode_csv,
     flatten_inspection_manifests,
     flatten_quality_reports,
+    flatten_workbook_rows,
     inspection_artifact_key,
     quality_artifact_key,
 )
@@ -64,6 +69,27 @@ def test_inspection_flatten_includes_each_current_workbook_slot():
         ("input_2", "Region", 0.0),
     ]
     assert inspection_artifact_key("jobs/job-2/inspection/input_2-manifest.json")
+
+
+def test_workbook_flatten_tags_input_and_output_sources():
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Sheet1"
+    ws.append(["Product", "Price"])
+    ws.append(["Widget", 9.5])
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    data = buffer.getvalue()
+
+    rows = flatten_workbook_rows([
+        ("jobs/job-1/input/input/source.xlsx", "owner-1", data),
+        ("jobs/job-1/output/result.xlsx", "owner-1", data),
+    ])
+
+    assert [(row["source_kind"], row["input_slot"]) for row in rows] == [
+        ("input", "input"),
+        ("output", "output"),
+    ]
 
 
 def test_csv_is_valid_with_zero_rows():

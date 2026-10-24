@@ -19,7 +19,7 @@ from app.storage.dynamo_store import DynamoStore
 from app.storage.s3_store import S3Store
 
 router = APIRouter(prefix="/v1/analytics/quick/data", tags=["analytics"])
-_INPUT_SLOT = re.compile(r"input(?:_[2-8])?\Z")
+_INPUT_SLOT = re.compile(r"(?:input(?:_[2-8])?|main)\Z")
 _TECHNICAL_FIELDS = {"job id", "owner id", "input slot", "row number", "row index", "job", "owner"}
 
 
@@ -48,9 +48,22 @@ def _owned_sources(owner_id: str, dynamo: DynamoStore, s3: S3Store) -> list[dict
                 "job_id": job_id,
                 "slot": str(slot),
                 "key": key,
-                "workbook_name": filename,
+                "workbook_name": f"{filename} (master)" if slot == "main" else filename,
                 "created_at": str(job.get("created_at", "")),
             })
+        # The generated deliverable, stored as an artifact (no input slot, no manifest).
+        output_key = str(((job.get("artifacts") or {}).get("output") or {}).get("key", ""))
+        if output_key:
+            filename = output_key.rsplit("/", 1)[-1]
+            if output_key == s3.artifact_key(job_id, "output", filename):
+                sources.append({
+                    "source_id": _source_id(owner_id, job_id, "output"),
+                    "job_id": job_id,
+                    "slot": "output",
+                    "key": output_key,
+                    "workbook_name": f"{filename} (output)",
+                    "created_at": str(job.get("created_at", "")),
+                })
     return sources
 
 

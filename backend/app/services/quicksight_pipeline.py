@@ -46,6 +46,7 @@ PERMISSION_FIELDS = ("UserARN", "owner_id")
 WORKBOOK_ROW_FIELDS = (
     "job_id",
     "owner_id",
+    "source_kind",
     "input_slot",
     "workbook_name",
     "sheet",
@@ -57,7 +58,7 @@ WORKBOOK_ROW_FIELDS = (
 )
 _QUALITY_NAME = re.compile(r"(?:(input_[2-8])-)?quality-report\.json\Z")
 _INSPECTION_NAME = re.compile(r"(?:(input_[2-8])-)?manifest\.json\Z")
-_WORKBOOK_NAME = re.compile(r"(?:input|input_[2-8])/(?:[^/]+)\.xlsx\Z", re.IGNORECASE)
+_WORKBOOK_NAME = re.compile(r"(?:input|input_[2-8]|main)/(?:[^/]+)\.xlsx\Z", re.IGNORECASE)
 _PRODUCT_HEADER = re.compile(r"\b(product|item|sku|description)\b", re.IGNORECASE)
 _PRICE_HEADER = re.compile(r"\b(price|cost|amount|revenue|sales)\b", re.IGNORECASE)
 _UNIT_PRICE_HEADER = re.compile(r"\b(unit\s+price|selling\s+price|sale\s+price|list\s+price|price\s+per\s+unit)\b", re.IGNORECASE)
@@ -152,10 +153,17 @@ def flatten_workbook_rows(
     rows: list[dict[str, Any]] = []
     for key, owner_id, source in workbooks:
         parts = key.split("/")
-        if len(parts) != 5 or parts[0] != "jobs" or parts[2] != "input":
+        if parts[0] != "jobs" or not owner_id:
             continue
-        job_id, slot, filename = parts[1], parts[3], parts[4]
-        if not _WORKBOOK_NAME.fullmatch(f"{slot}/{filename}") or not owner_id:
+        # Input lives under input/<slot>/<file>.xlsx (5 parts); the generated
+        # deliverable under output/<file>.xlsx (4 parts, no slot, no manifest).
+        if len(parts) == 5 and parts[2] == "input":
+            source_kind, job_id, slot, filename = "input", parts[1], parts[3], parts[4]
+            if not _WORKBOOK_NAME.fullmatch(f"{slot}/{filename}"):
+                continue
+        elif len(parts) == 4 and parts[2] == "output" and parts[3].lower().endswith(".xlsx"):
+            source_kind, job_id, slot, filename = "output", parts[1], "output", parts[3]
+        else:
             continue
 
         inspection = manifests.get((job_id, slot), {})
@@ -166,11 +174,17 @@ def flatten_workbook_rows(
                 sheet_manifest = sheet_manifests.get(worksheet.title, {})
                 header_row = int(sheet_manifest.get("header_row") or 1)
                 headers = list(sheet_manifest.get("headers") or [])
-                width = max(len(headers), worksheet.max_column or 0)
                 if not headers:
-                    headers = [f"Column_{index + 1}" for index in range(width)]
-                else:
-                    headers = [str(value or f"Column_{index + 1}") for index, value in enumerate(headers)]
+                    # No manifest (e.g. generated output): read the real header row
+                    # instead of fabricating Column_N, so field names stay meaningful.
+                    headers = list(next(worksheet.iter_rows(
+                        min_row=header_row, max_row=header_row, values_only=True), ()))
+                width = max(len(headers), worksheet.max_column or 0)
+                headers = [
+                    str(headers[index]) if index < len(headers) and headers[index] not in (None, "")
+                    else f"Column_{index + 1}"
+                    for index in range(width)
+                ]
                 # Make repeated header labels distinct so no cell values are lost.
                 unique_headers: list[str] = []
                 seen: dict[str, int] = {}
@@ -217,6 +231,7 @@ def flatten_workbook_rows(
                     rows.append({
                         "job_id": job_id,
                         "owner_id": owner_id,
+                        "source_kind": source_kind,
                         "input_slot": slot,
                         "workbook_name": filename,
                         "sheet": worksheet.title,

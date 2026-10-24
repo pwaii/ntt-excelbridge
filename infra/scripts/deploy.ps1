@@ -5,7 +5,10 @@ param(
     [string]$Environment = $(if ($env:ENVIRONMENT) { $env:ENVIRONMENT } else { "demo" }),
     [string]$ModelId = $(if ($env:BEDROCK_MODEL_ID) { $env:BEDROCK_MODEL_ID } else { "amazon.nova-lite-v1:0" }),
     [string]$HeavyModelId = $(if ($env:BEDROCK_MODEL_ID_HEAVY) { $env:BEDROCK_MODEL_ID_HEAVY } else { "amazon.nova-pro-v1:0" }),
-    [string]$FrontendOrigin = $(if ($env:FRONTEND_ORIGIN) { $env:FRONTEND_ORIGIN } else { "http://localhost:5173" }),
+    # Default to the deployed CloudFront origin, not localhost: the template already
+    # hard-codes localhost in AllowOrigins, so a localhost default duplicates it and
+    # API Gateway rejects the stack ("Duplicated values are not allowed in allow-origins").
+    [string]$FrontendOrigin = $(if ($env:FRONTEND_ORIGIN) { $env:FRONTEND_ORIGIN } else { "https://d35kjusenp6a9t.cloudfront.net" }),
     [string]$CloudFormationServiceRoleArn = $(if ($env:CLOUDFORMATION_SERVICE_ROLE_ARN) { $env:CLOUDFORMATION_SERVICE_ROLE_ARN } else { "" }),
     [string]$LambdaExecutionRoleArn = $(if ($env:LAMBDA_EXECUTION_ROLE_ARN) { $env:LAMBDA_EXECUTION_ROLE_ARN } else { "" }),
     [string]$StateMachineExecutionRoleArn = $(if ($env:STATE_MACHINE_EXECUTION_ROLE_ARN) { $env:STATE_MACHINE_EXECUTION_ROLE_ARN } else { "" }),

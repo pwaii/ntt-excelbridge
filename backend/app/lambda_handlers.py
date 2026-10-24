@@ -854,6 +854,9 @@ def quicksight_refresh_handler(event: dict[str, Any], context) -> dict[str, Any]
             if not file_info.get("uploaded") or not object_key:
                 continue
             workbook_sources.append((object_key, owner_id, s3.get_bytes(object_key)))
+        output_key = str(job.get("artifacts", {}).get("output", {}).get("key", ""))
+        if output_key:
+            workbook_sources.append((output_key, owner_id, s3.get_bytes(output_key)))
     workbook_rows = flatten_workbook_rows(workbook_sources, inspection_by_input)
     permission_rows = owner_permissions(owner_cache.values())
     s3.put_bytes("quicksight/quality-issues.csv", encode_csv(quality_rows, QUALITY_FIELDS), "text/csv; charset=utf-8")
