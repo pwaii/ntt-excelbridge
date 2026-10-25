@@ -55,6 +55,17 @@ _QUALITY_KINDS = {
 }
 
 
+def _worksheet_dimensions(worksheet):
+    """Return usable bounds for read-only sheets with missing XML dimensions."""
+    if worksheet.max_row is None or worksheet.max_column is None:
+        try:
+            worksheet.calculate_dimension(force=True)
+        except UnboundLocalError:
+            # An empty worksheet has no rows for openpyxl to measure.
+            return 0, 0
+    return int(worksheet.max_row or 0), int(worksheet.max_column or 0)
+
+
 def _quality_rows(issues, s3, item, slot, filename, prefix):
     """Build the review rows for one input slot's quality issues, with cell evidence
     drawn from that slot's own workbook."""
@@ -239,11 +250,12 @@ def build_report(item, stage, dynamo, s3):
                         )
                         header = slot_header
                         headers = [cell.value for cell in sheet[header]]
+                        sheet_max_row, sheet_max_column = _worksheet_dimensions(sheet)
                         # Normalize for comparison — inspect_bytes normalizes header names
                         headers_normalized = {normalize_text(h) for h in headers if h is not None}
                         target = payload.get("target_header") or config.get("output_header")
                         target_column = (
-                            headers.index(target) + 1 if target in headers else sheet.max_column + 1
+                            headers.index(target) + 1 if target in headers else sheet_max_column + 1
                         )
                         try:
                             if any(name not in headers_normalized for name in payload["referenced_headers"]):
@@ -269,6 +281,7 @@ def build_report(item, stage, dynamo, s3):
                                         cell.value
                                         for cell in main_sheet[config.get("main_header_row") or 1]
                                     ]
+                                    main_max_row, main_max_column = _worksheet_dimensions(main_sheet)
                                     if any(
                                         name not in main_headers
                                         or main_headers.index(name) != headers.index(name)
@@ -281,18 +294,18 @@ def build_report(item, stage, dynamo, s3):
                                     main_target = (
                                         main_headers.index(target) + 1
                                         if target in main_headers
-                                        else main_sheet.max_column + 1
+                                        else main_max_column + 1
                                     )
-                                    if main_sheet.max_row <= main_header:
+                                    if main_max_row <= main_header:
                                         raise ValueError(
                                             "The main sheet has no output rows for this formula"
                                         )
-                                    for output_row in {main_header + 1, main_sheet.max_row}:
+                                    for output_row in {main_header + 1, main_max_row}:
                                         verified = verify_formula(
                                             materialize_formula(formula, output_row),
                                             min_row=main_header + 1,
-                                            max_row=main_sheet.max_row,
-                                            max_column=max(main_sheet.max_column, main_target),
+                                            max_row=main_max_row,
+                                            max_column=max(main_max_column, main_target),
                                             target_column=main_target,
                                         )
                                         for reference in verified["references"]:
@@ -310,14 +323,14 @@ def build_report(item, stage, dynamo, s3):
                                                 )
                                 finally:
                                     main_book.close()
-                            if sheet.max_row <= header:
+                            if sheet_max_row <= header:
                                 raise ValueError("The selected sheet has no data rows")
-                            for row in {header + 1, sheet.max_row}:
+                            for row in {header + 1, sheet_max_row}:
                                 verify_formula(
                                     materialize_formula(formula, row),
                                     min_row=header + 1,
-                                    max_row=sheet.max_row,
-                                    max_column=max(sheet.max_column, target_column),
+                                    max_row=sheet_max_row,
+                                    max_column=max(sheet_max_column, target_column),
                                     target_column=target_column,
                                 )
                             syntax = "verified"
