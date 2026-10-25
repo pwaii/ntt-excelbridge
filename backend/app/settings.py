@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     quicksight_quality_dataset_id: str = ""
     quicksight_inspection_dataset_id: str = ""
     quicksight_workbook_rows_dataset_id: str = ""
+    quicksight_workbook_field_pairs_dataset_id: str = ""
     quicksight_permissions_dataset_id: str = ""
     quicksight_dashboard_id: str = ""
     quicksight_embedding_role_arn: str = ""

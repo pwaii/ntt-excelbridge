@@ -7,8 +7,8 @@ import hashlib
 import io
 import json
 import re
-from collections.abc import Iterable, Mapping
-from datetime import date, datetime
+from collections.abc import Iterable, Iterator, Mapping
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from typing import Any
@@ -56,6 +56,25 @@ WORKBOOK_ROW_FIELDS = (
     "product_row",
     "unit_price",
 )
+WORKBOOK_FIELD_PAIR_FIELDS = (
+    "source_id",
+    "job_id",
+    "owner_id",
+    "input_slot",
+    "workbook_name",
+    "sheet",
+    "row_number",
+    "row_mode",
+    "x_field",
+    "x_kind",
+    "x_category",
+    "x_number",
+    "y_field",
+    "y_kind",
+    "y_category",
+    "y_number",
+)
+MAX_QUICKSIGHT_FIELD_PAIR_ROWS = 2_000_000
 _QUALITY_NAME = re.compile(r"(?:(input_[2-8])-)?quality-report\.json\Z")
 _INSPECTION_NAME = re.compile(r"(?:(input_[2-8])-)?manifest\.json\Z")
 _WORKBOOK_NAME = re.compile(r"(?:input|input_[2-8]|main)/(?:[^/]+)\.xlsx\Z", re.IGNORECASE)
@@ -248,6 +267,107 @@ def flatten_workbook_rows(
         finally:
             workbook.close()
     return rows
+
+
+def workbook_source_id(owner_id: str, job_id: str, slot: str) -> str:
+    """Stable, opaque workbook identity shared by the web explorer and Quick."""
+    return hashlib.sha256(f"{owner_id}\0{job_id}\0{slot}".encode("utf-8")).hexdigest()[:32]
+
+
+def flatten_workbook_field_pairs(
+    workbooks: Iterable[tuple[str, str, bytes]],
+    inspection_manifests: Mapping[tuple[str, str], Mapping[str, Any]] | None = None,
+    *,
+    max_rows: int = MAX_QUICKSIGHT_FIELD_PAIR_ROWS,
+) -> list[dict[str, Any]]:
+    """Create a fixed-schema, field-selectable Quick dataset.
+
+    One `single` record is emitted per populated cell. Each ordered pair of
+    populated fields on the same workbook row also gets one `pair` record.
+    The fixed schema lets a Quick analysis filter by selected field names even
+    when uploaded workbooks use different headers.
+    """
+    return list(iter_workbook_field_pairs_from_rows(
+        flatten_workbook_rows(workbooks, inspection_manifests), max_rows=max_rows
+    ))
+
+
+def iter_workbook_field_pairs_from_rows(
+    rows: Iterable[Mapping[str, Any]],
+    *,
+    max_rows: int = MAX_QUICKSIGHT_FIELD_PAIR_ROWS,
+) -> Iterator[dict[str, Any]]:
+    """Stream expanded records without retaining a second full row dataset."""
+    record_count = 0
+    def append_record(record: dict[str, Any]) -> dict[str, Any]:
+        nonlocal record_count
+        record_count += 1
+        if record_count > max_rows:
+            raise ValueError(
+                "QuickSight field-selection data exceeds the "
+                f"{max_rows:,}-record safety limit; reduce worksheet rows or columns."
+            )
+        return record
+
+    for row in rows:
+        populated = [
+            (name, value, row["row_value_types"].get(name, "category"))
+            for name, value in row["row_values"].items()
+            if value is not None and value != ""
+        ]
+        identity = {
+            "source_id": workbook_source_id(row["owner_id"], row["job_id"], row["input_slot"]),
+            "job_id": row["job_id"],
+            "owner_id": row["owner_id"],
+            "input_slot": row["input_slot"],
+            "workbook_name": row["workbook_name"],
+            "sheet": row["sheet"],
+            "row_number": row["row_number"],
+        }
+
+        def axis_values(field: tuple[str, Any, str], prefix: str) -> dict[str, Any]:
+            name, value, kind = field
+            numeric = None
+            if kind == "number":
+                normalized = _decimal_value(str(value))
+                numeric = Decimal(normalized) if normalized else None
+            elif kind == "date":
+                try:
+                    parsed = datetime.fromisoformat(_display_cell(value).replace("Z", "+00:00"))
+                    if parsed.tzinfo is None:
+                        parsed = parsed.replace(tzinfo=timezone.utc)
+                    numeric = Decimal(str(parsed.timestamp()))
+                except (TypeError, ValueError, OverflowError):
+                    numeric = None
+            # Keep categories as text only. Assigning ordinal numbers makes an
+            # arbitrary category order look like a numeric relationship.
+            return {
+                f"{prefix}_field": name,
+                f"{prefix}_kind": kind,
+                f"{prefix}_category": _display_cell(value),
+                f"{prefix}_number": numeric,
+            }
+
+        for field in populated:
+            yield append_record({
+                **identity,
+                "row_mode": "single",
+                **axis_values(field, "x"),
+                "y_field": "__none__",
+                "y_kind": "number",
+                "y_category": str(row["row_number"]),
+                "y_number": Decimal(row["row_number"]),
+            })
+        for x_index, x_field in enumerate(populated):
+            for y_index, y_field in enumerate(populated):
+                if x_index == y_index:
+                    continue
+                yield append_record({
+                    **identity,
+                    "row_mode": "pair",
+                    **axis_values(x_field, "x"),
+                    **axis_values(y_field, "y"),
+                })
 
 
 def _display_cell(value: Any) -> str:

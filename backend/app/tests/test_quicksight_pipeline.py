@@ -1,16 +1,20 @@
-import io
+from io import BytesIO
+from decimal import Decimal
 
 from openpyxl import Workbook
 
 from app.services.quicksight_pipeline import (
     INSPECTION_FIELDS,
     QUALITY_FIELDS,
+    WORKBOOK_FIELD_PAIR_FIELDS,
     encode_csv,
+    flatten_workbook_field_pairs,
     flatten_inspection_manifests,
     flatten_quality_reports,
     flatten_workbook_rows,
     inspection_artifact_key,
     quality_artifact_key,
+    workbook_source_id,
 )
 
 
@@ -95,3 +99,91 @@ def test_workbook_flatten_tags_input_and_output_sources():
 def test_csv_is_valid_with_zero_rows():
     assert encode_csv([], QUALITY_FIELDS).decode().splitlines() == [",".join(QUALITY_FIELDS)]
     assert encode_csv([], INSPECTION_FIELDS).decode().splitlines() == [",".join(INSPECTION_FIELDS)]
+    assert encode_csv([], WORKBOOK_FIELD_PAIR_FIELDS).decode().splitlines() == [",".join(WORKBOOK_FIELD_PAIR_FIELDS)]
+
+
+def _workbook_bytes(headers, rows):
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Catalog"
+    sheet.append(headers)
+    for row in rows:
+        sheet.append(row)
+    output = BytesIO()
+    workbook.save(output)
+    return output.getvalue()
+
+
+def test_workbook_field_pairs_support_arbitrary_headers_and_keep_row_association():
+    price_quantity = _workbook_bytes(
+        ["Unit Price", "Quantity", "Region"],
+        [[12.99, 3, "West"], [5.50, 7, "East"]],
+    )
+    account_data = _workbook_bytes(
+        ["Account", "Balance", "Risk Band"],
+        [["A-10", 25.25, "Low"]],
+    )
+    pairs = flatten_workbook_field_pairs(
+        [
+            ("jobs/job-1/input/input/items.xlsx", "owner-1", price_quantity),
+            ("jobs/job-2/input/input/accounts.xlsx", "owner-1", account_data),
+        ],
+        {
+            ("job-1", "input"): {"sheets": [{"name": "Catalog", "header_row": 1, "headers": ["Unit Price", "Quantity", "Region"]}]},
+            ("job-2", "input"): {"sheets": [{"name": "Catalog", "header_row": 1, "headers": ["Account", "Balance", "Risk Band"]}]},
+        },
+    )
+
+    assert pairs
+    assert {row["x_field"] for row in pairs} == {"Unit Price", "Quantity", "Region", "Account", "Balance", "Risk Band"}
+    assert all(row["owner_id"] == "owner-1" for row in pairs)
+    assert all(row["source_id"] == workbook_source_id("owner-1", row["job_id"], row["input_slot"]) for row in pairs)
+    assert any(
+        row["row_mode"] == "pair"
+        and row["x_field"] == "Unit Price"
+        and row["y_field"] == "Quantity"
+        and row["x_number"] == Decimal("12.99")
+        and row["y_number"] == Decimal("3")
+        and row["row_number"] == 2
+        for row in pairs
+    )
+    assert any(
+        row["row_mode"] == "pair"
+        and row["x_field"] == "Region"
+        and row["x_category"] == "West"
+        and row["x_number"] is None
+        and row["y_field"] == "Unit Price"
+        for row in pairs
+    )
+    assert any(
+        row["row_mode"] == "pair"
+        and row["x_field"] == "Risk Band"
+        and row["x_category"] == "Low"
+        and row["x_number"] is None
+        and row["y_field"] == "Balance"
+        and row["y_number"] == Decimal("25.25")
+        for row in pairs
+    )
+    assert any(
+        row["row_mode"] == "single"
+        and row["x_field"] == "Balance"
+        and row["x_number"] == Decimal("25.25")
+        and row["y_field"] == "__none__"
+        and row["y_number"] == Decimal("2")
+        for row in pairs
+    )
+    assert not any(row["x_field"] == "Unit Price" and row["y_field"] == "Balance" for row in pairs)
+
+
+def test_workbook_field_pairs_enforce_expansion_limit():
+    data = _workbook_bytes(["A", "B", "C"], [[1, 2, 3]])
+    try:
+        flatten_workbook_field_pairs(
+            [("jobs/job-1/input/input/items.xlsx", "owner-1", data)],
+            {("job-1", "input"): {"sheets": [{"name": "Catalog", "header_row": 1, "headers": ["A", "B", "C"]}]}},
+            max_rows=8,
+        )
+    except ValueError as error:
+        assert "safety limit" in str(error)
+    else:
+        raise AssertionError("expected pair expansion limit to be enforced")

@@ -42,6 +42,10 @@ Parameters:
   QuickSightWorkbookRowsDatasetId:
     Type: String
     Default: excelbridge-workbook-rows
+  QuickSightWorkbookFieldPairsDatasetId:
+    Type: String
+    Default: excelbridge-workbook-field-pairs
+    Description: Fixed-schema field-pair dataset used for workbook-selectable QuickSight visuals.
   QuickSightPermissionsDatasetId:
     Type: String
     Default: excelbridge-owner-permissions
@@ -49,7 +53,7 @@ Parameters:
   QuickSightRlsPermissionsDatasetArn:
     Type: String
     Default: arn:aws:quicksight:ap-southeast-1:453995432289:dataset/excelbridge-owner-permissions
-    Description: ARN of the permissions dataset attached to the quality and inspection datasets.
+    Description: ARN of the permissions dataset attached to all QuickSight datasets that contain customer data.
   QuickSightEmbeddingRoleArn:
     Type: String
     Default: arn:aws:iam::453995432289:role/xlsx-workflow-demo-lambda
@@ -66,7 +70,7 @@ Parameters:
     Description: Use scheduled dataset refresh to avoid Capacity pricing; api requires Capacity pricing for near-real-time refresh.
   QuickSightDashboardId:
     Type: String
-    Default: excelbridge-quality-dashboard
+    Default: excelbridge-workbook-explorer-v2
     Description: Published owner-RLS dashboard ID in QuickSight.
   LambdaExecutionRoleArn:
     Type: String
@@ -95,6 +99,7 @@ Globals:
         QUICKSIGHT_QUALITY_DATASET_ID: !Ref QuickSightQualityDatasetId
         QUICKSIGHT_INSPECTION_DATASET_ID: !Ref QuickSightInspectionDatasetId
         QUICKSIGHT_WORKBOOK_ROWS_DATASET_ID: !Ref QuickSightWorkbookRowsDatasetId
+        QUICKSIGHT_WORKBOOK_FIELD_PAIRS_DATASET_ID: !Ref QuickSightWorkbookFieldPairsDatasetId
         QUICKSIGHT_PERMISSIONS_DATASET_ID: !Ref QuickSightPermissionsDatasetId
         QUICKSIGHT_RLS_PERMISSIONS_DATASET_ARN: !Ref QuickSightRlsPermissionsDatasetArn
         QUICKSIGHT_EMBEDDING_ROLE_ARN: !Ref QuickSightEmbeddingRoleArn

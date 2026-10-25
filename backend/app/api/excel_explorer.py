@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 from collections import Counter
@@ -13,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from app.api.dependencies import get_dynamo_store, get_s3_store
 from app.auth import current_user_id
 from app.domain.enums import JobStatus
-from app.services.quicksight_pipeline import flatten_workbook_rows
+from app.services.quicksight_pipeline import flatten_workbook_rows, workbook_source_id
 from app.settings import settings
 from app.storage.dynamo_store import DynamoStore
 from app.storage.s3_store import S3Store
@@ -21,10 +20,6 @@ from app.storage.s3_store import S3Store
 router = APIRouter(prefix="/v1/analytics/quick/data", tags=["analytics"])
 _INPUT_SLOT = re.compile(r"(?:input(?:_[2-8])?|main)\Z")
 _TECHNICAL_FIELDS = {"job id", "owner id", "input slot", "row number", "row index", "job", "owner"}
-
-
-def _source_id(owner_id: str, job_id: str, slot: str) -> str:
-    return hashlib.sha256(f"{owner_id}\0{job_id}\0{slot}".encode("utf-8")).hexdigest()[:32]
 
 
 def _owned_sources(owner_id: str, dynamo: DynamoStore, s3: S3Store) -> list[dict[str, Any]]:
@@ -44,7 +39,7 @@ def _owned_sources(owner_id: str, dynamo: DynamoStore, s3: S3Store) -> list[dict
             if key != expected_key:
                 continue
             sources.append({
-                "source_id": _source_id(owner_id, job_id, str(slot)),
+                "source_id": workbook_source_id(owner_id, job_id, str(slot)),
                 "job_id": job_id,
                 "slot": str(slot),
                 "key": key,

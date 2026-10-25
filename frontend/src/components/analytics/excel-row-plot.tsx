@@ -36,12 +36,6 @@ function shortLabel(value: string, max = 14): string {
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }
 
-function categoryJitter(rowNumber: number, span: number): number {
-  // Stable jitter makes duplicate category values visible as separate row marks.
-  const value = ((rowNumber * 2654435761) >>> 0) / 0xffffffff;
-  return (value - 0.5) * span * 0.56;
-}
-
 function buildTooltip(row: ExcelDataRow): string {
   return Object.entries(row.values)
     .filter(([, value]) => value !== null && value !== "")
@@ -101,7 +95,9 @@ export function ExcelRowPlot({
     context.strokeStyle = "#e6e8ee";
     context.lineWidth = 1;
 
-    const margin = { top: 22, right: 20, bottom: 64, left: 76 };
+    // Keep y-axis values in their own gutter. The field name is shown
+    // horizontally above the plot, so it cannot collide with tick labels.
+    const margin = { top: 34, right: 20, bottom: 72, left: Math.min(152, Math.max(92, Math.round(width * 0.18))) };
     const plotWidth = width - margin.left - margin.right;
     const plotHeight = height - margin.top - margin.bottom;
     const xIsNumeric = xColumn.kind === "number" || xColumn.kind === "date";
@@ -121,7 +117,7 @@ export function ExcelRowPlot({
     const xMax = xMaxRaw + xPadding;
     const yMin = yMinRaw - yPadding;
     const yMax = yMaxRaw + yPadding;
-    const xCoordinate = (value: string | number | boolean | null | undefined, rowNumber: number) => {
+    const xCoordinate = (value: string | number | boolean | null | undefined) => {
       if (xIsNumeric) {
         const number = numericValue(value, xColumn.kind);
         return number === null ? null : margin.left + ((number - xMin) / (xMax - xMin)) * plotWidth;
@@ -129,9 +125,9 @@ export function ExcelRowPlot({
       const index = categoryIndex(String(value ?? ""), xCategories);
       if (index < 0) return null;
       const band = plotWidth / Math.max(xCategories.length, 1);
-      return margin.left + (index + 0.5) * band + categoryJitter(rowNumber, band);
+      return margin.left + (index + 0.5) * band;
     };
-    const yCoordinate = (value: string | number | boolean | null | undefined, rowNumber: number) => {
+    const yCoordinate = (value: string | number | boolean | null | undefined) => {
       if (yIsNumeric) {
         const number = numericValue(value, yColumn.kind);
         return number === null ? null : margin.top + plotHeight - ((number - yMin) / (yMax - yMin)) * plotHeight;
@@ -139,7 +135,7 @@ export function ExcelRowPlot({
       const index = categoryIndex(String(value ?? ""), yCategories);
       if (index < 0) return null;
       const band = plotHeight / Math.max(yCategories.length, 1);
-      return margin.top + plotHeight - (index + 0.5) * band + categoryJitter(rowNumber, band);
+      return margin.top + plotHeight - (index + 0.5) * band;
     };
 
     for (let tick = 0; tick <= 4; tick++) {
@@ -147,7 +143,8 @@ export function ExcelRowPlot({
       context.beginPath(); context.moveTo(margin.left, y); context.lineTo(width - margin.right, y); context.stroke();
       if (yIsNumeric) {
         const value = yMin + (yMax - yMin) * tick / 4;
-        context.fillText(yColumn.kind === "date" ? new Date(value).toLocaleDateString() : displayValue(value), 8, y + 4);
+        context.textAlign = "right";
+        context.fillText(yColumn.kind === "date" ? new Date(value).toLocaleDateString() : displayValue(value), margin.left - 12, y + 4, margin.left - 38);
       }
     }
     if (xIsNumeric) {
@@ -155,15 +152,16 @@ export function ExcelRowPlot({
         const x = margin.left + tick * plotWidth / 4;
         context.beginPath(); context.moveTo(x, margin.top); context.lineTo(x, margin.top + plotHeight); context.stroke();
         const value = xMin + (xMax - xMin) * tick / 4;
-        context.fillText(xColumn.kind === "date" ? new Date(value).toLocaleDateString() : displayValue(value), x - 20, height - 36);
+        context.textAlign = "center";
+        context.fillText(xColumn.kind === "date" ? new Date(value).toLocaleDateString() : displayValue(value), x, height - 40, 72);
       }
     } else {
       const step = Math.max(1, Math.ceil(xCategories.length / 8));
       xCategories.forEach((category, index) => {
         if (index % step) return;
         const x = margin.left + (index + 0.5) * plotWidth / Math.max(xCategories.length, 1);
-        context.save(); context.translate(x, height - 34); context.rotate(-0.2);
-        context.fillText(shortLabel(category), -26, 0); context.restore();
+        context.save(); context.textAlign = "right"; context.translate(x, height - 36); context.rotate(-Math.PI / 4);
+        context.fillText(shortLabel(category, 12), 0, 0, 88); context.restore();
       });
     }
     if (!yIsNumeric) {
@@ -171,20 +169,22 @@ export function ExcelRowPlot({
       yCategories.forEach((category, index) => {
         if (index % step) return;
         const y = margin.top + plotHeight - (index + 0.5) * plotHeight / Math.max(yCategories.length, 1);
-        context.fillText(shortLabel(category), 8, y + 4);
+        context.textAlign = "right";
+        context.fillText(shortLabel(category, 12), margin.left - 12, y + 4, margin.left - 38);
       });
     }
     context.fillStyle = "#667085";
+    context.textAlign = "left";
+    context.fillText(`Vertical: ${shortLabel(yField, 28)}`, margin.left, 16, plotWidth * 0.6);
     context.textAlign = "center";
-    context.fillText(xField, margin.left + plotWidth / 2, height - 8);
-    context.save(); context.translate(18, margin.top + plotHeight / 2); context.rotate(-Math.PI / 2); context.fillText(yField, 0, 0); context.restore();
+    context.fillText(shortLabel(xField, 28), margin.left + plotWidth / 2, height - 6, plotWidth);
     context.textAlign = "start";
 
     const points: Point[] = [];
     context.fillStyle = "rgba(91, 77, 214, 0.7)";
     for (const row of rows) {
-      const x = xCoordinate(row.values[xField], row.row_number);
-      const y = yCoordinate(row.values[yField], row.row_number);
+      const x = xCoordinate(row.values[xField]);
+      const y = yCoordinate(row.values[yField]);
       if (x === null || y === null) continue;
       context.beginPath(); context.arc(x, y, 3.5, 0, Math.PI * 2); context.fill();
       points.push({ x, y, row });

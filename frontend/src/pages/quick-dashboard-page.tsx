@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, BarChart3, RefreshCw, ShieldCheck } from "lucide-react";
 import { createEmbeddingContext } from "amazon-quicksight-embedding-sdk";
+import type { DashboardExperience, Parameter } from "amazon-quicksight-embedding-sdk";
 import type { ExcelDataColumn, ExcelDataSource, ExcelRowsPage } from "@/api/analytics-api";
 import { createAnalyticsApi } from "@/api/analytics-api";
 import { createApiClient } from "@/api/http-client";
@@ -14,6 +15,11 @@ const PAGE_SIZE = 2000;
 const DEFAULT_AXIS_FIELD = /\b(product|item|brand|category|name|label|region|customer|vendor|supplier)\b/i;
 const DEFAULT_MEASURE_FIELD = /\b(price|amount|cost|revenue|sales|quantity|qty|total|value|score|rate|count|weight|volume|balance)\b/i;
 const IDENTIFIER_FIELD = /\b(id|uuid|key|index|row|code|number)\b/i;
+type QuickViewMode = "single" | "pair";
+
+function isQuickMeasure(column: ExcelDataColumn | undefined): boolean {
+  return column?.kind === "number" || column?.kind === "date";
+}
 
 function defaultPair(columns: ExcelDataColumn[]): [string, string] {
   const category = columns.filter((column) => column.kind === "category" || column.kind === "date");
@@ -55,6 +61,7 @@ export function QuickDashboardPage() {
   const [page, setPage] = useState<ExcelRowsPage | null>(null);
   const [xField, setXField] = useState("");
   const [yField, setYField] = useState("");
+  const [quickViewMode, setQuickViewMode] = useState<QuickViewMode>("pair");
   const [offset, setOffset] = useState(0);
   const [sourceLoading, setSourceLoading] = useState(false);
   const [rowsLoading, setRowsLoading] = useState(false);
@@ -64,10 +71,13 @@ export function QuickDashboardPage() {
   const [quickEmbedUrl, setQuickEmbedUrl] = useState("");
   const [quickLoading, setQuickLoading] = useState(false);
   const [quickLoaded, setQuickLoaded] = useState(false);
+  const [quickEmbedReady, setQuickEmbedReady] = useState(false);
+  const [quickSelectionStatus, setQuickSelectionStatus] = useState("");
   const [quickError, setQuickError] = useState("");
   const [quickErrorDiagnostics, setQuickErrorDiagnostics] = useState("");
   const quickContainer = useRef<HTMLDivElement>(null);
   const quickContext = useRef<Awaited<ReturnType<typeof createEmbeddingContext>> | null>(null);
+  const quickExperience = useRef<DashboardExperience | null>(null);
   const fieldSourceKey = useRef("");
   const redirectLoopbackIpToLocalhost = import.meta.env.DEV && window.location.hostname === "127.0.0.1";
   const ready = auth.state.status === "authenticated"
@@ -105,6 +115,9 @@ export function QuickDashboardPage() {
   const loadQuickDashboard = useCallback(async () => {
     setQuickLoading(true);
     setQuickLoaded(false);
+    setQuickEmbedReady(false);
+    setQuickSelectionStatus("");
+    quickExperience.current = null;
     setQuickError("");
     setQuickErrorDiagnostics("");
     setQuickEmbedUrl("");
@@ -114,7 +127,12 @@ export function QuickDashboardPage() {
     } catch (failure) {
       setQuickError("The QuickSight dashboard could not be opened. Retry, or ask an administrator to check the QuickSight connection.");
       if (failure instanceof ApiError) {
-        setQuickErrorDiagnostics([failure.status ? `HTTP ${failure.status}` : "", failure.code ? `code ${failure.code}` : "", failure.requestId ? `request ${failure.requestId}` : ""].filter(Boolean).join(" · "));
+        setQuickErrorDiagnostics([
+          failure.status ? `HTTP ${failure.status}` : "",
+          failure.code ? `code ${failure.code}` : "",
+          failure.requestId ? `request ${failure.requestId}` : "",
+          failure.kind === "protocol" ? failure.message : "",
+        ].filter(Boolean).join(" · "));
       }
       setQuickLoading(false);
     }
@@ -152,7 +170,19 @@ export function QuickDashboardPage() {
     return () => controller.abort();
   }, [api, ready, sourceId, sheet, offset, reloadVersion]);
 
+  const columns = page?.columns ?? [];
+  const rows = page?.rows ?? [];
+  const selectedSource = sources.find((source) => source.source_id === sourceId);
+  const selectedXColumn = columns.find((column) => column.name === xField);
+  const selectedYColumn = columns.find((column) => column.name === yField);
+  const quickFieldsSupported = quickViewMode === "single"
+    ? isQuickMeasure(selectedXColumn)
+    : isQuickMeasure(selectedXColumn) && isQuickMeasure(selectedYColumn) && xField !== yField;
+
   useEffect(() => {
+    // QuickSight embed URLs carry a short-lived authorization code. Keep the
+    // iframe mounted when a text-field selection hides it; reusing that URL
+    // after destroying the iframe can redeem the same code a second time.
     if (!quickEmbedUrl || !quickContainer.current) return;
     let cancelled = false;
     setQuickLoading(true);
@@ -161,19 +191,24 @@ export function QuickDashboardPage() {
         const context = quickContext.current ?? await createEmbeddingContext();
         if (cancelled || !quickContainer.current) return;
         quickContext.current = context;
-        await context.embedDashboard({
+        const experience = await context.embedDashboard({
           url: quickEmbedUrl,
           container: quickContainer.current,
           height: "680px",
           width: "100%",
           onChange: (event) => {
-            if (event.eventName === "FRAME_NOT_CREATED" || event.eventName === "INVALID_URL") {
+            if (cancelled) return;
+            if (event.eventName === "INVALID_URL") {
+              setQuickError("QuickSight rejected this embed link. Its authorization code may have expired or already been used. Retry to request a fresh link.");
+              setQuickLoading(false);
+            } else if (event.eventName === "FRAME_NOT_CREATED") {
               setQuickError("QuickSight could not initialize this dashboard. Retry, or ask an administrator to check the embedding configuration.");
               setQuickLoading(false);
             }
           },
         }, {
           onMessage: (event) => {
+            if (cancelled) return;
             if (event.eventName === "CONTENT_LOADED") {
               setQuickLoaded(true);
               setQuickLoading(false);
@@ -183,6 +218,8 @@ export function QuickDashboardPage() {
             }
           },
         });
+        quickExperience.current = experience;
+        setQuickEmbedReady(true);
       } catch {
         if (!cancelled) {
           setQuickError("QuickSight could not initialize this dashboard. Retry, or ask an administrator to check the embedding configuration.");
@@ -197,15 +234,37 @@ export function QuickDashboardPage() {
     };
   }, [quickEmbedUrl]);
 
-  const columns = page?.columns ?? [];
-  const rows = page?.rows ?? [];
-  const selectedSource = sources.find((source) => source.source_id === sourceId);
   const plotCount = countPlotRows(rows, columns, xField, yField);
   const pageStart = page && page.rows.length ? page.offset + 1 : 0;
   const pageEnd = page ? page.offset + page.rows.length : 0;
   const pageCount = page ? Math.max(1, Math.ceil(page.total_rows / page.limit)) : 1;
   const currentPage = page ? Math.floor(page.offset / page.limit) + 1 : 1;
+  const quickParameters = useMemo<Parameter[]>(() => [
+    { Name: "WorkbookSourceId", Values: selectedSource ? [selectedSource.source_id] : [""] },
+    { Name: "WorksheetName", Values: page?.sheet ? [page.sheet] : [""] },
+    { Name: "ViewMode", Values: [quickViewMode] },
+    { Name: "XField", Values: xField ? [xField] : [""] },
+    { Name: "YField", Values: quickViewMode === "pair" && yField ? [yField] : ["__none__"] },
+  ], [selectedSource, page?.sheet, quickViewMode, xField, yField]);
 
+  const applyQuickExplorerSelection = useCallback(async () => {
+    const experience = quickExperience.current;
+    if (!experience || !quickLoaded || !quickFieldsSupported || !selectedSource || !page?.sheet || !xField || (quickViewMode === "pair" && !yField)) return;
+    setQuickError(""); setQuickErrorDiagnostics("");
+    setQuickSelectionStatus("Applying the selected workbook fields to QuickSight…");
+    try {
+      await experience.setParameters(quickParameters);
+      setQuickSelectionStatus("Selection sent to QuickSight.");
+    } catch {
+      setQuickSelectionStatus("");
+      setQuickError("QuickSight could not apply these fields. Check that the published dashboard has the workbook field-pair dataset and matching parameters.");
+    }
+  }, [quickLoaded, quickFieldsSupported, selectedSource, page?.sheet, xField, yField, quickViewMode, quickParameters]);
+
+  useEffect(() => {
+    if (!quickEmbedReady || !quickLoaded) return;
+    void applyQuickExplorerSelection();
+  }, [quickEmbedReady, quickLoaded, applyQuickExplorerSelection]);
   const changePage = (nextOffset: number) => {
     if (!sourceId || nextOffset < 0 || nextOffset >= (page?.total_rows ?? 0)) return;
     setOffset(nextOffset);
@@ -214,7 +273,7 @@ export function QuickDashboardPage() {
   return <section className="workspace-page">
     <PageHeader
       title="Excel data explorer"
-      description="Choose fields from your completed workbook and explore how their actual row values relate. Each plotted point represents one Excel row."
+      description="Choose fields from a completed workbook. The chart and table update directly from its original Excel cells; each plotted point represents one row."
       actions={<Button variant="outline" size="sm" onClick={() => void loadSources()} disabled={!ready || sourceLoading || rowsLoading}><RefreshCw aria-hidden="true" className={sourceLoading || rowsLoading ? "animate-spin" : ""} />Refresh data</Button>}
     />
 
@@ -227,19 +286,58 @@ export function QuickDashboardPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 id="quicksight-dashboard-heading" className="text-base font-semibold">QuickSight dashboard</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Open your secure, owner-filtered QuickSight dashboard inside this website. The first open provisions a Reader for this website account.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Choose a workbook and fields to update the secure, owner-filtered dashboard. The first open provisions a Reader for this website account.</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => void loadQuickDashboard()} disabled={!ready || quickLoading}>
+        <Button variant="outline" size="sm" onClick={() => void loadQuickDashboard()} disabled={!ready || quickLoading || !quickFieldsSupported}>
           <RefreshCw aria-hidden="true" className={quickLoading ? "animate-spin" : ""} />
           {quickEmbedUrl ? "Reload dashboard" : "Open dashboard"}
         </Button>
       </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <label className="text-sm font-medium">QuickSight workbook
+          <select className="field-control mt-1" value={sourceId} disabled={!sources.length || sourceLoading} onChange={(event) => { setSourceId(event.target.value); setSheet(""); setOffset(0); setPage(null); fieldSourceKey.current = ""; }}>
+            {sources.map((source) => <option key={source.source_id} value={source.source_id}>{source.workbook_name} · {formatSourceDate(source.created_at)}</option>)}
+          </select>
+        </label>
+        <label className="text-sm font-medium">Worksheet
+          <select className="field-control mt-1" value={page?.sheet ?? sheet} disabled={!page?.sheets.length || rowsLoading} onChange={(event) => { setSheet(event.target.value); setOffset(0); setPage(null); fieldSourceKey.current = ""; }}>
+            {(page?.sheets ?? []).map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}
+          </select>
+        </label>
+        <label className="text-sm font-medium">View
+          <select className="field-control mt-1" value={quickViewMode} onChange={(event) => setQuickViewMode(event.target.value as QuickViewMode)}>
+            <option value="single">One field distribution</option><option value="pair">Compare two fields</option>
+          </select>
+        </label>
+        <label className="text-sm font-medium">{quickViewMode === "single" ? "Field" : "Horizontal field"}
+          <select className="field-control mt-1" value={xField} disabled={!columns.length || rowsLoading} onChange={(event) => setXField(event.target.value)}>
+            {columns.map((column) => <option key={column.name} value={column.name}>{column.name}</option>)}
+          </select>
+        </label>
+        {quickViewMode === "pair" && <label className="text-sm font-medium">Vertical field
+          <select className="field-control mt-1" value={yField} disabled={!columns.length || rowsLoading} onChange={(event) => setYField(event.target.value)}>
+            {columns.map((column) => <option key={column.name} value={column.name}>{column.name}</option>)}
+          </select>
+        </label>}
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <Button variant="outline" size="sm" onClick={() => void applyQuickExplorerSelection()} disabled={!quickLoaded || !quickFieldsSupported || !selectedSource || !page?.sheet || !xField || (quickViewMode === "pair" && (!yField || xField === yField))}>Reapply selection</Button>
+        <p aria-live="polite" className="text-xs text-muted-foreground">{quickSelectionStatus || "Workbook, worksheet, view, and field selections are sent to QuickSight automatically."}</p>
+      </div>
+      {xField && <p className="mt-2 text-xs text-muted-foreground">
+        QuickSight scatter axes — Horizontal: <span className="font-medium text-foreground">{xField}</span>; Vertical: <span className="font-medium text-foreground">{quickViewMode === "pair" ? (yField || "Choose a field") : "Excel row number"}</span>.
+      </p>}
+      {!quickFieldsSupported && xField && <p role="status" className="notice mt-3">
+        {quickViewMode === "pair" && !yField
+          ? "Choose a second field to compare."
+          : "QuickSight scatter plots need numeric or date values on each axis. Text categories stay as text; they are not turned into made-up numbers. The Excel explorer below plots the actual category labels. Choose numeric/date fields to open this QuickSight scatter."}
+      </p>}
       {!quickEmbedUrl && !quickError && <p className="mt-4 rounded-lg border border-dashed border-border px-4 py-5 text-center text-sm text-muted-foreground">The QuickSight dashboard loads here when you open it.</p>}
       {quickError && <div role="alert" className="notice notice-error mt-4 flex items-start gap-3"><AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0" /><div><p>{quickError}</p>{quickErrorDiagnostics && <p className="mt-1 text-xs text-muted-foreground">{quickErrorDiagnostics}</p>}</div></div>}
       {quickEmbedUrl && <>
         {quickLoading && <p role="status" className="notice mt-4">Connecting to QuickSight…</p>}
         {quickError && <Button variant="outline" size="sm" className="mt-3" onClick={() => void loadQuickDashboard()} disabled={quickLoading}>Retry QuickSight</Button>}
-        <div ref={quickContainer} className={`mt-4 min-h-[680px] overflow-hidden rounded-lg border border-border ${quickError ? "hidden" : ""}`} />
+        <div ref={quickContainer} className={`mt-4 min-h-[680px] overflow-hidden rounded-lg border border-border ${quickError || !quickFieldsSupported ? "hidden" : ""}`} />
         {quickLoaded && <p className="mt-2 text-xs text-muted-foreground">QuickSight Reader access is tied to your website account.</p>}
       </>}
     </section>

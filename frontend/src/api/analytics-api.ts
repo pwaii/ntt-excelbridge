@@ -61,7 +61,12 @@ export function createAnalyticsApi(client: ReturnType<typeof createApiClient>) {
         timeoutMs: 15_000,
         decode: (value) => {
           try { return embedResponseSchema.parse(value); }
-          catch { throw new ApiError("protocol", "The dashboard service returned an invalid embed URL."); }
+          catch (failure) {
+            const fields = failure instanceof z.ZodError
+              ? failure.issues.map((issue) => issue.path.join(".") || "response").join(", ")
+              : "response";
+            throw new ApiError("protocol", `The dashboard service returned invalid embed fields: ${fields}.`);
+          }
         },
       });
       return result.data;

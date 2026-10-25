@@ -26,11 +26,13 @@ from app.services.quicksight_pipeline import (
     INSPECTION_FIELDS,
     PERMISSION_FIELDS,
     QUALITY_FIELDS,
+    WORKBOOK_FIELD_PAIR_FIELDS,
     WORKBOOK_ROW_FIELDS,
     encode_csv,
     flatten_inspection_manifests,
     flatten_quality_reports,
     flatten_workbook_rows,
+    iter_workbook_field_pairs_from_rows,
     owner_permissions,
     inspection_artifact_key,
     quality_artifact_key,
@@ -858,10 +860,12 @@ def quicksight_refresh_handler(event: dict[str, Any], context) -> dict[str, Any]
         if output_key:
             workbook_sources.append((output_key, owner_id, s3.get_bytes(output_key)))
     workbook_rows = flatten_workbook_rows(workbook_sources, inspection_by_input)
+    workbook_field_pairs = iter_workbook_field_pairs_from_rows(workbook_rows)
     permission_rows = owner_permissions(owner_cache.values())
     s3.put_bytes("quicksight/quality-issues.csv", encode_csv(quality_rows, QUALITY_FIELDS), "text/csv; charset=utf-8")
     s3.put_bytes("quicksight/inspections.csv", encode_csv(inspection_rows, INSPECTION_FIELDS), "text/csv; charset=utf-8")
     s3.put_bytes("quicksight/workbook-rows.csv", encode_csv(workbook_rows, WORKBOOK_ROW_FIELDS), "text/csv; charset=utf-8")
+    s3.put_bytes("quicksight/workbook-field-pairs.csv", encode_csv(workbook_field_pairs, WORKBOOK_FIELD_PAIR_FIELDS), "text/csv; charset=utf-8")
     if settings.quicksight_permissions_dataset_id:
         if not settings.quicksight_embedding_role_arn:
             raise ValueError("QUICKSIGHT_EMBEDDING_ROLE_ARN is required when the permissions dataset is configured")
@@ -873,6 +877,7 @@ def quicksight_refresh_handler(event: dict[str, Any], context) -> dict[str, Any]
         ("quality", settings.quicksight_quality_dataset_id),
         ("inspection", settings.quicksight_inspection_dataset_id),
         ("workbook_rows", settings.quicksight_workbook_rows_dataset_id),
+        ("workbook_field_pairs", settings.quicksight_workbook_field_pairs_dataset_id),
         ("permissions", settings.quicksight_permissions_dataset_id),
     )
     configured = [(label, dataset_id) for label, dataset_id in datasets if dataset_id]

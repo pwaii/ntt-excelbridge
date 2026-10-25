@@ -17,12 +17,13 @@ param(
     [string]$QuickSightQualityDatasetId = $(if ($env:QUICKSIGHT_QUALITY_DATASET_ID) { $env:QUICKSIGHT_QUALITY_DATASET_ID } else { "qa-issues-s3-76bde119" }),
     [string]$QuickSightInspectionDatasetId = $(if ($env:QUICKSIGHT_INSPECTION_DATASET_ID) { $env:QUICKSIGHT_INSPECTION_DATASET_ID } else { "qa-inspections-s3-76bde119" }),
     [string]$QuickSightWorkbookRowsDatasetId = $(if ($env:QUICKSIGHT_WORKBOOK_ROWS_DATASET_ID) { $env:QUICKSIGHT_WORKBOOK_ROWS_DATASET_ID } else { "excelbridge-workbook-rows" }),
+    [string]$QuickSightWorkbookFieldPairsDatasetId = $(if ($env:QUICKSIGHT_WORKBOOK_FIELD_PAIRS_DATASET_ID) { $env:QUICKSIGHT_WORKBOOK_FIELD_PAIRS_DATASET_ID } else { "excelbridge-workbook-field-pairs" }),
     [string]$QuickSightPermissionsDatasetId = $(if ($env:QUICKSIGHT_PERMISSIONS_DATASET_ID) { $env:QUICKSIGHT_PERMISSIONS_DATASET_ID } else { "excelbridge-owner-permissions" }),
     [string]$QuickSightRlsPermissionsDatasetArn = $(if ($env:QUICKSIGHT_RLS_PERMISSIONS_DATASET_ARN) { $env:QUICKSIGHT_RLS_PERMISSIONS_DATASET_ARN } else { "arn:aws:quicksight:ap-southeast-1:453995432289:dataset/excelbridge-owner-permissions" }),
     [string]$QuickSightEmbeddingRoleArn = $(if ($env:QUICKSIGHT_EMBEDDING_ROLE_ARN) { $env:QUICKSIGHT_EMBEDDING_ROLE_ARN } else { "" }),
     [string]$QuickSightReaderGroupName = $(if ($env:QUICKSIGHT_READER_GROUP_NAME) { $env:QUICKSIGHT_READER_GROUP_NAME } else { "website-readers" }),
     [ValidateSet("scheduled", "api")][string]$QuickSightRefreshMode = $(if ($env:QUICKSIGHT_REFRESH_MODE) { $env:QUICKSIGHT_REFRESH_MODE } else { "scheduled" }),
-    [string]$QuickSightDashboardId = $(if ($env:QUICKSIGHT_DASHBOARD_ID) { $env:QUICKSIGHT_DASHBOARD_ID } else { "excelbridge-quality-dashboard" })
+    [string]$QuickSightDashboardId = $(if ($env:QUICKSIGHT_DASHBOARD_ID) { $env:QUICKSIGHT_DASHBOARD_ID } else { "excelbridge-workbook-explorer-v2" })
 )
 
 $ErrorActionPreference = "Stop"
@@ -81,7 +82,7 @@ try {
     Invoke-Sam validate --template-file infra/template.yaml
     Invoke-Sam build --template-file infra/template.yaml --region $Region
     $parameterOverrides = @(
-        "Environment=$Environment", "BedrockModelId=$ModelId", "BedrockHeavyModelId=$HeavyModelId", "FrontendOrigin=$FrontendOrigin", "LambdaExecutionRoleArn=$LambdaExecutionRoleArn", "StateMachineExecutionRoleArn=$StateMachineExecutionRoleArn", "QuickSightAccountId=$QuickSightAccountId", "QuickSightRegion=$QuickSightRegion", "QuickSightQualityDatasetId=$QuickSightQualityDatasetId", "QuickSightInspectionDatasetId=$QuickSightInspectionDatasetId", "QuickSightWorkbookRowsDatasetId=$QuickSightWorkbookRowsDatasetId", "QuickSightPermissionsDatasetId=$QuickSightPermissionsDatasetId", "QuickSightRlsPermissionsDatasetArn=$QuickSightRlsPermissionsDatasetArn", "QuickSightReaderGroupName=$QuickSightReaderGroupName", "QuickSightRefreshMode=$QuickSightRefreshMode"
+        "Environment=$Environment", "BedrockModelId=$ModelId", "BedrockHeavyModelId=$HeavyModelId", "FrontendOrigin=$FrontendOrigin", "LambdaExecutionRoleArn=$LambdaExecutionRoleArn", "StateMachineExecutionRoleArn=$StateMachineExecutionRoleArn", "QuickSightAccountId=$QuickSightAccountId", "QuickSightRegion=$QuickSightRegion", "QuickSightQualityDatasetId=$QuickSightQualityDatasetId", "QuickSightInspectionDatasetId=$QuickSightInspectionDatasetId", "QuickSightWorkbookRowsDatasetId=$QuickSightWorkbookRowsDatasetId", "QuickSightWorkbookFieldPairsDatasetId=$QuickSightWorkbookFieldPairsDatasetId", "QuickSightPermissionsDatasetId=$QuickSightPermissionsDatasetId", "QuickSightRlsPermissionsDatasetArn=$QuickSightRlsPermissionsDatasetArn", "QuickSightReaderGroupName=$QuickSightReaderGroupName", "QuickSightRefreshMode=$QuickSightRefreshMode"
     )
     if (-not [string]::IsNullOrWhiteSpace($QuickSightEmbeddingRoleArn)) {
         if ($QuickSightEmbeddingRoleArn -notmatch '^arn:[A-Za-z0-9-]+:iam::[0-9]{12}:role/.+$') {
